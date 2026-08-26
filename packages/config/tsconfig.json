@@ -1,0 +1,8 @@
+{
+  "extends": "@sgr-registry/typescript-config/nest.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist"
+  },
+  "include": ["src/**/*.ts"]
+}

@@ -1,0 +1,144 @@
+:root {
+  color-scheme: light;
+  --bg: #f3f5f8;
+  --surface: #ffffff;
+  --ink: #1c2430;
+  --muted: #5b6776;
+  --line: #d7dee8;
+  --navy: #1f3a5f;
+  --navy-soft: #e8eef6;
+  --ok: #1f7a4d;
+  --ok-bg: #e7f6ee;
+  --bad: #9b2c2c;
+  --bad-bg: #fdecec;
+  --warn: #8a5a00;
+  --warn-bg: #fff4dc;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.site-header {
+  background: var(--navy);
+  color: #fff;
+}
+
+.site-header__inner,
+.site-main {
+  width: min(960px, calc(100% - 32px));
+  margin: 0 auto;
+}
+
+.site-header__inner {
+  padding: 20px 0 24px;
+}
+
+.site-header__eyebrow {
+  margin: 0 0 6px;
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+
+.site-header__title {
+  margin: 0;
+  font-size: clamp(1.35rem, 4vw, 1.9rem);
+  font-weight: 650;
+}
+
+.site-main {
+  padding: 24px 0 48px;
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.panel + .panel {
+  margin-top: 16px;
+}
+
+.panel h2 {
+  margin: 0 0 12px;
+  font-size: 1.05rem;
+}
+
+.lead {
+  margin: 0 0 16px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.status-list {
+  display: grid;
+  gap: 12px;
+}
+
+.status-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--navy-soft);
+}
+
+.badge {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.85rem;
+  font-weight: 650;
+}
+
+.badge--ok {
+  color: var(--ok);
+  background: var(--ok-bg);
+}
+
+.badge--bad {
+  color: var(--bad);
+  background: var(--bad-bg);
+}
+
+.badge--warn {
+  color: var(--warn);
+  background: var(--warn-bg);
+}
+
+.meta {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.refresh-link {
+  display: inline-block;
+  margin-top: 16px;
+  color: var(--navy);
+  font-weight: 600;
+}
+
+@media (max-width: 420px) {
+  .status-row {
+    flex-direction: column;
+  }
+}

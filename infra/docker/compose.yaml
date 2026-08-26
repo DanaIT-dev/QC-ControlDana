@@ -1,0 +1,62 @@
+services:
+  postgres:
+    image: postgres:18
+    container_name: sgr-registry-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sgr_registry}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sgr_registry_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-sgr_registry}
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - sgr_registry_pgdata:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'pg_isready -U ${POSTGRES_USER:-sgr_registry} -d ${POSTGRES_DB:-sgr_registry}',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: sgr-registry-redis
+    ports:
+      - '${REDIS_PORT:-6379}:6379'
+    volumes:
+      - sgr_registry_redis:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:latest
+    container_name: sgr-registry-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-sgr_minio_admin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-sgr_minio_dev_password}
+    ports:
+      - '${MINIO_API_PORT:-9000}:9000'
+      - '${MINIO_CONSOLE_PORT:-9001}:9001'
+    volumes:
+      - sgr_registry_minio:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -f http://localhost:9000/minio/health/live || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  sgr_registry_pgdata:
+  sgr_registry_redis:
+  sgr_registry_minio:

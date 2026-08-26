@@ -1,0 +1,37 @@
+{
+  "name": "sgr-defect-act-registry",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Реестр дефектных актов СГР — внутренний продукт Dana Holding",
+  "packageManager": "pnpm@11.24.0",
+  "engines": {
+    "node": ">=24.0.0 <25.0.0",
+    "pnpm": ">=11.24.0"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @sgr-registry/config --filter @sgr-registry/contracts --filter @sgr-registry/domain --filter @sgr-registry/database build && pnpm --parallel --filter @sgr-registry/web --filter @sgr-registry/api --filter @sgr-registry/worker dev",
+    "build": "pnpm --filter @sgr-registry/config build && pnpm --filter @sgr-registry/contracts build && pnpm --filter @sgr-registry/domain build && pnpm --filter @sgr-registry/database build && pnpm --filter @sgr-registry/api build && pnpm --filter @sgr-registry/worker build && pnpm --filter @sgr-registry/web build",
+    "lint": "eslint .",
+    "typecheck": "pnpm --filter @sgr-registry/config build && pnpm --filter @sgr-registry/contracts build && pnpm --filter @sgr-registry/domain build && pnpm --filter @sgr-registry/database build && pnpm --filter @sgr-registry/api typecheck && pnpm --filter @sgr-registry/worker typecheck && pnpm --filter @sgr-registry/web typecheck",
+    "test": "pnpm --filter @sgr-registry/contracts build && pnpm --filter @sgr-registry/domain test && pnpm --filter @sgr-registry/database test",
+    "test:integration": "pnpm --filter @sgr-registry/domain build && pnpm --filter @sgr-registry/database test:integration",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "db:generate": "pnpm --filter @sgr-registry/database generate",
+    "db:migrate": "pnpm --filter @sgr-registry/database migrate",
+    "db:seed": "pnpm --filter @sgr-registry/domain build && pnpm --filter @sgr-registry/database generate && pnpm --filter @sgr-registry/database seed",
+    "infra:up": "docker compose -f infra/docker/compose.yaml --env-file .env up -d",
+    "infra:down": "docker compose -f infra/docker/compose.yaml --env-file .env down"
+  },
+  "devDependencies": {
+    "@sgr-registry/eslint-config": "workspace:*",
+    "@sgr-registry/typescript-config": "workspace:*",
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.62.1",
+    "eslint": "^10.0.1",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.9.6",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.68.0"
+  }
+}

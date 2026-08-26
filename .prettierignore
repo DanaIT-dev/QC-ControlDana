@@ -1,0 +1,12 @@
+node_modules
+dist
+build
+.next
+coverage
+pnpm-lock.yaml
+packages/database/src/generated
+packages/database/prisma/migrations
+playwright-report
+test-results
+blob-report
+apps/web/next-env.d.ts

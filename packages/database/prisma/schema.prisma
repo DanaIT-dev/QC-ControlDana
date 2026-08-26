@@ -1,0 +1,320 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ActFormCode {
+  S1
+  S23
+}
+
+enum ActStatus {
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum DefectItemStatus {
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum UserRole {
+  ADMIN
+  SGR_MANAGER
+  RESPONSIBLE_ENGINEER
+  CONTRACTOR_ENGINEER
+}
+
+enum UserStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum OrganizationRoleType {
+  CUSTOMER
+  LIABLE_CONTRACTOR
+  ALTERNATIVE_CONTRACTOR
+}
+
+enum ProposalSlot {
+  A
+  B
+  C
+}
+
+model User {
+  id           String     @id @default(uuid()) @db.Uuid
+  fullName     String
+  email        String     @unique
+  phone        String?
+  passwordHash String?
+  role         UserRole
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime   @updatedAt @db.Timestamptz(3)
+  archivedAt   DateTime?  @db.Timestamptz(3)
+
+  objectAssignments     PropertyObjectEngineer[]
+  defectItemAssignments DefectItemEngineer[]
+  cancelledActs         Act[]                    @relation("ActCancelledBy")
+  uploadedAttachments   Attachment[]
+  auditLogs             AuditLog[]
+
+  @@map("users")
+}
+
+model PropertyObject {
+  id             String    @id @default(uuid()) @db.Uuid
+  name           String
+  address        String
+  commissionedAt DateTime? @db.Timestamptz(3)
+  warrantyEndsAt DateTime? @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(3)
+  active         Boolean   @default(true)
+
+  engineers PropertyObjectEngineer[]
+  acts      Act[]
+
+  @@map("property_objects")
+}
+
+model PropertyObjectEngineer {
+  id               String    @id @default(uuid()) @db.Uuid
+  propertyObjectId String    @db.Uuid
+  userId           String    @db.Uuid
+  assignedAt       DateTime  @default(now()) @db.Timestamptz(3)
+  unassignedAt     DateTime? @db.Timestamptz(3)
+
+  propertyObject PropertyObject @relation(fields: [propertyObjectId], references: [id], onDelete: Restrict)
+  user           User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([propertyObjectId])
+  @@index([userId])
+  @@map("property_object_engineers")
+}
+
+model Organization {
+  id            String   @id @default(uuid()) @db.Uuid
+  officialName  String
+  unp           String?
+  postalAddress String
+  email         String
+  phone         String
+  contactPerson String
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(3)
+
+  roles        OrganizationRoleAssignment[]
+  workTypes    OrganizationWorkType[]
+  customerActs Act[]                          @relation("ActCustomer")
+  liableItems  DefectItemLiableOrganization[]
+  proposals    Proposal[]
+
+  @@unique([unp])
+  @@map("organizations")
+}
+
+model OrganizationRoleAssignment {
+  id             String               @id @default(uuid()) @db.Uuid
+  organizationId String               @db.Uuid
+  role           OrganizationRoleType
+  createdAt      DateTime             @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, role])
+  @@map("organization_role_assignments")
+}
+
+model WorkType {
+  id        String   @id @default(uuid()) @db.Uuid
+  code      String   @unique
+  name      String
+  sortOrder Int
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  organizations OrganizationWorkType[]
+
+  @@map("work_types")
+}
+
+model OrganizationWorkType {
+  organizationId String @db.Uuid
+  workTypeId     String @db.Uuid
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  workType     WorkType     @relation(fields: [workTypeId], references: [id], onDelete: Restrict)
+
+  @@id([organizationId, workTypeId])
+  @@map("organization_work_types")
+}
+
+model DefectType {
+  id        String   @id @default(uuid()) @db.Uuid
+  code      String   @unique
+  name      String
+  active    Boolean  @default(true)
+  sortOrder Int
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  defectItems DefectItem[]
+
+  @@map("defect_types")
+}
+
+model Act {
+  id                     String      @id @default(uuid()) @db.Uuid
+  officialNumber         String      @unique
+  formCode               ActFormCode
+  year                   Int
+  sequence               Int
+  objectId               String      @db.Uuid
+  customerOrganizationId String      @db.Uuid
+  signedDocumentRef      String?
+  status                 ActStatus
+  version                Int         @default(1)
+  createdAt              DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime    @updatedAt @db.Timestamptz(3)
+  cancelledAt            DateTime?   @db.Timestamptz(3)
+  cancellationReason     String?
+  cancelledByUserId      String?     @db.Uuid
+
+  propertyObject PropertyObject @relation(fields: [objectId], references: [id], onDelete: Restrict)
+  customer       Organization   @relation("ActCustomer", fields: [customerOrganizationId], references: [id], onDelete: Restrict)
+  cancelledBy    User?          @relation("ActCancelledBy", fields: [cancelledByUserId], references: [id], onDelete: Restrict)
+  defectItems    DefectItem[]
+  attachments    Attachment[]
+
+  @@unique([formCode, year, sequence])
+  @@map("acts")
+}
+
+model ActNumberSequence {
+  formCode   ActFormCode
+  year       Int
+  lastIssued Int
+
+  @@id([formCode, year])
+  @@map("act_number_sequences")
+}
+
+model DefectItem {
+  id                 String           @id @default(uuid()) @db.Uuid
+  actId              String           @db.Uuid
+  location           String
+  defectTypeId       String           @db.Uuid
+  status             DefectItemStatus @default(IN_PROGRESS)
+  claimDetails       String
+  plannedDeadline    DateTime?        @db.Timestamptz(3)
+  claimDeadline      DateTime?        @db.Timestamptz(3)
+  readyAt            DateTime?        @db.Timestamptz(3)
+  thirdPartyDeadline DateTime?        @db.Timestamptz(3)
+  notes              String?
+  createdAt          DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime         @updatedAt @db.Timestamptz(3)
+  version            Int              @default(1)
+
+  act                  Act                            @relation(fields: [actId], references: [id], onDelete: Restrict)
+  defectType           DefectType                     @relation(fields: [defectTypeId], references: [id], onDelete: Restrict)
+  responsibleEngineers DefectItemEngineer[]
+  liableOrganizations  DefectItemLiableOrganization[]
+  proposals            Proposal[]
+  attachments          Attachment[]
+
+  @@index([actId])
+  @@map("defect_items")
+}
+
+model DefectItemEngineer {
+  defectItemId String @db.Uuid
+  userId       String @db.Uuid
+
+  defectItem DefectItem @relation(fields: [defectItemId], references: [id], onDelete: Restrict)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@id([defectItemId, userId])
+  @@map("defect_item_engineers")
+}
+
+model DefectItemLiableOrganization {
+  defectItemId   String @db.Uuid
+  organizationId String @db.Uuid
+
+  defectItem   DefectItem   @relation(fields: [defectItemId], references: [id], onDelete: Restrict)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@id([defectItemId, organizationId])
+  @@map("defect_item_liable_organizations")
+}
+
+model Proposal {
+  id                                String       @id @default(uuid()) @db.Uuid
+  defectItemId                      String       @db.Uuid
+  slot                              ProposalSlot
+  alternativeContractorOrganizationId String     @db.Uuid
+  amount                            Decimal      @db.Decimal(14, 2)
+  currency                          String       @default("BYN")
+  createdAt                         DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt                         DateTime     @updatedAt @db.Timestamptz(3)
+
+  defectItem            DefectItem   @relation(fields: [defectItemId], references: [id], onDelete: Restrict)
+  alternativeContractor Organization @relation(fields: [alternativeContractorOrganizationId], references: [id], onDelete: Restrict)
+
+  @@unique([defectItemId, slot])
+  @@map("proposals")
+}
+
+model Attachment {
+  id               String   @id @default(uuid()) @db.Uuid
+  actId            String?  @db.Uuid
+  defectItemId     String?  @db.Uuid
+  storageKey       String
+  originalFileName String
+  mimeType         String
+  sizeBytes        Int
+  checksum         String
+  createdAt        DateTime @default(now()) @db.Timestamptz(3)
+  uploadedById     String   @db.Uuid
+
+  act        Act?        @relation(fields: [actId], references: [id], onDelete: Restrict)
+  defectItem DefectItem? @relation(fields: [defectItemId], references: [id], onDelete: Restrict)
+  uploadedBy User        @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  @@map("attachments")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  actorUserId String?  @db.Uuid
+  action      String
+  entityType  String
+  entityId    String
+  oldValue    Json?
+  newValue    Json?
+  occurredAt  DateTime @default(now()) @db.Timestamptz(3)
+  ipAddress   String?
+  requestId   String?
+
+  actor User? @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([entityType, entityId])
+  @@index([occurredAt])
+  @@map("audit_logs")
+}
+
+model SystemSettings {
+  id                  String   @id @default("default")
+  deadlineWarningDays Int      @default(3)
+  updatedAt           DateTime @updatedAt @db.Timestamptz(3)
+
+  @@map("system_settings")
+}
