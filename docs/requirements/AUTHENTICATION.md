@@ -1,0 +1,98 @@
+# Аутентификация и доступ
+
+Локальная серверная авторизация внутреннего продукта «Реестр дефектных актов СГР». Внешний identity provider, OAuth, SSO и LDAP не используются.
+
+## Демонстрационные учётные записи
+
+Пять вымышленных пользователей создаются только seed-ом development и test. Production seed не создаёт демо-учётки и не назначает известный пароль.
+
+Единый локальный пароль задаётся в `.env` как `SEED_DEMO_PASSWORD`. Значение из `.env.example` предназначено только для разработки и тестов.
+
+| Email                               | Роль                   | Название                         |
+| ----------------------------------- | ---------------------- | -------------------------------- |
+| `alexey.viktorov@example.sgr.local` | `ADMIN`                | Администратор                    |
+| `marina.sokolova@example.sgr.local` | `SGR_MANAGER`          | Руководитель СГР                 |
+| `dmitry.orlov@example.sgr.local`    | `RESPONSIBLE_ENGINEER` | Ответственный инженер            |
+| `elena.krylova@example.sgr.local`   | `RESPONSIBLE_ENGINEER` | Ответственный инженер            |
+| `igor.panteleev@example.sgr.local`  | `CONTRACTOR_ENGINEER`  | Инженер по работе с подрядчиками |
+
+Повторный seed не создаёт пользователей заново и не меняет `passwordHash`, если текущий хеш по-прежнему соответствует `SEED_DEMO_PASSWORD`.
+
+## Пароль
+
+- хеш Argon2id;
+- исходный пароль не сохраняется;
+- `passwordHash` не возвращается API;
+- при создании пароля: 12–128 символов, заглавная, строчная, цифра и специальный символ;
+- слишком длинное значение отклоняется до Argon2;
+- на входе пароль не нормализуется (нет trim/lowercase/Unicode NFC);
+- email нормализуется через trim + lowercase.
+
+## Сессии
+
+Сессии живут только в Redis. Cookie `sgr_session`:
+
+- HttpOnly;
+- SameSite=Lax;
+- Path=/;
+- Max-Age 30 дней;
+- Secure только в production;
+- Domain не задаётся;
+- значение — непрозрачный случайный идентификатор (≥256 бит), не UUID и не JSON с userId/ролью.
+
+В Redis хранится SHA-256 идентификатора, не исходное значение cookie.
+
+Ключи (префикс по умолчанию `sgr`, в тестах `sgr-test`):
+
+- `sgr:sess:{sha256}` — данные сессии: `userId`, `sessionVersion`, `csrfToken`, `createdAt`, `expiresAt`;
+- `sgr:user-sess:{userId}` — индекс сессий пользователя для logout-all и блокировки;
+- `sgr:login-fail:{email}:{ip}` — счётчик неуспешных входов.
+
+TTL сессии и индекса — 30 дней. Если Redis недоступен, авторизация закрывается: защищённый запрос получает 401 без внутренних деталей.
+
+Роль и статус читаются из PostgreSQL на каждый защищённый запрос. Значение роли в Redis не является источником истины. `ARCHIVED` пользователь не входит, получает ту же ошибку, что и при неверном пароле, и теряет активные сессии.
+
+`POST /api/auth/logout` удаляет текущую сессию. `POST /api/auth/logout-all` увеличивает `sessionVersion` и удаляет все сессии пользователя.
+
+## CSRF
+
+Для сессии генерируется `csrfToken`. Изменяющие аутентифицированные запросы требуют заголовок `x-csrf-token`. Login защищается allowlist Origin (`WEB_ORIGIN`) и rate limit, без CSRF-токена. Токен не хранится в `localStorage`.
+
+## Ограничение перебора
+
+Ключ: нормализованный email + IP. Не более 5 неуспешных попыток за 15 минут (`AUTH_LOGIN_MAX_FAILURES`, `AUTH_LOGIN_WINDOW_SECONDS`). Успешный вход сбрасывает счётчик. После лимита — 429 с общим сообщением. `X-Forwarded-For` учитывается только при `TRUST_PROXY=true`.
+
+## Роли и capabilities
+
+Capabilities считает сервер (`GET /api/auth/capabilities`). Клиент отображает список, но не является источником прав.
+
+- `ADMIN`: `MANAGE_USERS`, `MANAGE_DIRECTORIES`, `VIEW_ALL_ACTS`, `CREATE_ACT`, `CANCEL_ACT`, `VIEW_AUDIT`
+- `SGR_MANAGER`: `VIEW_ALL_ACTS`, `CREATE_ACT`, `EDIT_ANY_ACT`, `ASSIGN_ENGINEERS`, `CANCEL_ACT`, `VIEW_COMMERCIAL_PROPOSALS`, `EDIT_COMMERCIAL_PROPOSALS`, `VIEW_AUDIT`
+- `RESPONSIBLE_ENGINEER`: `VIEW_ASSIGNED_DEFECTS`, `EDIT_ASSIGNED_DEFECTS`, `COMPLETE_ASSIGNED_DEFECTS`, `VIEW_PROPOSAL_A`
+- `CONTRACTOR_ENGINEER`: `VIEW_ALL_ACTS`, `MANAGE_ORGANIZATIONS`, `VIEW_COMMERCIAL_PROPOSALS`, `EDIT_COMMERCIAL_PROPOSALS`, `VIEW_AUDIT`
+
+`/registry` доступна любой активной сессии. `/system-status` — только `ADMIN`. `GET /api/health` и `GET /api/ready` остаются машинными.
+
+## Аудит
+
+Append-only `AuditLog`: `LOGIN_SUCCEEDED`, `LOGIN_FAILED`, `LOGIN_RATE_LIMITED`, `LOGOUT`, `LOGOUT_ALL`, `SESSION_REJECTED_ARCHIVED_USER`, `SESSION_REJECTED_VERSION_MISMATCH`.
+
+Не записываются пароль, cookie, session id, csrfToken, passwordHash.
+
+## Тесты
+
+```bash
+pnpm test
+pnpm test:integration
+pnpm test:e2e
+```
+
+Integration-тесты используют только `TEST_DATABASE_URL` с именем базы `*_test`. Playwright поднимает Chromium и проверяет вход, роли, logout и вёрстку 390 px.
+
+## Production
+
+- не задавать `SEED_DEMO_PASSWORD` как рабочий пароль;
+- `NODE_ENV=production` включает Secure cookie;
+- `TRUST_PROXY` включать только за известным reverse proxy;
+- `WEB_ORIGIN` должен быть точным origin веб-приложения;
+- Redis обязателен: без него вход и защищённые маршруты недоступны.

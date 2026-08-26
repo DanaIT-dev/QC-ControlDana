@@ -8,5 +8,6 @@ allowBuilds:
   '@prisma/client': true
   esbuild: true
   msgpackr-extract: true
+  argon2: true
 
 minimumReleaseAge: 0

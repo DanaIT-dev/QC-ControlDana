@@ -23,6 +23,7 @@ html,
 body {
   margin: 0;
   min-height: 100%;
+  overflow-x: hidden;
 }
 
 body {
@@ -140,5 +141,145 @@ body {
 @media (max-width: 420px) {
   .status-row {
     flex-direction: column;
+  }
+}
+
+:focus-visible {
+  outline: 3px solid #3d6ea8;
+  outline-offset: 2px;
+}
+
+.login-layout {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+}
+
+.login-panel {
+  width: min(420px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 28px 24px;
+  box-shadow: 0 12px 40px rgba(31, 58, 95, 0.08);
+}
+
+.login-kicker {
+  margin: 0 0 8px;
+  color: var(--navy);
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.login-title {
+  margin: 0;
+  color: var(--navy);
+  font-size: clamp(1.4rem, 5vw, 1.85rem);
+  line-height: 1.25;
+}
+
+.login-subtitle {
+  margin: 8px 0 24px;
+  color: var(--muted);
+}
+
+.login-form,
+.field {
+  display: grid;
+  gap: 8px;
+}
+
+.login-form {
+  gap: 16px;
+}
+
+.field label {
+  font-weight: 600;
+}
+
+.field input {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font: inherit;
+  background: #fff;
+}
+
+.password-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.primary-button,
+.ghost-button,
+.text-link {
+  min-height: 44px;
+  min-width: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 16px;
+  border-radius: 10px;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.primary-button {
+  border: 0;
+  background: var(--navy);
+  color: #fff;
+}
+
+.primary-button:disabled,
+.ghost-button:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.ghost-button {
+  border: 1px solid var(--line);
+  background: var(--navy-soft);
+  color: var(--navy);
+}
+
+.form-error {
+  margin: 0;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--bad-bg);
+  color: var(--bad);
+}
+
+.capability-list {
+  margin: 16px 0;
+  padding-left: 18px;
+  color: var(--ink);
+  line-height: 1.55;
+}
+
+.registry-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin-top: 20px;
+}
+
+.text-link {
+  color: var(--navy);
+  text-decoration: none;
+  font-weight: 650;
+}
+
+@media (max-width: 360px) {
+  .password-row {
+    grid-template-columns: 1fr;
   }
 }

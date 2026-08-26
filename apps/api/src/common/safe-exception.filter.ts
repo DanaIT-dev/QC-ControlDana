@@ -24,12 +24,16 @@ export class SafeExceptionFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost): void {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<FastifyReply>();
-    const request = ctx.getRequest<FastifyRequest>();
-    const requestIdHeader = request.headers['x-request-id'];
+    const request = ctx.getRequest<FastifyRequest & { requestId?: string }>();
+    const requestIdHeader = request.requestId ?? request.headers['x-request-id'];
     const requestId = typeof requestIdHeader === 'string' ? requestIdHeader : undefined;
 
     const body = this.toSafeBody(exception, requestId);
-    this.logger.error(`${body.statusCode} ${body.error} requestId=${requestId ?? 'n/a'}`);
+    const details =
+      exception instanceof Error ? (exception.stack ?? exception.message) : String(exception);
+    this.logger.error(
+      `${body.statusCode} ${body.error} requestId=${requestId ?? 'n/a'} ${details}`,
+    );
 
     void response.status(body.statusCode).send(body);
   }

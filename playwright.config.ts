@@ -1,18 +1,29 @@
 import { defineConfig, devices } from '@playwright/test';
 
-/**
- * Playwright is installed and configured for a future E2E suite.
- * This stage does not include product E2E scenarios.
- */
 export default defineConfig({
   testDir: './apps/web/e2e',
-  fullyParallel: true,
+  fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
+  workers: 1,
   use: {
     baseURL: process.env.WEB_ORIGIN ?? 'http://localhost:3000',
     trace: 'on-first-retry',
   },
+  webServer: [
+    {
+      command: 'export PATH="$HOME/.local/bin:$PATH" && pnpm --filter @sgr-registry/api dev',
+      url: 'http://localhost:3001/api/health',
+      reuseExistingServer: true,
+      timeout: 120_000,
+    },
+    {
+      command: 'export PATH="$HOME/.local/bin:$PATH" && pnpm --filter @sgr-registry/web dev',
+      url: 'http://localhost:3000/login',
+      reuseExistingServer: true,
+      timeout: 120_000,
+    },
+  ],
   projects: [
     {
       name: 'chromium',

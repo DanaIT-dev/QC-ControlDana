@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "users" ADD COLUMN "passwordChangedAt" TIMESTAMPTZ(3);
+ALTER TABLE "users" ADD COLUMN "sessionVersion" INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE "users" ADD COLUMN "lastLoginAt" TIMESTAMPTZ(3);

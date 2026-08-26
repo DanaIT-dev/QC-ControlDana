@@ -2,7 +2,7 @@
 
 Внутренний продукт Dana Holding. Модульный монолит: web, API, worker, PostgreSQL, Redis и S3-совместимое хранилище.
 
-Текущий этап — технический фундамент. Полноценная авторизация, реестр, загрузка документов и интеграция с 1С не входят в эту версию.
+Текущий этап — безопасная локальная авторизация, сессии и ролевой доступ. Главный реестр актов, CRUD справочников, загрузка документов и интеграция с 1С не входят в эту версию.
 
 ## Требования
 
@@ -25,8 +25,11 @@ pnpm dev
 ```
 
 - Web: http://localhost:3000
+- Вход: http://localhost:3000/login
 - API health: http://localhost:3001/api/health
 - API ready: http://localhost:3001/api/ready
+
+Если команда `pnpm` недоступна в `PATH`, используйте `corepack pnpm` или `~/.local/bin/pnpm`. Не устанавливайте второй экземпляр pnpm и не меняйте глобальные shell-файлы ради этого проекта.
 
 Если Docker недоступен, команды миграции, seed и integration tests завершатся ошибкой подключения. Это ожидаемо: тестовая и development-база не подменяются.
 
@@ -40,6 +43,7 @@ pnpm dev
 | `pnpm typecheck`        | TypeScript                                    |
 | `pnpm test`             | Unit-тесты                                    |
 | `pnpm test:integration` | Integration-тесты только против `*_test` базы |
+| `pnpm test:e2e`         | Playwright (Chromium), сценарии входа         |
 | `pnpm format:check`     | Проверка Prettier                             |
 | `pnpm db:generate`      | Prisma Client                                 |
 | `pnpm db:migrate`       | `prisma migrate deploy`                       |
@@ -54,5 +58,6 @@ pnpm dev
 ## Документация
 
 - [Доменный контракт](docs/requirements/DOMAIN_CONTRACT.md)
+- [Аутентификация](docs/requirements/AUTHENTICATION.md)
 - [Архитектура](docs/architecture/ARCHITECTURE.md)
 - [Локальный запуск](docs/runbooks/LOCAL_DEVELOPMENT.md)

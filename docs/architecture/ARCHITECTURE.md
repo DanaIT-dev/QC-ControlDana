@@ -4,8 +4,8 @@
 
 Монорепозиторий pnpm workspace:
 
-- `apps/web` — Next.js 16, React 19, App Router. Минимальный интерфейс технического состояния.
-- `apps/api` — NestJS 11 на Fastify. HTTP API, health/ready, requestId, безопасный обработчик ошибок.
+- `apps/web` — Next.js 16, React 19, App Router. Вход, защищённый реестр-заглушка, system-status для ADMIN.
+- `apps/api` — NestJS 11 на Fastify. HTTP API, сессии Redis, RBAC, health/ready, requestId, безопасный обработчик ошибок.
 - `apps/worker` — NestJS application context без HTTP. BullMQ-очередь `sgr-maintenance`.
 - `packages/domain` — чистые типы, инварианты и доменные функции. Без React и Prisma.
 - `packages/database` — Prisma schema, клиент, миграции, seed, генерация номера акта.
@@ -20,7 +20,7 @@
 Направление зависимостей только внутрь:
 
 ```
-web → contracts
+web → contracts, domain
 api → config, contracts, database, domain
 worker → config
 database → domain
@@ -39,7 +39,7 @@ config → (нет внутренних пакетов)
 Docker Compose поднимает:
 
 - PostgreSQL 18 с named volume и отдельной test-базой `sgr_registry_test`;
-- Redis для очередей и проверки готовности;
+- Redis для сессий, ограничения перебора пароля, очередей и проверки готовности;
 - MinIO как S3-совместимое хранилище (загрузка файлов — следующий этап).
 
 Порты задаются переменными окружения. Демонстрационные пароли только для local development.

@@ -10,18 +10,26 @@ import {
   allocateActNumber,
   archiveUser,
   assertActNumberImmutable,
+  assertPasswordPolicy,
   assertUnpAvailable,
   assertUniqueProposalSlots,
   canAddProposalSlot,
+  capabilitiesForRole,
   completeDefectItem,
   computeActStatus,
   createDefectItem,
   formatOfficialActNumber,
+  hasCapability,
+  isPasswordPolicySatisfied,
+  isValidEmail,
   linkLiableOrganizations,
   linkResponsibleEngineers,
   nextSequenceFromLastIssued,
+  normalizeEmail,
   normalizeUnp,
+  PasswordPolicyError,
   preserveAssignmentsOnArchive,
+  roleLabel,
   usesCountPlusOneStrategy,
 } from './index';
 
@@ -177,5 +185,54 @@ describe('DefectItem relationships', () => {
     const links = linkLiableOrganizations('di-1', ['org-1', 'org-2', 'org-3']);
     expect(links).toHaveLength(3);
     expect(links.map((link) => link.organizationId)).toEqual(['org-1', 'org-2', 'org-3']);
+  });
+});
+
+describe('email normalization', () => {
+  it('trims and lowercases email without changing the local mailbox otherwise', () => {
+    expect(normalizeEmail('  Alexey.Viktorov@Example.SGR.Local  ')).toBe(
+      'alexey.viktorov@example.sgr.local',
+    );
+    expect(isValidEmail('not-an-email')).toBe(false);
+    expect(isValidEmail('user@example.sgr.local')).toBe(true);
+  });
+});
+
+describe('password policy', () => {
+  it('accepts a sufficiently complex password and rejects short or overlong values', () => {
+    expect(isPasswordPolicySatisfied('Dana-SGR-Demo-2026!')).toBe(true);
+    expect(isPasswordPolicySatisfied('short1A!')).toBe(false);
+    expect(isPasswordPolicySatisfied(`${'Aa1!'.repeat(33)}`)).toBe(false);
+    expect(() => assertPasswordPolicy('nouppercase1!')).toThrow(PasswordPolicyError);
+  });
+
+  it('does not silently trim leading or trailing spaces', () => {
+    const withSpaces = '  Dana-SGR-Demo-2026!  ';
+    expect(withSpaces.startsWith(' ')).toBe(true);
+    expect(isPasswordPolicySatisfied(withSpaces)).toBe(true);
+    expect(withSpaces.length).toBeGreaterThan(12);
+  });
+});
+
+describe('capabilities', () => {
+  it('maps each role to the expected product capabilities', () => {
+    expect(capabilitiesForRole('ADMIN')).toEqual([
+      'MANAGE_USERS',
+      'MANAGE_DIRECTORIES',
+      'VIEW_ALL_ACTS',
+      'CREATE_ACT',
+      'CANCEL_ACT',
+      'VIEW_AUDIT',
+    ]);
+    expect(capabilitiesForRole('SGR_MANAGER')).toContain('ASSIGN_ENGINEERS');
+    expect(capabilitiesForRole('RESPONSIBLE_ENGINEER')).toEqual([
+      'VIEW_ASSIGNED_DEFECTS',
+      'EDIT_ASSIGNED_DEFECTS',
+      'COMPLETE_ASSIGNED_DEFECTS',
+      'VIEW_PROPOSAL_A',
+    ]);
+    expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).toContain('MANAGE_ORGANIZATIONS');
+    expect(hasCapability('RESPONSIBLE_ENGINEER', 'VIEW_ALL_ACTS')).toBe(false);
+    expect(roleLabel('ADMIN')).toBe('Администратор');
   });
 });

@@ -24,6 +24,11 @@ const booleanString = z
   .default('true')
   .transform((value) => value === 'true' || value === '1');
 
+const booleanFalse = z
+  .enum(['true', 'false', '1', '0'])
+  .default('false')
+  .transform((value) => value === 'true' || value === '1');
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   API_HOST: z.string().min(1).default('0.0.0.0'),
@@ -50,6 +55,21 @@ const envSchema = z.object({
   S3_SECRET_KEY: z.string().min(1, 'S3_SECRET_KEY is required'),
   S3_BUCKET: z.string().min(1),
   S3_FORCE_PATH_STYLE: booleanString,
+  TRUST_PROXY: booleanFalse,
+  SESSION_TTL_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(60 * 60 * 24 * 30),
+  AUTH_LOGIN_MAX_FAILURES: z.coerce.number().int().positive().default(5),
+  AUTH_LOGIN_WINDOW_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(15 * 60),
+  REDIS_KEY_PREFIX: z.string().min(1).default('sgr'),
+  ARGON2_MEMORY_COST: z.coerce.number().int().positive().default(19456),
+  ARGON2_TIME_COST: z.coerce.number().int().positive().default(2),
 });
 
 export type AppConfig = z.infer<typeof envSchema>;

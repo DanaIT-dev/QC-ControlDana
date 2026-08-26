@@ -4,21 +4,13 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: 'Реестр дефектных актов',
-  description: 'Техническое состояние системы реестра дефектных актов СГР',
+  description: 'Реестр дефектных актов Службы гарантийного ремонта Dana Holding',
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="ru">
-      <body>
-        <header className="site-header">
-          <div className="site-header__inner">
-            <p className="site-header__eyebrow">Dana Holding · внутренний продукт</p>
-            <h1 className="site-header__title">Реестр дефектных актов</h1>
-          </div>
-        </header>
-        <main className="site-main">{children}</main>
-      </body>
+      <body>{children}</body>
     </html>
   );
 }

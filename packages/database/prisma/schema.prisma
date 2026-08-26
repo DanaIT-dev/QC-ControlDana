@@ -47,16 +47,19 @@ enum ProposalSlot {
 }
 
 model User {
-  id           String     @id @default(uuid()) @db.Uuid
-  fullName     String
-  email        String     @unique
-  phone        String?
-  passwordHash String?
-  role         UserRole
-  status       UserStatus @default(ACTIVE)
-  createdAt    DateTime   @default(now()) @db.Timestamptz(3)
-  updatedAt    DateTime   @updatedAt @db.Timestamptz(3)
-  archivedAt   DateTime?  @db.Timestamptz(3)
+  id                  String    @id @default(uuid()) @db.Uuid
+  fullName            String
+  email               String    @unique
+  phone               String?
+  passwordHash        String?
+  passwordChangedAt   DateTime? @db.Timestamptz(3)
+  sessionVersion      Int       @default(1)
+  lastLoginAt         DateTime? @db.Timestamptz(3)
+  role                UserRole
+  status              UserStatus @default(ACTIVE)
+  createdAt           DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime  @updatedAt @db.Timestamptz(3)
+  archivedAt          DateTime? @db.Timestamptz(3)
 
   objectAssignments     PropertyObjectEngineer[]
   defectItemAssignments DefectItemEngineer[]

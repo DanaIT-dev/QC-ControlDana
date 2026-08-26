@@ -1,2 +1,6 @@
-Playwright is configured at the repository root for a future E2E suite.
-This stage does not include product end-to-end scenarios.
+Playwright auth suite lives at the repository root.
+
+```bash
+pnpm exec playwright install chromium
+pnpm test:e2e
+```

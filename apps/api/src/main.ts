@@ -1,9 +1,9 @@
 import 'reflect-metadata';
-import { randomUUID } from 'node:crypto';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { loadConfig, MissingConfigurationError } from '@sgr-registry/config';
 import { AppModule } from './app.module';
+import { configureHttpApp } from './configure-http';
 
 async function bootstrap(): Promise<void> {
   let config;
@@ -18,22 +18,15 @@ async function bootstrap(): Promise<void> {
     throw error;
   }
 
-  const adapter = new FastifyAdapter({ logger: false, requestIdHeader: 'x-request-id' });
+  const adapter = new FastifyAdapter({
+    logger: false,
+    trustProxy: config.TRUST_PROXY,
+  });
   const app = await NestFactory.create<NestFastifyApplication>(AppModule, adapter, {
     logger: ['error', 'warn', 'log'],
   });
 
-  app.enableCors({ origin: config.WEB_ORIGIN });
-  app.setGlobalPrefix('api');
-
-  const fastify = app.getHttpAdapter().getInstance();
-  fastify.addHook('onRequest', async (request, reply) => {
-    const header = request.headers['x-request-id'];
-    const requestId = typeof header === 'string' && header.length > 0 ? header : randomUUID();
-    request.headers['x-request-id'] = requestId;
-    reply.header('x-request-id', requestId);
-  });
-
+  await configureHttpApp(app, config);
   await app.listen(config.API_PORT, config.API_HOST);
 }
 
