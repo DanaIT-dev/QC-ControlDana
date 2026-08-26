@@ -1,0 +1,115 @@
+import type { ActFormCode, DefectItemStatus, ProposalSlot } from './enums';
+import type { DeadlineState } from './enums';
+
+export interface RegistryProposalDto {
+  slot: ProposalSlot;
+  amount: string;
+  currency: string;
+  contractorName: string;
+}
+
+export interface RegistryDefectRow {
+  rowId: string;
+  defectItemId: string;
+  actId: string;
+  formCode: ActFormCode;
+  formLabel: string;
+  actNumber: string;
+  defectStatus: DefectItemStatus;
+  defectStatusLabel: string;
+  objectId: string;
+  objectName: string;
+  objectAddress: string;
+  location: string;
+  defectTypeId: string;
+  defectTypeName: string;
+  customerOrganizationId: string;
+  customerName: string;
+  liableOrganizations: Array<{ id: string; name: string }>;
+  responsibleEngineers: Array<{ id: string; fullName: string }>;
+  plannedDeadline: string | null;
+  claimDeadline: string | null;
+  effectiveDeadline: string | null;
+  deadlineState: DeadlineState;
+  deadlineStateLabel: string;
+  readyAt: string | null;
+  documentRef: string | null;
+  proposalA: RegistryProposalDto | null;
+  proposalsBC?: RegistryProposalDto[];
+}
+
+export interface RegistryListResponse {
+  items: RegistryDefectRow[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+  appliedSort: { sortBy: string; sortDirection: string };
+}
+
+export interface RegistrySummaryResponse {
+  total: number;
+  inProgress: number;
+  completed: number;
+  warning: number;
+  overdue: number;
+  noDeadline: number;
+  currency: string;
+  deadlineWarningDays: number;
+  businessDate: string;
+  proposalASum?: string;
+}
+
+export interface RegistryFilterOption {
+  id: string;
+  label: string;
+}
+
+export interface RegistryFilterOptionsResponse {
+  formCodes: RegistryFilterOption[];
+  statuses: RegistryFilterOption[];
+  objects: RegistryFilterOption[];
+  defectTypes: RegistryFilterOption[];
+  customers: RegistryFilterOption[];
+  liableOrganizations: RegistryFilterOption[];
+  responsibleEngineers: RegistryFilterOption[];
+}
+
+export interface ActDetailDefectItem {
+  id: string;
+  location: string;
+  defectTypeName: string;
+  status: DefectItemStatus;
+  statusLabel: string;
+  responsibleEngineers: Array<{ id: string; fullName: string }>;
+  liableOrganizations: Array<{ id: string; name: string }>;
+  plannedDeadline: string | null;
+  claimDeadline: string | null;
+  effectiveDeadline: string | null;
+  deadlineState: DeadlineState;
+  deadlineStateLabel: string;
+  readyAt: string | null;
+  thirdPartyDeadline: string | null;
+  notes: string | null;
+  proposalA: RegistryProposalDto | null;
+  proposalsBC?: RegistryProposalDto[];
+}
+
+export interface ActDetailResponse {
+  id: string;
+  formCode: ActFormCode;
+  formLabel: string;
+  officialNumber: string;
+  status: string;
+  statusLabel: string;
+  objectName: string;
+  objectAddress: string;
+  commissionedAt: string | null;
+  warrantyEndsAt: string | null;
+  customerName: string;
+  signedDocumentRef: string | null;
+  createdAt: string;
+  cancelledAt: string | null;
+  cancellationReason: string | null;
+  defectItems: ActDetailDefectItem[];
+}

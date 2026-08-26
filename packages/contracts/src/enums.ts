@@ -28,6 +28,15 @@ export type OrganizationRole = (typeof ORGANIZATION_ROLES)[number];
 export const PROPOSAL_SLOTS = ['A', 'B', 'C'] as const;
 export type ProposalSlot = (typeof PROPOSAL_SLOTS)[number];
 
+export const DEADLINE_STATES = [
+  'NO_DEADLINE',
+  'NORMAL',
+  'WARNING',
+  'OVERDUE',
+  'COMPLETED',
+] as const;
+export type DeadlineState = (typeof DEADLINE_STATES)[number];
+
 export const ACT_FORM_DISPLAY: Record<ActFormCode, { code: ActFormCode; officialLabel: string }> = {
   S1: { code: 'S1', officialLabel: 'С-1' },
   S23: { code: 'S23', officialLabel: 'С-23' },

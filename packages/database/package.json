@@ -18,7 +18,8 @@
     "migrate:dev": "prisma migrate dev",
     "seed": "tsx prisma/seed.ts",
     "test": "vitest run --config vitest.config.mts",
-    "test:integration": "tsx scripts/run-integration-tests.ts"
+    "test:integration": "tsx scripts/run-integration-tests.ts",
+    "test:registry:performance": "tsx scripts/registry-performance.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "7.10.0",

@@ -70,6 +70,7 @@ const envSchema = z.object({
   REDIS_KEY_PREFIX: z.string().min(1).default('sgr'),
   ARGON2_MEMORY_COST: z.coerce.number().int().positive().default(19456),
   ARGON2_TIME_COST: z.coerce.number().int().positive().default(2),
+  BUSINESS_TIME_ZONE: z.string().min(1).default('Europe/Minsk'),
 });
 
 export type AppConfig = z.infer<typeof envSchema>;

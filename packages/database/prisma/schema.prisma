@@ -198,6 +198,8 @@ model Act {
   attachments    Attachment[]
 
   @@unique([formCode, year, sequence])
+  @@index([objectId])
+  @@index([customerOrganizationId])
   @@map("acts")
 }
 
@@ -225,6 +227,7 @@ model DefectItem {
   createdAt          DateTime         @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime         @updatedAt @db.Timestamptz(3)
   version            Int              @default(1)
+  effectiveDeadline  DateTime?        @default(dbgenerated()) @db.Timestamptz(3)
 
   act                  Act                            @relation(fields: [actId], references: [id], onDelete: Restrict)
   defectType           DefectType                     @relation(fields: [defectTypeId], references: [id], onDelete: Restrict)
@@ -234,6 +237,11 @@ model DefectItem {
   attachments          Attachment[]
 
   @@index([actId])
+  @@index([status])
+  @@index([plannedDeadline])
+  @@index([claimDeadline])
+  @@index([readyAt])
+  @@index([effectiveDeadline])
   @@map("defect_items")
 }
 
@@ -245,6 +253,7 @@ model DefectItemEngineer {
   user       User       @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@id([defectItemId, userId])
+  @@index([userId])
   @@map("defect_item_engineers")
 }
 
@@ -256,6 +265,7 @@ model DefectItemLiableOrganization {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
   @@id([defectItemId, organizationId])
+  @@index([organizationId])
   @@map("defect_item_liable_organizations")
 }
 

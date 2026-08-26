@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server';
 
 const SESSION_COOKIE_NAME = 'sgr_session';
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const hasSession = Boolean(request.cookies.get(SESSION_COOKIE_NAME)?.value);
 
@@ -13,7 +13,10 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(destination);
   }
 
-  if ((pathname === '/registry' || pathname === '/system-status') && !hasSession) {
+  if (
+    (pathname === '/registry' || pathname === '/system-status' || pathname.startsWith('/acts/')) &&
+    !hasSession
+  ) {
     const destination = request.nextUrl.clone();
     destination.pathname = '/login';
     return NextResponse.redirect(destination);
@@ -23,5 +26,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/', '/login', '/registry', '/system-status'],
+  matcher: ['/', '/login', '/registry', '/system-status', '/acts/:path*'],
 };

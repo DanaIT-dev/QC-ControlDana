@@ -46,7 +46,10 @@ curl -i http://localhost:3001/api/ready
 pnpm test
 pnpm test:integration
 pnpm test:e2e
+pnpm test:registry:performance
 ```
+
+`pnpm test:registry:performance` создаёт ≥ 100 000 строк только в `sgr_registry_test`, снимает `EXPLAIN ANALYZE` типового list-запроса и удаляет performance-данные. Development-база не используется.
 
 Integration-тесты требуют `TEST_DATABASE_URL` с именем базы, оканчивающимся на `_test`. Если URL отсутствует или указывает на development/production базу, команда завершается с ошибкой и не пропускает тесты.
 

@@ -5,9 +5,10 @@ import { PrismaModule } from './auth/prisma.module';
 import { RedisModule } from './auth/redis.module';
 import { SafeExceptionFilter } from './common/safe-exception.filter';
 import { HealthModule } from './health/health.module';
+import { RegistryModule } from './registry/registry.module';
 
 @Module({
-  imports: [PrismaModule, RedisModule, AuthModule, HealthModule],
+  imports: [PrismaModule, RedisModule, AuthModule, HealthModule, RegistryModule],
   providers: [
     {
       provide: APP_FILTER,

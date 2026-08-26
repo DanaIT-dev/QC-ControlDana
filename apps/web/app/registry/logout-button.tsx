@@ -4,7 +4,7 @@ import { CSRF_HEADER_NAME } from '@sgr-registry/domain';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
-export function LogoutButton({ csrfToken }: { csrfToken: string }) {
+export function LogoutButton({ csrfToken, className }: { csrfToken: string; className?: string }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
 
@@ -30,7 +30,12 @@ export function LogoutButton({ csrfToken }: { csrfToken: string }) {
   }
 
   return (
-    <button type="button" className="primary-button" onClick={onLogout} disabled={pending}>
+    <button
+      type="button"
+      className={className ?? 'primary-button'}
+      onClick={onLogout}
+      disabled={pending}
+    >
       {pending ? 'Выход…' : 'Выйти'}
     </button>
   );

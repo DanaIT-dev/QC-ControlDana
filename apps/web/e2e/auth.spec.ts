@@ -36,7 +36,7 @@ test.describe('authentication browser flows', () => {
     await expect(page).toHaveURL(/\/registry$/);
     await expect(page.getByText(ACCOUNTS.admin.name)).toBeVisible();
     await expect(page.getByText(ACCOUNTS.admin.role)).toBeVisible();
-    await page.getByRole('link', { name: 'Техническое состояние' }).click();
+    await page.getByRole('link', { name: 'Состояние системы' }).click();
     await expect(page).toHaveURL(/\/system-status$/);
     await expect(page.getByText('Техническое состояние системы')).toBeVisible();
     const localStorageKeys = await page.evaluate(() => Object.keys(window.localStorage));

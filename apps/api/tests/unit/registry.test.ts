@@ -1,0 +1,59 @@
+import { describe, expect, it } from 'vitest';
+import { RegistryAccessScope } from '../../src/registry/registry-access-scope';
+import { deadlineStateWhere, registryOrderBy } from '../../src/registry/registry-query-builder';
+import { shapeProposals, shapeSummary } from '@sgr-registry/domain';
+
+describe('RegistryAccessScope', () => {
+  it('keeps assigned-only filtering inside the Prisma where for responsible engineers', () => {
+    const scope = new RegistryAccessScope({
+      id: '11111111-1111-4111-8111-111111111111',
+      role: 'RESPONSIBLE_ENGINEER',
+    });
+    const where = scope.defectItemWhere();
+    expect(JSON.stringify(where)).toContain('11111111-1111-4111-8111-111111111111');
+    expect(JSON.stringify(where)).toContain('responsibleEngineers');
+    expect(JSON.stringify(where)).toContain('CANCELLED');
+  });
+
+  it('does not assign responsible-engineer joins for the other three roles', () => {
+    for (const role of ['ADMIN', 'SGR_MANAGER', 'CONTRACTOR_ENGINEER'] as const) {
+      const where = new RegistryAccessScope({
+        id: '11111111-1111-4111-8111-111111111111',
+        role,
+      }).defectItemWhere();
+      expect(JSON.stringify(where)).not.toContain('responsibleEngineers');
+    }
+  });
+});
+
+describe('registry query builder', () => {
+  it('whitelists sort fields instead of passing a raw column name', () => {
+    expect(registryOrderBy('actNumber', 'desc')[0]).toEqual({ act: { officialNumber: 'desc' } });
+    expect(registryOrderBy('effectiveDeadline', 'asc')[2]).toEqual({ id: 'asc' });
+  });
+
+  it('encodes overdue-on-the-due-date in the database predicate', () => {
+    const where = deadlineStateWhere('OVERDUE', '2026-08-26', 3);
+    expect(where.status).toBe('IN_PROGRESS');
+    expect(where.effectiveDeadline).toMatchObject({ lte: expect.any(Date) });
+  });
+});
+
+describe('response shaping', () => {
+  it('does not emit a proposalsBC key for responsible engineers', () => {
+    const shaped = shapeProposals(
+      [
+        { slot: 'A', amount: '10.00', currency: 'BYN', contractorName: 'A' },
+        { slot: 'B', amount: '11.00', currency: 'BYN', contractorName: 'B' },
+      ],
+      'RESPONSIBLE_ENGINEER',
+    );
+    expect(Object.keys(shaped)).toEqual(['proposalA']);
+  });
+
+  it('omits proposalASum for contractor and responsible roles', () => {
+    expect('proposalASum' in shapeSummary({ total: 1 }, 'CONTRACTOR_ENGINEER', '10.00')).toBe(
+      false,
+    );
+  });
+});

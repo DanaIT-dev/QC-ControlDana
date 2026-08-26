@@ -11,3 +11,8 @@ export * from './capabilities';
 export * from './email';
 export * from './password-policy';
 export * from './auth-constants';
+export * from './deadline';
+export * from './registry-access';
+export * from './registry-query';
+export * from './registry-labels';
+export * from './registry-shaping';

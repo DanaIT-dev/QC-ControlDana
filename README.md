@@ -2,7 +2,7 @@
 
 Внутренний продукт Dana Holding. Модульный монолит: web, API, worker, PostgreSQL, Redis и S3-совместимое хранилище.
 
-Текущий этап — безопасная локальная авторизация, сессии и ролевой доступ. Главный реестр актов, CRUD справочников, загрузка документов и интеграция с 1С не входят в эту версию.
+Текущий этап — роль-зависимый реестр дефектов: серверные фильтры, пагинация, сроки и карточка акта. Создание и редактирование актов, CRUD справочников, загрузка документов и интеграция с 1С не входят в эту версию.
 
 ## Требования
 
@@ -35,19 +35,20 @@ pnpm dev
 
 ## Корневые команды
 
-| Команда                 | Назначение                                    |
-| ----------------------- | --------------------------------------------- |
-| `pnpm dev`              | Web, API и worker                             |
-| `pnpm build`            | Production-сборка пакетов и приложений        |
-| `pnpm lint`             | ESLint                                        |
-| `pnpm typecheck`        | TypeScript                                    |
-| `pnpm test`             | Unit-тесты                                    |
-| `pnpm test:integration` | Integration-тесты только против `*_test` базы |
-| `pnpm test:e2e`         | Playwright (Chromium), сценарии входа         |
-| `pnpm format:check`     | Проверка Prettier                             |
-| `pnpm db:generate`      | Prisma Client                                 |
-| `pnpm db:migrate`       | `prisma migrate deploy`                       |
-| `pnpm db:seed`          | Демонстрационные данные                       |
+| Команда                          | Назначение                                    |
+| -------------------------------- | --------------------------------------------- |
+| `pnpm dev`                       | Web, API и worker                             |
+| `pnpm build`                     | Production-сборка пакетов и приложений        |
+| `pnpm lint`                      | ESLint                                        |
+| `pnpm typecheck`                 | TypeScript                                    |
+| `pnpm test`                      | Unit-тесты                                    |
+| `pnpm test:integration`          | Integration-тесты только против `*_test` базы |
+| `pnpm test:e2e`                  | Playwright (Chromium): вход и реестр          |
+| `pnpm test:registry:performance` | 100k строк только в `*_test` базе             |
+| `pnpm format:check`              | Проверка Prettier                             |
+| `pnpm db:generate`               | Prisma Client                                 |
+| `pnpm db:migrate`                | `prisma migrate deploy`                       |
+| `pnpm db:seed`                   | Демонстрационные данные                       |
 
 ## Переменные окружения
 
@@ -59,5 +60,6 @@ pnpm dev
 
 - [Доменный контракт](docs/requirements/DOMAIN_CONTRACT.md)
 - [Аутентификация](docs/requirements/AUTHENTICATION.md)
+- [Реестр дефектов](docs/requirements/REGISTRY_CONTRACT.md)
 - [Архитектура](docs/architecture/ARCHITECTURE.md)
 - [Локальный запуск](docs/runbooks/LOCAL_DEVELOPMENT.md)

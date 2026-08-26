@@ -16,7 +16,7 @@ export default async function SystemStatusPage() {
   }
   if (user.role !== 'ADMIN') {
     return (
-      <AppShell>
+      <AppShell user={user}>
         <section className="panel">
           <h2>Недостаточно прав</h2>
           <p className="lead">Эта страница доступна только администратору.</p>
@@ -35,7 +35,7 @@ export default async function SystemStatusPage() {
   const systemReady = status.status === 200 && data?.status === 'ready';
 
   return (
-    <AppShell>
+    <AppShell user={user}>
       <section className="panel">
         <h2>Техническое состояние системы</h2>
         <p className="lead">Диагностика инфраструктуры для администратора.</p>

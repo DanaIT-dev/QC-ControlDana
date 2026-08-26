@@ -16,11 +16,12 @@
     "test": "pnpm --filter @sgr-registry/contracts build && pnpm --filter @sgr-registry/domain test && pnpm --filter @sgr-registry/database test && pnpm --filter @sgr-registry/api test",
     "test:integration": "pnpm --filter @sgr-registry/domain build && pnpm --filter @sgr-registry/database build && pnpm --filter @sgr-registry/database test:integration && pnpm --filter @sgr-registry/api test:integration",
     "test:e2e": "playwright test",
+    "test:registry:performance": "pnpm --filter @sgr-registry/database test:registry:performance",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "db:generate": "pnpm --filter @sgr-registry/database generate",
     "db:migrate": "pnpm --filter @sgr-registry/database migrate",
-    "db:seed": "pnpm --filter @sgr-registry/domain build && pnpm --filter @sgr-registry/database generate && pnpm --filter @sgr-registry/database seed",
+    "db:seed": "pnpm --filter @sgr-registry/contracts build && pnpm --filter @sgr-registry/domain build && pnpm --filter @sgr-registry/database generate && pnpm --filter @sgr-registry/database seed",
     "infra:up": "docker compose -f infra/docker/compose.yaml --env-file .env up -d",
     "infra:down": "docker compose -f infra/docker/compose.yaml --env-file .env down"
   },

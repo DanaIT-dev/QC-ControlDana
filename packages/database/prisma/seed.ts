@@ -2,7 +2,15 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { config as loadDotenv } from 'dotenv';
 import { Prisma } from '@prisma/client';
-import { computeActStatus, normalizeEmail, normalizeUnp } from '@sgr-registry/domain';
+import {
+  BUSINESS_TIME_ZONE,
+  addCalendarDays,
+  calendarDateInTimeZone,
+  calendarDateToUtcNoon,
+  computeActStatus,
+  normalizeEmail,
+  normalizeUnp,
+} from '@sgr-registry/domain';
 import argon2 from 'argon2';
 import { allocateActNumber, createPrismaClient } from '../src/index';
 
@@ -286,116 +294,619 @@ async function seed(): Promise<void> {
           workTypeCodes: ['GENERAL_CONTRACTING'],
         });
 
-        const existingAct = await tx.act.findUnique({
-          where: { officialNumber: 'С-1-2026-000001' },
+        const sunnyCourt = await tx.propertyObject.upsert({
+          where: { id: '33333333-3333-4333-8333-333333333333' },
+          update: {},
+          create: {
+            id: '33333333-3333-4333-8333-333333333333',
+            name: 'ЖК «Солнечный двор» (демо)',
+            address: 'г. Минск, ул. Светлая, 8',
+            commissionedAt: new Date('2023-11-01T00:00:00.000Z'),
+            warrantyEndsAt: new Date('2028-11-01T00:00:00.000Z'),
+          },
         });
 
-        if (!existingAct) {
-          const issuedAt = new Date('2026-03-01T09:00:00.000Z');
-          const number = await allocateActNumber(tx, 'S1', issuedAt);
-          const leakage = await tx.defectType.findUniqueOrThrow({ where: { code: 'LEAKAGE' } });
-          const windows = await tx.defectType.findUniqueOrThrow({ where: { code: 'WINDOWS' } });
+        const customerSouth = await upsertOrganization(tx, {
+          officialName: 'УП «Южный заказчик» (демо)',
+          unp: '100000007',
+          postalAddress: 'г. Минск, ул. Южная, 3',
+          email: 'south-customer@example.sgr.local',
+          phone: '+375170000007',
+          contactPerson: 'Кирилл Юрьев',
+          roles: ['CUSTOMER'],
+          workTypeCodes: ['GENERAL_CONTRACTING'],
+        });
 
-          const firstItemId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1';
-          const secondItemId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2';
+        const liableFacade = await upsertOrganization(tx, {
+          officialName: 'ООО «ФасадПро» (демо)',
+          unp: '100000008',
+          postalAddress: 'г. Минск, ул. Облицовочная, 12',
+          email: 'facade@example.sgr.local',
+          phone: '+375170000008',
+          contactPerson: 'Роман Кладкин',
+          roles: ['LIABLE_CONTRACTOR'],
+          workTypeCodes: ['FACADE'],
+        });
 
-          const act = await tx.act.create({
-            data: {
-              officialNumber: number.officialNumber,
-              formCode: number.formCode,
-              year: number.year,
-              sequence: number.sequence,
-              objectId: northPark.id,
-              customerOrganizationId: customer.id,
-              signedDocumentRef: null,
-              status: 'IN_PROGRESS',
-              createdAt: issuedAt,
-            },
-          });
-
-          await tx.defectItem.create({
-            data: {
-              id: firstItemId,
-              actId: act.id,
-              location: 'Подъезд 2, квартира 45, санузел',
-              defectTypeId: leakage.id,
-              status: 'IN_PROGRESS',
-              claimDetails: 'Течь стояка холодного водоснабжения на уровне перекрытия.',
-              plannedDeadline: new Date('2026-03-20T00:00:00.000Z'),
-              claimDeadline: new Date('2026-04-01T00:00:00.000Z'),
-              notes: 'Демонстрационная строка дефекта',
-            },
-          });
-
-          await tx.defectItem.create({
-            data: {
-              id: secondItemId,
-              actId: act.id,
-              location: 'Подъезд 1, квартира 12, гостиная',
-              defectTypeId: windows.id,
-              status: 'COMPLETED',
-              claimDetails: 'Нарушение герметичности оконного блока.',
-              plannedDeadline: new Date('2026-03-10T00:00:00.000Z'),
-              readyAt: new Date('2026-03-08T15:30:00.000Z'),
-            },
-          });
-
-          await tx.defectItemEngineer.createMany({
-            data: [
-              { defectItemId: firstItemId, userId: engineerNorth.id },
-              { defectItemId: firstItemId, userId: engineerRiver.id },
-              { defectItemId: secondItemId, userId: engineerRiver.id },
-            ],
-          });
-
-          await tx.defectItemLiableOrganization.createMany({
-            data: [
-              { defectItemId: firstItemId, organizationId: liableHeating.id },
-              { defectItemId: firstItemId, organizationId: liableWindows.id },
-              { defectItemId: secondItemId, organizationId: liableWindows.id },
-            ],
-          });
-
-          await tx.proposal.createMany({
-            data: [
-              {
-                defectItemId: firstItemId,
-                slot: 'A',
-                alternativeContractorOrganizationId: altA.id,
-                amount: new Prisma.Decimal('1250.00'),
-                currency: 'BYN',
-              },
-              {
-                defectItemId: firstItemId,
-                slot: 'B',
-                alternativeContractorOrganizationId: altB.id,
-                amount: new Prisma.Decimal('1180.50'),
-                currency: 'BYN',
-              },
-              {
-                defectItemId: firstItemId,
-                slot: 'C',
-                alternativeContractorOrganizationId: altC.id,
-                amount: new Prisma.Decimal('1310.00'),
-                currency: 'BYN',
-              },
-            ],
-          });
-
-          const items = await tx.defectItem.findMany({ where: { actId: act.id } });
-          const status = computeActStatus(
-            items.map((item) => ({ status: item.status, active: true })),
-          );
-          await tx.act.update({
-            where: { id: act.id },
-            data: { status },
-          });
-        }
+        await seedDemoRegistry(tx, {
+          engineerNorth,
+          engineerRiver,
+          northPark,
+          riverQuarter,
+          sunnyCourt,
+          customer,
+          customerSouth,
+          liableHeating,
+          liableWindows,
+          liableFacade,
+          altA,
+          altB,
+          altC,
+        });
       },
-      { timeout: 60_000 },
+      { timeout: 120_000 },
     );
   } finally {
     await prisma.$disconnect();
+  }
+}
+
+type DemoActor = { id: string };
+type DemoObject = { id: string };
+type DemoOrg = { id: string };
+
+async function seedDemoRegistry(
+  tx: Prisma.TransactionClient,
+  ctx: {
+    engineerNorth: DemoActor;
+    engineerRiver: DemoActor;
+    northPark: DemoObject;
+    riverQuarter: DemoObject;
+    sunnyCourt: DemoObject;
+    customer: DemoOrg;
+    customerSouth: DemoOrg;
+    liableHeating: DemoOrg;
+    liableWindows: DemoOrg;
+    liableFacade: DemoOrg;
+    altA: DemoOrg;
+    altB: DemoOrg;
+    altC: DemoOrg;
+  },
+): Promise<void> {
+  const today = calendarDateInTimeZone(new Date(), BUSINESS_TIME_ZONE);
+  const dates = {
+    overdue: calendarDateToUtcNoon(addCalendarDays(today, -5)),
+    dueToday: calendarDateToUtcNoon(today),
+    warning: calendarDateToUtcNoon(addCalendarDays(today, 2)),
+    normal: calendarDateToUtcNoon(addCalendarDays(today, 21)),
+    completedPlan: calendarDateToUtcNoon(addCalendarDays(today, -20)),
+    completedReady: new Date(`${addCalendarDays(today, -18)}T12:00:00.000Z`),
+  };
+
+  const types = {
+    leakage: await tx.defectType.findUniqueOrThrow({ where: { code: 'LEAKAGE' } }),
+    windows: await tx.defectType.findUniqueOrThrow({ where: { code: 'WINDOWS' } }),
+    facade: await tx.defectType.findUniqueOrThrow({ where: { code: 'FACADE' } }),
+    electrical: await tx.defectType.findUniqueOrThrow({ where: { code: 'ELECTRICAL' } }),
+    flooring: await tx.defectType.findUniqueOrThrow({ where: { code: 'FLOORING' } }),
+    heating: await tx.defectType.findUniqueOrThrow({ where: { code: 'HEATING_SYSTEM' } }),
+    finishing: await tx.defectType.findUniqueOrThrow({ where: { code: 'FINISHING' } }),
+  };
+
+  const firstAct = await ensureNumberedAct(tx, {
+    officialNumber: 'С-1-2026-000001',
+    formCode: 'S1',
+    issuedAt: new Date('2026-03-01T09:00:00.000Z'),
+    objectId: ctx.northPark.id,
+    customerOrganizationId: ctx.customer.id,
+    signedDocumentRef: 'https://files.example.sgr.local/demo/s1-000001.pdf',
+    cancelled: false,
+  });
+
+  await ensureDefectItem(tx, {
+    id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
+    actId: firstAct.id,
+    location: 'Подъезд 2, квартира 45, санузел',
+    defectTypeId: types.leakage.id,
+    status: 'IN_PROGRESS',
+    claimDetails: 'Течь стояка холодного водоснабжения на уровне перекрытия.',
+    plannedDeadline: dates.normal,
+    claimDeadline: dates.overdue,
+    notes: 'Демонстрационная строка дефекта',
+    engineerIds: [ctx.engineerNorth.id, ctx.engineerRiver.id],
+    liableIds: [ctx.liableHeating.id, ctx.liableWindows.id],
+    proposals: [
+      { slot: 'A', organizationId: ctx.altA.id, amount: '1250.00' },
+      { slot: 'B', organizationId: ctx.altB.id, amount: '1180.50' },
+      { slot: 'C', organizationId: ctx.altC.id, amount: '1310.00' },
+    ],
+  });
+
+  await ensureDefectItem(tx, {
+    id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2',
+    actId: firstAct.id,
+    location: 'Подъезд 1, квартира 12, гостиная',
+    defectTypeId: types.windows.id,
+    status: 'COMPLETED',
+    claimDetails: 'Нарушение герметичности оконного блока.',
+    plannedDeadline: dates.completedPlan,
+    readyAt: dates.completedReady,
+    engineerIds: [ctx.engineerRiver.id],
+    liableIds: [ctx.liableWindows.id],
+    proposals: [],
+  });
+
+  const multiAct = await ensureDemoAct(tx, {
+    id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb01',
+    formCode: 'S23',
+    issuedAt: new Date('2026-04-02T09:00:00.000Z'),
+    objectId: ctx.northPark.id,
+    customerOrganizationId: ctx.customer.id,
+  });
+
+  await ensureDefectItem(tx, {
+    id: 'cccccccc-cccc-4ccc-8ccc-cccccccccc01',
+    actId: multiAct.id,
+    location: 'Подъезд 3, квартира 18, кухня',
+    defectTypeId: types.electrical.id,
+    status: 'IN_PROGRESS',
+    claimDetails: 'Искрение в распределительной коробке.',
+    plannedDeadline: dates.normal,
+    engineerIds: [ctx.engineerNorth.id],
+    liableIds: [ctx.liableFacade.id],
+    proposals: [{ slot: 'A', organizationId: ctx.altA.id, amount: '640.00' }],
+  });
+
+  await ensureDefectItem(tx, {
+    id: 'cccccccc-cccc-4ccc-8ccc-cccccccccc02',
+    actId: multiAct.id,
+    location: 'Подъезд 3, квартира 19, лоджия',
+    defectTypeId: types.finishing.id,
+    status: 'IN_PROGRESS',
+    claimDetails: 'Отслоение штукатурки на откосах.',
+    plannedDeadline: dates.warning,
+    engineerIds: [ctx.engineerRiver.id],
+    liableIds: [ctx.liableWindows.id],
+    proposals: [{ slot: 'A', organizationId: ctx.altB.id, amount: '410.25' }],
+  });
+
+  await ensureDefectItem(tx, {
+    id: 'cccccccc-cccc-4ccc-8ccc-cccccccccc03',
+    actId: multiAct.id,
+    location: 'Подъезд 3, МОП, лестничная клетка',
+    defectTypeId: types.facade.id,
+    status: 'IN_PROGRESS',
+    claimDetails: 'Трещина облицовки у входной группы.',
+    plannedDeadline: dates.dueToday,
+    engineerIds: [ctx.engineerNorth.id, ctx.engineerRiver.id],
+    liableIds: [ctx.liableFacade.id],
+    proposals: [
+      { slot: 'A', organizationId: ctx.altA.id, amount: '980.00' },
+      { slot: 'B', organizationId: ctx.altB.id, amount: '915.40' },
+      { slot: 'C', organizationId: ctx.altC.id, amount: '1020.00' },
+    ],
+  });
+
+  const riverAct = await ensureDemoAct(tx, {
+    id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb02',
+    formCode: 'S1',
+    issuedAt: new Date('2026-04-10T09:00:00.000Z'),
+    objectId: ctx.riverQuarter.id,
+    customerOrganizationId: ctx.customerSouth.id,
+  });
+
+  await ensureDefectItem(tx, {
+    id: 'cccccccc-cccc-4ccc-8ccc-cccccccccc04',
+    actId: riverAct.id,
+    location: 'Корпус Б, квартира 7, санузел',
+    defectTypeId: types.heating.id,
+    status: 'IN_PROGRESS',
+    claimDetails: 'Шум в стояке отопления, срок не согласован.',
+    engineerIds: [ctx.engineerRiver.id],
+    liableIds: [ctx.liableHeating.id],
+    proposals: [{ slot: 'A', organizationId: ctx.altA.id, amount: '275.00' }],
+  });
+
+  const completedAct = await ensureDemoAct(tx, {
+    id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb03',
+    formCode: 'S23',
+    issuedAt: new Date('2026-02-12T09:00:00.000Z'),
+    objectId: ctx.riverQuarter.id,
+    customerOrganizationId: ctx.customerSouth.id,
+  });
+
+  await ensureDefectItem(tx, {
+    id: 'cccccccc-cccc-4ccc-8ccc-cccccccccc05',
+    actId: completedAct.id,
+    location: 'Корпус А, квартира 2, прихожая',
+    defectTypeId: types.flooring.id,
+    status: 'COMPLETED',
+    claimDetails: 'Сколы напольной плитки у входной двери.',
+    plannedDeadline: dates.completedPlan,
+    readyAt: dates.completedReady,
+    engineerIds: [ctx.engineerRiver.id],
+    liableIds: [ctx.liableFacade.id],
+    proposals: [{ slot: 'A', organizationId: ctx.altC.id, amount: '190.00' }],
+  });
+
+  await ensureDefectItem(tx, {
+    id: 'cccccccc-cccc-4ccc-8ccc-cccccccccc06',
+    actId: completedAct.id,
+    location: 'Корпус А, квартира 2, кухня',
+    defectTypeId: types.windows.id,
+    status: 'COMPLETED',
+    claimDetails: 'Неплотное прилегание створки.',
+    plannedDeadline: dates.completedPlan,
+    readyAt: dates.completedReady,
+    engineerIds: [ctx.engineerNorth.id],
+    liableIds: [ctx.liableWindows.id],
+    proposals: [],
+  });
+
+  const splitAct = await ensureDemoAct(tx, {
+    id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb04',
+    formCode: 'S1',
+    issuedAt: new Date('2026-05-04T09:00:00.000Z'),
+    objectId: ctx.sunnyCourt.id,
+    customerOrganizationId: ctx.customerSouth.id,
+  });
+
+  await ensureDefectItem(tx, {
+    id: 'cccccccc-cccc-4ccc-8ccc-cccccccccc07',
+    actId: splitAct.id,
+    location: 'Секция 1, квартира 11, спальня',
+    defectTypeId: types.finishing.id,
+    status: 'IN_PROGRESS',
+    claimDetails: 'Трещины по шпаклёвке потолка.',
+    plannedDeadline: dates.normal,
+    engineerIds: [ctx.engineerNorth.id],
+    liableIds: [ctx.liableFacade.id],
+    proposals: [{ slot: 'A', organizationId: ctx.altA.id, amount: '330.00' }],
+  });
+
+  await ensureDefectItem(tx, {
+    id: 'cccccccc-cccc-4ccc-8ccc-cccccccccc08',
+    actId: splitAct.id,
+    location: 'Секция 1, квартира 14, гостиная',
+    defectTypeId: types.electrical.id,
+    status: 'IN_PROGRESS',
+    claimDetails: 'Не работает блок розеток у окна.',
+    plannedDeadline: dates.warning,
+    claimDeadline: dates.warning,
+    engineerIds: [ctx.engineerRiver.id],
+    liableIds: [ctx.liableHeating.id],
+    proposals: [
+      { slot: 'A', organizationId: ctx.altA.id, amount: '510.00' },
+      { slot: 'B', organizationId: ctx.altB.id, amount: '495.10' },
+      { slot: 'C', organizationId: ctx.altC.id, amount: '540.00' },
+    ],
+  });
+
+  const warningAct = await ensureDemoAct(tx, {
+    id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb05',
+    formCode: 'S23',
+    issuedAt: new Date('2026-05-18T09:00:00.000Z'),
+    objectId: ctx.sunnyCourt.id,
+    customerOrganizationId: ctx.customer.id,
+  });
+
+  await ensureDefectItem(tx, {
+    id: 'cccccccc-cccc-4ccc-8ccc-cccccccccc09',
+    actId: warningAct.id,
+    location: 'Секция 2, квартира 3, санузел',
+    defectTypeId: types.leakage.id,
+    status: 'IN_PROGRESS',
+    claimDetails: 'Следы протечки у полотенцесушителя.',
+    plannedDeadline: dates.warning,
+    engineerIds: [ctx.engineerNorth.id, ctx.engineerRiver.id],
+    liableIds: [ctx.liableHeating.id],
+    proposals: [{ slot: 'A', organizationId: ctx.altB.id, amount: '220.00' }],
+  });
+
+  const overdueAct = await ensureDemoAct(tx, {
+    id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb06',
+    formCode: 'S1',
+    issuedAt: new Date('2026-01-20T09:00:00.000Z'),
+    objectId: ctx.northPark.id,
+    customerOrganizationId: ctx.customer.id,
+  });
+
+  await ensureDefectItem(tx, {
+    id: 'cccccccc-cccc-4ccc-8ccc-cccccccccc10',
+    actId: overdueAct.id,
+    location: 'Подъезд 4, квартира 60, лоджия',
+    defectTypeId: types.facade.id,
+    status: 'IN_PROGRESS',
+    claimDetails: 'Отслоение утеплителя на торце лоджии.',
+    plannedDeadline: dates.overdue,
+    engineerIds: [ctx.engineerNorth.id],
+    liableIds: [ctx.liableFacade.id],
+    proposals: [{ slot: 'A', organizationId: ctx.altC.id, amount: '870.00' }],
+  });
+
+  await ensureDefectItem(tx, {
+    id: 'cccccccc-cccc-4ccc-8ccc-cccccccccc11',
+    actId: overdueAct.id,
+    location: 'Подъезд 4, квартира 61, кухня',
+    defectTypeId: types.windows.id,
+    status: 'IN_PROGRESS',
+    claimDetails: 'Конденсат между стёклами стеклопакета.',
+    plannedDeadline: dates.normal,
+    engineerIds: [ctx.engineerRiver.id],
+    liableIds: [ctx.liableWindows.id],
+    proposals: [],
+  });
+
+  const sunnyCompleted = await ensureDemoAct(tx, {
+    id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb07',
+    formCode: 'S23',
+    issuedAt: new Date('2026-03-22T09:00:00.000Z'),
+    objectId: ctx.sunnyCourt.id,
+    customerOrganizationId: ctx.customerSouth.id,
+  });
+
+  await ensureDefectItem(tx, {
+    id: 'cccccccc-cccc-4ccc-8ccc-cccccccccc12',
+    actId: sunnyCompleted.id,
+    location: 'Секция 3, квартира 9, спальня',
+    defectTypeId: types.flooring.id,
+    status: 'COMPLETED',
+    claimDetails: 'Щели ламината у батареи.',
+    plannedDeadline: dates.completedPlan,
+    readyAt: dates.completedReady,
+    engineerIds: [ctx.engineerRiver.id],
+    liableIds: [ctx.liableFacade.id],
+    proposals: [{ slot: 'A', organizationId: ctx.altA.id, amount: '155.00' }],
+  });
+
+  await ensureDefectItem(tx, {
+    id: 'cccccccc-cccc-4ccc-8ccc-cccccccccc13',
+    actId: sunnyCompleted.id,
+    location: 'Секция 3, квартира 9, санузел',
+    defectTypeId: types.electrical.id,
+    status: 'COMPLETED',
+    claimDetails: 'Замена выключателя после короткого замыкания.',
+    plannedDeadline: dates.completedPlan,
+    readyAt: dates.completedReady,
+    engineerIds: [ctx.engineerNorth.id, ctx.engineerRiver.id],
+    liableIds: [ctx.liableHeating.id],
+    proposals: [],
+  });
+
+  const extraAct = await ensureDemoAct(tx, {
+    id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb08',
+    formCode: 'S1',
+    issuedAt: new Date('2026-06-01T09:00:00.000Z'),
+    objectId: ctx.riverQuarter.id,
+    customerOrganizationId: ctx.customer.id,
+  });
+
+  await ensureDefectItem(tx, {
+    id: 'cccccccc-cccc-4ccc-8ccc-cccccccccc14',
+    actId: extraAct.id,
+    location: 'Корпус В, квартира 21, гостиная',
+    defectTypeId: types.finishing.id,
+    status: 'IN_PROGRESS',
+    claimDetails: 'Выцветание краски на откосе.',
+    plannedDeadline: dates.normal,
+    thirdPartyDeadline: dates.normal,
+    engineerIds: [ctx.engineerRiver.id],
+    liableIds: [ctx.liableWindows.id, ctx.liableFacade.id],
+    proposals: [{ slot: 'A', organizationId: ctx.altB.id, amount: '145.00' }],
+  });
+
+  const cancelledAct = await ensureDemoAct(tx, {
+    id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb09',
+    formCode: 'S1',
+    issuedAt: new Date('2026-01-05T09:00:00.000Z'),
+    objectId: ctx.northPark.id,
+    customerOrganizationId: ctx.customer.id,
+    cancelled: true,
+    cancellationReason: 'Демонстрационное аннулирование ошибочно созданного акта',
+  });
+
+  await ensureDefectItem(tx, {
+    id: 'cccccccc-cccc-4ccc-8ccc-cccccccccc15',
+    actId: cancelledAct.id,
+    location: 'Аннулированная строка, не должна быть в реестре',
+    defectTypeId: types.leakage.id,
+    status: 'IN_PROGRESS',
+    claimDetails: 'Строка аннулированного акта.',
+    plannedDeadline: dates.overdue,
+    engineerIds: [ctx.engineerNorth.id],
+    liableIds: [ctx.liableHeating.id],
+    proposals: [{ slot: 'A', organizationId: ctx.altA.id, amount: '9999.00' }],
+  });
+
+  const actIds = [
+    firstAct.id,
+    multiAct.id,
+    riverAct.id,
+    completedAct.id,
+    splitAct.id,
+    warningAct.id,
+    overdueAct.id,
+    sunnyCompleted.id,
+    extraAct.id,
+    cancelledAct.id,
+  ];
+  for (const actId of actIds) {
+    const items = await tx.defectItem.findMany({ where: { actId } });
+    const act = await tx.act.findUniqueOrThrow({ where: { id: actId } });
+    if (act.status === 'CANCELLED') {
+      continue;
+    }
+    await tx.act.update({
+      where: { id: actId },
+      data: {
+        status: computeActStatus(items.map((item) => ({ status: item.status, active: true }))),
+      },
+    });
+  }
+}
+
+async function ensureNumberedAct(
+  tx: Prisma.TransactionClient,
+  input: {
+    officialNumber: string;
+    formCode: 'S1' | 'S23';
+    issuedAt: Date;
+    objectId: string;
+    customerOrganizationId: string;
+    signedDocumentRef?: string | null;
+    cancelled?: boolean;
+    cancellationReason?: string;
+  },
+) {
+  const existing = await tx.act.findUnique({ where: { officialNumber: input.officialNumber } });
+  if (existing) {
+    return tx.act.update({
+      where: { id: existing.id },
+      data: {
+        objectId: input.objectId,
+        customerOrganizationId: input.customerOrganizationId,
+        signedDocumentRef: input.signedDocumentRef ?? existing.signedDocumentRef,
+      },
+    });
+  }
+  const number = await allocateActNumber(tx, input.formCode, input.issuedAt);
+  return tx.act.create({
+    data: {
+      officialNumber: number.officialNumber,
+      formCode: number.formCode,
+      year: number.year,
+      sequence: number.sequence,
+      objectId: input.objectId,
+      customerOrganizationId: input.customerOrganizationId,
+      signedDocumentRef: input.signedDocumentRef ?? null,
+      status: input.cancelled ? 'CANCELLED' : 'IN_PROGRESS',
+      createdAt: input.issuedAt,
+      cancelledAt: input.cancelled ? input.issuedAt : null,
+      cancellationReason: input.cancellationReason ?? null,
+    },
+  });
+}
+
+async function ensureDemoAct(
+  tx: Prisma.TransactionClient,
+  input: {
+    id: string;
+    formCode: 'S1' | 'S23';
+    issuedAt: Date;
+    objectId: string;
+    customerOrganizationId: string;
+    cancelled?: boolean;
+    cancellationReason?: string;
+  },
+) {
+  const existing = await tx.act.findUnique({ where: { id: input.id } });
+  if (existing) {
+    return tx.act.update({
+      where: { id: existing.id },
+      data: {
+        objectId: input.objectId,
+        customerOrganizationId: input.customerOrganizationId,
+        ...(input.cancelled
+          ? {
+              status: 'CANCELLED' as const,
+              cancelledAt: existing.cancelledAt ?? input.issuedAt,
+              cancellationReason: input.cancellationReason ?? existing.cancellationReason,
+            }
+          : {}),
+      },
+    });
+  }
+  const number = await allocateActNumber(tx, input.formCode, input.issuedAt);
+  return tx.act.create({
+    data: {
+      id: input.id,
+      officialNumber: number.officialNumber,
+      formCode: number.formCode,
+      year: number.year,
+      sequence: number.sequence,
+      objectId: input.objectId,
+      customerOrganizationId: input.customerOrganizationId,
+      signedDocumentRef: null,
+      status: input.cancelled ? 'CANCELLED' : 'IN_PROGRESS',
+      createdAt: input.issuedAt,
+      cancelledAt: input.cancelled ? input.issuedAt : null,
+      cancellationReason: input.cancellationReason ?? null,
+    },
+  });
+}
+
+async function ensureDefectItem(
+  tx: Prisma.TransactionClient,
+  input: {
+    id: string;
+    actId: string;
+    location: string;
+    defectTypeId: string;
+    status: 'IN_PROGRESS' | 'COMPLETED';
+    claimDetails: string;
+    plannedDeadline?: Date | null;
+    claimDeadline?: Date | null;
+    readyAt?: Date | null;
+    thirdPartyDeadline?: Date | null;
+    notes?: string | null;
+    engineerIds: string[];
+    liableIds: string[];
+    proposals: Array<{ slot: 'A' | 'B' | 'C'; organizationId: string; amount: string }>;
+  },
+) {
+  const existing = await tx.defectItem.findUnique({ where: { id: input.id } });
+  if (existing) {
+    await tx.defectItem.update({
+      where: { id: input.id },
+      data: {
+        location: input.location,
+        defectTypeId: input.defectTypeId,
+        status: input.status,
+        claimDetails: input.claimDetails,
+        plannedDeadline: input.plannedDeadline ?? null,
+        claimDeadline: input.claimDeadline ?? null,
+        readyAt: input.readyAt ?? null,
+        thirdPartyDeadline: input.thirdPartyDeadline ?? null,
+        notes: input.notes ?? null,
+      },
+    });
+  } else {
+    await tx.defectItem.create({
+      data: {
+        id: input.id,
+        actId: input.actId,
+        location: input.location,
+        defectTypeId: input.defectTypeId,
+        status: input.status,
+        claimDetails: input.claimDetails,
+        plannedDeadline: input.plannedDeadline ?? null,
+        claimDeadline: input.claimDeadline ?? null,
+        readyAt: input.readyAt ?? null,
+        thirdPartyDeadline: input.thirdPartyDeadline ?? null,
+        notes: input.notes ?? null,
+      },
+    });
+  }
+
+  await tx.defectItemEngineer.deleteMany({ where: { defectItemId: input.id } });
+  await tx.defectItemEngineer.createMany({
+    data: input.engineerIds.map((userId) => ({ defectItemId: input.id, userId })),
+  });
+  await tx.defectItemLiableOrganization.deleteMany({ where: { defectItemId: input.id } });
+  await tx.defectItemLiableOrganization.createMany({
+    data: input.liableIds.map((organizationId) => ({ defectItemId: input.id, organizationId })),
+  });
+  await tx.proposal.deleteMany({ where: { defectItemId: input.id } });
+  if (input.proposals.length > 0) {
+    await tx.proposal.createMany({
+      data: input.proposals.map((proposal) => ({
+        defectItemId: input.id,
+        slot: proposal.slot,
+        alternativeContractorOrganizationId: proposal.organizationId,
+        amount: new Prisma.Decimal(proposal.amount),
+        currency: 'BYN',
+      })),
+    });
   }
 }
 

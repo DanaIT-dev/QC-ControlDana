@@ -31,6 +31,22 @@ import {
   preserveAssignmentsOnArchive,
   roleLabel,
   usesCountPlusOneStrategy,
+  parseRegistryListQuery,
+  RegistryQueryError,
+  serializeRegistryQuery,
+  calendarDateToUtcNoon,
+  calendarDateInTimeZone,
+  effectiveDeadlineOf,
+  deadlineStateOf,
+  serializeDecimal,
+  registryAccessMode,
+  visibleProposalSlots,
+  canViewProposalASum,
+  canViewProposalGroupBC,
+  countActiveRegistryFilters,
+  shapeProposals,
+  shapeSummary,
+  isEmptyRegistryQuery,
 } from './index';
 
 describe('DefectItem lifecycle', () => {
@@ -234,5 +250,166 @@ describe('capabilities', () => {
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).toContain('MANAGE_ORGANIZATIONS');
     expect(hasCapability('RESPONSIBLE_ENGINEER', 'VIEW_ALL_ACTS')).toBe(false);
     expect(roleLabel('ADMIN')).toBe('Администратор');
+  });
+});
+
+describe('registry query parsing', () => {
+  it('applies defaults and rejects an invalid pageSize', () => {
+    const parsed = parseRegistryListQuery({});
+    expect(parsed.page).toBe(1);
+    expect(parsed.pageSize).toBe(50);
+    expect(parsed.sortBy).toBe('effectiveDeadline');
+    expect(parsed.search).toBeNull();
+    expect(() => parseRegistryListQuery({ pageSize: '30' })).toThrow(RegistryQueryError);
+  });
+
+  it('accepts only the sort whitelist and serializes empty filters as an empty map', () => {
+    expect(() => parseRegistryListQuery({ sortBy: 'passwordHash' })).toThrow(RegistryQueryError);
+    const query = parseRegistryListQuery({ sortBy: 'actNumber', sortDirection: 'desc' });
+    expect(query.sortBy).toBe('actNumber');
+    expect(serializeRegistryQuery(parseRegistryListQuery({}))).toEqual({});
+    expect(countActiveRegistryFilters(parseRegistryListQuery({}))).toBe(0);
+    expect(isEmptyRegistryQuery(parseRegistryListQuery({ search: '  ab' }))).toBe(false);
+    const roundTrip = parseRegistryListQuery(
+      serializeRegistryQuery(
+        parseRegistryListQuery({
+          page: '2',
+          pageSize: '25',
+          search: 'Северный',
+          statuses: 'IN_PROGRESS',
+          sortBy: 'actNumber',
+          sortDirection: 'desc',
+        }),
+      ),
+    );
+    expect(roundTrip.page).toBe(2);
+    expect(roundTrip.pageSize).toBe(25);
+    expect(roundTrip.search).toBe('Северный');
+    expect(roundTrip.statuses).toEqual(['IN_PROGRESS']);
+    expect(() => parseRegistryListQuery({ pageSize: '50abc' })).toThrow(RegistryQueryError);
+  });
+});
+
+describe('registry access and proposal shaping', () => {
+  it('scopes responsible engineers to assigned rows and hides B/C', () => {
+    expect(registryAccessMode('ADMIN')).toBe('all_uncancelled');
+    expect(registryAccessMode('SGR_MANAGER')).toBe('all_uncancelled');
+    expect(registryAccessMode('CONTRACTOR_ENGINEER')).toBe('all_uncancelled');
+    expect(registryAccessMode('RESPONSIBLE_ENGINEER')).toBe('assigned_only');
+    expect(visibleProposalSlots('RESPONSIBLE_ENGINEER')).toEqual(['A']);
+    expect(visibleProposalSlots('ADMIN')).toEqual(['A', 'B', 'C']);
+    expect(canViewProposalASum('ADMIN')).toBe(true);
+    expect(canViewProposalASum('SGR_MANAGER')).toBe(true);
+    expect(canViewProposalASum('CONTRACTOR_ENGINEER')).toBe(false);
+    expect(canViewProposalGroupBC('RESPONSIBLE_ENGINEER')).toBe(false);
+  });
+});
+
+describe('deadlines', () => {
+  const warningDays = 3;
+  const today = new Date('2026-08-26T12:00:00.000Z');
+
+  it('prefers claimDeadline over plannedDeadline', () => {
+    const planned = calendarDateToUtcNoon('2026-08-20');
+    const claim = calendarDateToUtcNoon('2026-09-01');
+    expect(effectiveDeadlineOf({ plannedDeadline: planned, claimDeadline: claim })).toEqual(claim);
+  });
+
+  it('classifies NORMAL, WARNING, OVERDUE on the due date, NO_DEADLINE and COMPLETED', () => {
+    const tz = 'Europe/Minsk';
+    expect(
+      deadlineStateOf({
+        status: 'IN_PROGRESS',
+        plannedDeadline: calendarDateToUtcNoon('2026-09-10'),
+        claimDeadline: null,
+        deadlineWarningDays: warningDays,
+        now: today,
+        timeZone: tz,
+      }),
+    ).toBe('NORMAL');
+    expect(
+      deadlineStateOf({
+        status: 'IN_PROGRESS',
+        plannedDeadline: calendarDateToUtcNoon('2026-08-28'),
+        claimDeadline: null,
+        deadlineWarningDays: warningDays,
+        now: today,
+        timeZone: tz,
+      }),
+    ).toBe('WARNING');
+    expect(
+      deadlineStateOf({
+        status: 'IN_PROGRESS',
+        plannedDeadline: calendarDateToUtcNoon('2026-08-26'),
+        claimDeadline: null,
+        deadlineWarningDays: warningDays,
+        now: today,
+        timeZone: tz,
+      }),
+    ).toBe('OVERDUE');
+    expect(
+      deadlineStateOf({
+        status: 'IN_PROGRESS',
+        plannedDeadline: null,
+        claimDeadline: null,
+        deadlineWarningDays: warningDays,
+        now: today,
+        timeZone: tz,
+      }),
+    ).toBe('NO_DEADLINE');
+    expect(
+      deadlineStateOf({
+        status: 'COMPLETED',
+        plannedDeadline: calendarDateToUtcNoon('2026-08-01'),
+        claimDeadline: null,
+        deadlineWarningDays: warningDays,
+        now: today,
+        timeZone: tz,
+      }),
+    ).toBe('COMPLETED');
+  });
+
+  it('uses date-only semantics in the business time zone', () => {
+    expect(calendarDateInTimeZone(new Date('2026-08-26T21:30:00.000Z'), 'Europe/Minsk')).toBe(
+      '2026-08-27',
+    );
+    expect(serializeDecimal({ toFixed: (digits: number) => (digits === 2 ? '1180.50' : '') })).toBe(
+      '1180.50',
+    );
+    expect(() => serializeDecimal(1180.5)).toThrow();
+  });
+});
+
+describe('summary and proposal shaping', () => {
+  const proposals = [
+    { slot: 'A' as const, amount: '1250.00', currency: 'BYN', contractorName: 'A' },
+    { slot: 'B' as const, amount: '1180.50', currency: 'BYN', contractorName: 'B' },
+    { slot: 'C' as const, amount: '1310.00', currency: 'BYN', contractorName: 'C' },
+  ];
+
+  it('omits B/C keys for responsible engineers and keeps exact decimals', () => {
+    const engineer = shapeProposals(proposals, 'RESPONSIBLE_ENGINEER');
+    expect(engineer.proposalA?.amount).toBe('1250.00');
+    expect(Object.prototype.hasOwnProperty.call(engineer, 'proposalsBC')).toBe(false);
+    const admin = shapeProposals(proposals, 'ADMIN');
+    expect(admin.proposalsBC?.map((item) => item.slot)).toEqual(['B', 'C']);
+  });
+
+  it('includes proposalASum only for ADMIN and SGR_MANAGER', () => {
+    const base = { total: 2, currency: 'BYN' };
+    expect(shapeSummary(base, 'ADMIN', '1180.50').proposalASum).toBe('1180.50');
+    expect(shapeSummary(base, 'SGR_MANAGER', '1180.50').proposalASum).toBe('1180.50');
+    expect(
+      Object.prototype.hasOwnProperty.call(
+        shapeSummary(base, 'RESPONSIBLE_ENGINEER', '1180.50'),
+        'proposalASum',
+      ),
+    ).toBe(false);
+    expect(
+      Object.prototype.hasOwnProperty.call(
+        shapeSummary(base, 'CONTRACTOR_ENGINEER', '1180.50'),
+        'proposalASum',
+      ),
+    ).toBe(false);
   });
 });
