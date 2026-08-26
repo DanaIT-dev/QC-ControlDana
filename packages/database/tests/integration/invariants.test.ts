@@ -11,6 +11,7 @@ assertSafeTestDatabaseUrl(databaseUrl);
 const prisma = createPrismaClient(databaseUrl);
 
 async function cleanup(): Promise<void> {
+  await prisma.$executeRawUnsafe('TRUNCATE TABLE "audit_logs"');
   await prisma.proposal.deleteMany();
   await prisma.defectItemLiableOrganization.deleteMany();
   await prisma.defectItemEngineer.deleteMany();
@@ -21,7 +22,6 @@ async function cleanup(): Promise<void> {
   await prisma.organizationWorkType.deleteMany();
   await prisma.organizationRoleAssignment.deleteMany();
   await prisma.propertyObjectEngineer.deleteMany();
-  await prisma.auditLog.deleteMany();
   await prisma.organization.deleteMany();
   await prisma.propertyObject.deleteMany();
   await prisma.user.deleteMany();
@@ -266,5 +266,67 @@ describe('database invariants', () => {
       where: { defectItemId_userId: { defectItemId: item.id, userId: engineerA.id } },
     });
     expect(assignment).not.toBeNull();
+  });
+
+  it('rejects physical Act deletion and does not cascade-delete AuditLog', async () => {
+    const object = await prisma.propertyObject.create({
+      data: { name: 'Object C', address: 'addr' },
+    });
+    const customer = await prisma.organization.create({
+      data: {
+        officialName: 'Customer C',
+        unp: '200000006',
+        postalAddress: 'addr',
+        email: 'cust-c@example.sgr.local',
+        phone: '1',
+        contactPerson: 'C',
+      },
+    });
+    const actor = await prisma.user.create({
+      data: {
+        fullName: 'Аудитор Демо',
+        email: `audit-${randomUUID()}@example.sgr.local`,
+        role: 'ADMIN',
+      },
+    });
+    const defectType = await prisma.defectType.create({
+      data: { code: `DEL-${randomUUID().slice(0, 8)}`, name: 'Delete guard type', sortOrder: 100 },
+    });
+    const number = await allocateActNumber(prisma, 'S1', new Date('2026-08-26T12:00:00.000Z'));
+    const act = await prisma.act.create({
+      data: {
+        officialNumber: number.officialNumber,
+        formCode: number.formCode,
+        year: number.year,
+        sequence: number.sequence,
+        objectId: object.id,
+        customerOrganizationId: customer.id,
+        status: 'IN_PROGRESS',
+      },
+    });
+    await prisma.defectItem.create({
+      data: {
+        actId: act.id,
+        location: 'Квартира 2',
+        defectTypeId: defectType.id,
+        claimDetails: 'Demo',
+      },
+    });
+
+    await expect(prisma.act.delete({ where: { id: act.id } })).rejects.toBeTruthy();
+    expect(await prisma.act.findUnique({ where: { id: act.id } })).not.toBeNull();
+
+    const log = await prisma.auditLog.create({
+      data: {
+        actorUserId: actor.id,
+        action: 'ACT_CREATED',
+        entityType: 'Act',
+        entityId: act.id,
+      },
+    });
+
+    await expect(prisma.auditLog.delete({ where: { id: log.id } })).rejects.toThrow(/append-only/i);
+    await expect(prisma.user.delete({ where: { id: actor.id } })).rejects.toBeTruthy();
+    expect(await prisma.auditLog.findUnique({ where: { id: log.id } })).not.toBeNull();
   });
 });

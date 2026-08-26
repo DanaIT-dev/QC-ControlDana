@@ -2,14 +2,10 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { config as loadDotenv } from 'dotenv';
 import { Prisma } from '@prisma/client';
-import {
-  allocateActNumber,
-  computeActStatus,
-  createPrismaClient,
-  normalizeUnp,
-} from '../src/index';
+import { computeActStatus, normalizeUnp } from '@sgr-registry/domain';
+import { allocateActNumber, createPrismaClient } from '../src/index';
 
-const repoRoot = resolve(__dirname, '../..');
+const repoRoot = resolve(__dirname, '../../..');
 const envFile = existsSync(resolve(repoRoot, '.env'))
   ? resolve(repoRoot, '.env')
   : resolve(repoRoot, '.env.example');
