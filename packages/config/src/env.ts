@@ -54,7 +54,18 @@ const envSchema = z.object({
   S3_ACCESS_KEY: z.string().min(1, 'S3_ACCESS_KEY is required'),
   S3_SECRET_KEY: z.string().min(1, 'S3_SECRET_KEY is required'),
   S3_BUCKET: z.string().min(1),
+  S3_TEST_BUCKET: z.string().min(1).default('sgr-attachments-test'),
   S3_FORCE_PATH_STYLE: booleanString,
+  CLAMD_HOST: z.string().min(1).default('127.0.0.1'),
+  CLAMD_PORT: z.coerce.number().int().positive().default(3310),
+  ATTACHMENT_MAX_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(20 * 1024 * 1024),
+  ATTACHMENT_MAX_PER_OWNER: z.coerce.number().int().positive().default(50),
+  ATTACHMENT_MAX_PIXELS: z.coerce.number().int().positive().default(40_000_000),
+  ATTACHMENT_SCAN_MAX_ATTEMPTS: z.coerce.number().int().positive().default(3),
   TRUST_PROXY: booleanFalse,
   SESSION_TTL_SECONDS: z.coerce
     .number()

@@ -22,6 +22,12 @@ export const AUDIT_ACTIONS = [
   'PROPOSAL_UPSERTED',
   'PROPOSAL_ARCHIVED',
   'PROPOSAL_RESTORED',
+  'ATTACHMENT_UPLOADED',
+  'ATTACHMENT_SCAN_STARTED',
+  'ATTACHMENT_SCAN_PASSED',
+  'ATTACHMENT_REJECTED',
+  'ATTACHMENT_SCAN_FAILED',
+  'ATTACHMENT_ARCHIVED',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
@@ -47,6 +53,12 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction | string, string> = {
   PROPOSAL_UPSERTED: 'Обновлено предложение',
   PROPOSAL_ARCHIVED: 'Предложение отозвано',
   PROPOSAL_RESTORED: 'Предложение восстановлено',
+  ATTACHMENT_UPLOADED: 'Загружено вложение',
+  ATTACHMENT_SCAN_STARTED: 'Начата проверка вложения',
+  ATTACHMENT_SCAN_PASSED: 'Вложение прошло проверку',
+  ATTACHMENT_REJECTED: 'Вложение отклонено',
+  ATTACHMENT_SCAN_FAILED: 'Не удалось проверить вложение',
+  ATTACHMENT_ARCHIVED: 'Вложение архивировано',
   LOGIN_SUCCEEDED: 'Вход выполнен',
   LOGIN_FAILED: 'Неудачная попытка входа',
   LOGIN_RATE_LIMITED: 'Превышен лимит попыток входа',
@@ -58,6 +70,14 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction | string, string> = {
 
 const HEADER_ACTIONS = new Set(['ACT_CREATED', 'ACT_HEADER_UPDATED']);
 const PROPOSAL_ACTIONS = new Set(['PROPOSAL_UPSERTED', 'PROPOSAL_ARCHIVED', 'PROPOSAL_RESTORED']);
+const ATTACHMENT_ACTIONS = new Set([
+  'ATTACHMENT_UPLOADED',
+  'ATTACHMENT_SCAN_STARTED',
+  'ATTACHMENT_SCAN_PASSED',
+  'ATTACHMENT_REJECTED',
+  'ATTACHMENT_SCAN_FAILED',
+  'ATTACHMENT_ARCHIVED',
+]);
 
 export interface HistoryEventSource {
   id: string;
@@ -106,6 +126,21 @@ export function historyVisibleToRole(
   }
   if (HEADER_ACTIONS.has(event.action) && event.entityId === input.actId) {
     return true;
+  }
+  if (ATTACHMENT_ACTIONS.has(event.action)) {
+    const slot = readSlot(event.newValue) ?? readSlot(event.oldValue);
+    if (slot === 'B' || slot === 'C') {
+      return false;
+    }
+    if (event.parentEntityType === 'ACT' && event.parentEntityId === input.actId) {
+      return true;
+    }
+    const attachmentDefectId =
+      event.parentEntityType === 'DEFECT_ITEM' ? event.parentEntityId : null;
+    if (attachmentDefectId && input.assignedDefectItemIds.has(attachmentDefectId)) {
+      return true;
+    }
+    return false;
   }
   const defectId =
     event.entityType === 'DEFECT_ITEM'

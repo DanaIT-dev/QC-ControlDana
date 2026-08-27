@@ -37,7 +37,7 @@ export default async function SystemStatusPage() {
         title="Техническое состояние системы"
         description="Диагностика инфраструктуры для администратора."
       />
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <HealthCard
           title="Готовность API"
           ok={Boolean(systemReady)}
@@ -58,6 +58,20 @@ export default async function SystemStatusPage() {
           okLabel="доступен"
           badLabel="недоступен"
           icon={Wifi}
+        />
+        <HealthCard
+          title="MinIO"
+          ok={data?.components.minio.status === 'up'}
+          okLabel="доступно"
+          badLabel="недоступно"
+          icon={Server}
+        />
+        <HealthCard
+          title="ClamAV"
+          ok={data?.components.clamav.status === 'up'}
+          okLabel="доступен"
+          badLabel="недоступен"
+          icon={Database}
         />
       </div>
       {data?.timestamp ? (
@@ -80,6 +94,8 @@ export default async function SystemStatusPage() {
               <p>Статус: {data?.status ?? '—'}</p>
               <p>PostgreSQL: {data?.components.postgres.status ?? '—'}</p>
               <p>Redis: {data?.components.redis.status ?? '—'}</p>
+              <p>MinIO: {data?.components.minio.status ?? '—'}</p>
+              <p>ClamAV: {data?.components.clamav.status ?? '—'}</p>
             </CardContent>
           </Card>
         </CollapsibleContent>

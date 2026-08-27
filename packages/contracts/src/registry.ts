@@ -2,6 +2,7 @@ import type { ActFormCode, DefectItemStatus, ProposalSlot } from './enums';
 import type { DeadlineState } from './enums';
 
 export interface RegistryProposalDto {
+  id?: string;
   slot: ProposalSlot;
   amount: string;
   currency: string;

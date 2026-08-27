@@ -21,6 +21,7 @@ async function bootstrap(): Promise<void> {
   const adapter = new FastifyAdapter({
     logger: false,
     trustProxy: config.TRUST_PROXY,
+    bodyLimit: config.ATTACHMENT_MAX_BYTES + 1024 * 1024,
   });
   const app = await NestFactory.create<NestFastifyApplication>(AppModule, adapter, {
     logger: ['error', 'warn', 'log'],

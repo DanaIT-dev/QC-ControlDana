@@ -9,6 +9,7 @@ import { RegistryModule } from './registry/registry.module';
 import { UsersModule } from './users/users.module';
 import { ReferenceDataModule } from './reference-data/reference-data.module';
 import { OperationsModule } from './operations/operations.module';
+import { AttachmentsModule } from './attachments/attachments.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { OperationsModule } from './operations/operations.module';
     UsersModule,
     ReferenceDataModule,
     OperationsModule,
+    AttachmentsModule,
   ],
   providers: [
     {

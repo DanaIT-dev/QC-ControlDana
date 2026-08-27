@@ -13,11 +13,11 @@ const prisma = createPrismaClient(databaseUrl);
 async function cleanup(): Promise<void> {
   await prisma.$executeRawUnsafe('TRUNCATE TABLE "audit_logs"');
   await prisma.idempotencyRecord.deleteMany();
+  await prisma.attachment.deleteMany();
   await prisma.proposal.deleteMany();
   await prisma.defectItemLiableOrganization.deleteMany();
   await prisma.defectItemEngineer.deleteMany();
   await prisma.defectItem.deleteMany();
-  await prisma.attachment.deleteMany();
   await prisma.act.deleteMany();
   await prisma.actNumberSequence.deleteMany();
   await prisma.organizationWorkType.deleteMany();

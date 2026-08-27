@@ -44,6 +44,7 @@ const LIST_SELECT = {
   },
   proposals: {
     select: {
+      id: true,
       slot: true,
       amount: true,
       currency: true,
@@ -73,6 +74,7 @@ export function toRegistryRow(
 ) {
   const proposals = shapeProposals(
     item.proposals.map((proposal) => ({
+      id: proposal.id,
       slot: proposal.slot,
       amount: proposal.amount,
       currency: proposal.currency,

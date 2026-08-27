@@ -53,6 +53,27 @@ enum ProposalStatus {
 
 enum AuditSource {
   WEB
+  SYSTEM
+}
+
+enum AttachmentStatus {
+  UPLOADING
+  PENDING_SCAN
+  SCANNING
+  READY
+  REJECTED
+  SCAN_FAILED
+  ARCHIVED
+}
+
+enum AttachmentCategory {
+  ACT_DOCUMENT
+  ACT_SCAN
+  DEFECT_PHOTO
+  CLAIM_DOCUMENT
+  THIRD_PARTY_DOCUMENT
+  PROPOSAL_DOCUMENT
+  OTHER
 }
 
 model User {
@@ -75,7 +96,8 @@ model User {
   objectAssignments     PropertyObjectEngineer[]
   defectItemAssignments DefectItemEngineer[]
   cancelledActs         Act[]                    @relation("ActCancelledBy")
-  uploadedAttachments   Attachment[]
+  uploadedAttachments   Attachment[]             @relation("AttachmentUploadedBy")
+  archivedAttachments   Attachment[]             @relation("AttachmentArchivedBy")
   auditLogs             AuditLog[]
   idempotencyRecords    IdempotencyRecord[]
 
@@ -312,27 +334,53 @@ model Proposal {
 
   defectItem            DefectItem   @relation(fields: [defectItemId], references: [id], onDelete: Restrict)
   alternativeContractor Organization @relation(fields: [alternativeContractorOrganizationId], references: [id], onDelete: Restrict)
+  attachments           Attachment[]
 
   @@index([defectItemId, slot, status])
   @@map("proposals")
 }
 
 model Attachment {
-  id               String   @id @default(uuid()) @db.Uuid
-  actId            String?  @db.Uuid
-  defectItemId     String?  @db.Uuid
-  storageKey       String
-  originalFileName String
-  mimeType         String
+  id               String             @id @default(uuid()) @db.Uuid
+  actId            String?            @db.Uuid
+  defectItemId     String?            @db.Uuid
+  proposalId       String?            @db.Uuid
+  originalFilename String
+  safeDisplayName  String
+  objectKey        String?            @unique
+  bucket           String
   sizeBytes        Int
-  checksum         String
-  createdAt        DateTime @default(now()) @db.Timestamptz(3)
-  uploadedById     String   @db.Uuid
+  declaredMimeType String
+  detectedMimeType String?
+  sha256           String
+  category         AttachmentCategory
+  status           AttachmentStatus
+  uploadedById     String             @db.Uuid
+  createdAt        DateTime           @default(now()) @db.Timestamptz(3)
+  uploadedAt       DateTime?          @db.Timestamptz(3)
+  scannedAt        DateTime?          @db.Timestamptz(3)
+  scanEngine       String?
+  scanSignature    String?
+  rejectionReason  String?
+  archivedAt       DateTime?          @db.Timestamptz(3)
+  archivedById     String?            @db.Uuid
+  archiveReason    String?
+  version          Int                @default(1)
+  failureCode      String?
 
   act        Act?        @relation(fields: [actId], references: [id], onDelete: Restrict)
   defectItem DefectItem? @relation(fields: [defectItemId], references: [id], onDelete: Restrict)
-  uploadedBy User        @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+  proposal   Proposal?   @relation(fields: [proposalId], references: [id], onDelete: Restrict)
+  uploadedBy User        @relation("AttachmentUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
+  archivedBy User?       @relation("AttachmentArchivedBy", fields: [archivedById], references: [id], onDelete: Restrict)
 
+  @@index([actId, status, createdAt])
+  @@index([defectItemId, status, createdAt])
+  @@index([proposalId, status, createdAt])
+  @@index([uploadedById])
+  @@index([sha256])
+  @@index([status])
+  @@index([createdAt])
   @@map("attachments")
 }
 
@@ -380,9 +428,11 @@ model IdempotencyRecord {
 }
 
 model SystemSettings {
-  id                  String   @id @default("default")
-  deadlineWarningDays Int      @default(3)
-  updatedAt           DateTime @updatedAt @db.Timestamptz(3)
+  id                      String   @id @default("default")
+  deadlineWarningDays     Int      @default(3)
+  maxAttachmentBytes      Int      @default(20971520)
+  maxAttachmentsPerOwner  Int      @default(50)
+  updatedAt               DateTime @updatedAt @db.Timestamptz(3)
 
   @@map("system_settings")
 }

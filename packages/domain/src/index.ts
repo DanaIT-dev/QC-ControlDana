@@ -23,3 +23,4 @@ export * from './history';
 export * from './user-commands';
 export * from './reference';
 export * from './act-commands';
+export * from './attachments';

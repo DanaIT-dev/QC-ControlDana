@@ -10,9 +10,12 @@
 
 ## Инфраструктура
 
+Первый запуск ClamAV качает сигнатуры (часто 1–3 минуты). `GET /api/ready` остаётся `not_ready`, пока `clamav` не ответит PONG. Production object storage должен быть с TLS и полностью приватным bucket.
+
 ```bash
 docker compose -f infra/docker/compose.yaml --env-file .env up -d
 pnpm db:migrate
+# также примените миграции к TEST_DATABASE_URL
 pnpm db:seed
 ```
 
@@ -46,6 +49,7 @@ curl -i http://localhost:3001/api/ready
 pnpm test
 pnpm test:integration
 pnpm test:e2e
+pnpm test:attachments:stream
 pnpm test:registry:performance
 ```
 

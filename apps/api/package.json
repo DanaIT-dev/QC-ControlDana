@@ -11,8 +11,12 @@
     "test:integration": "tsx scripts/run-integration-tests.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1119.0",
+    "@aws-sdk/lib-storage": "^3.1119.0",
     "@fastify/cookie": "^11.0.2",
     "@fastify/helmet": "^13.0.2",
+    "@fastify/multipart": "^10.1.1",
+    "@nestjs/bullmq": "^11.0.5",
     "@nestjs/common": "^11.2.3",
     "@nestjs/core": "^11.2.3",
     "@nestjs/platform-fastify": "^11.2.3",
@@ -21,7 +25,9 @@
     "@sgr-registry/database": "workspace:*",
     "@sgr-registry/domain": "workspace:*",
     "argon2": "^0.44.0",
+    "bullmq": "^5.81.3",
     "fastify": "^5.12.1",
+    "image-size": "^2.0.2",
     "ioredis": "^5.8.2",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2"
@@ -31,6 +37,7 @@
     "@sgr-registry/typescript-config": "workspace:*",
     "@types/node": "^24.3.0",
     "dotenv": "^17.4.2",
+    "form-data": "^4.0.6",
     "tsx": "^4.23.12",
     "typescript": "^5.9.3",
     "vitest": "^4.1.11"

@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ALLOCATE_ACT_SEQUENCE_SQL } from '../../src/act-number-sql';
 import { assertSafeTestDatabaseUrl } from '../../src/test-database';
+import { assertSafeTestBucket } from '../../src/test-bucket';
 
 describe('act number SQL', () => {
   it('uses an atomic sequence table instead of COUNT(*) + 1', () => {
@@ -31,5 +32,15 @@ describe('test database guard', () => {
     expect(() =>
       assertSafeTestDatabaseUrl('postgresql://sgr_registry:password@localhost:5432/sgr_registry'),
     ).toThrow(/must end with "_test"/);
+  });
+});
+
+describe('test bucket guard', () => {
+  it('accepts a dedicated *-test bucket', () => {
+    expect(assertSafeTestBucket('sgr-attachments-test')).toBe('sgr-attachments-test');
+  });
+
+  it('rejects the development bucket', () => {
+    expect(() => assertSafeTestBucket('sgr-attachments')).toThrow(/-test/);
   });
 });

@@ -10,6 +10,15 @@ export const SENSITIVE_AUDIT_KEYS = [
   'sessionHash',
   'authorization',
   'resetToken',
+  'objectKey',
+  'storageKey',
+  'bucket',
+  'accessKey',
+  'secretKey',
+  'minio',
+  'clamav',
+  'rawScannerResponse',
+  'scanTrace',
 ] as const;
 
 const AUDIT_NON_SECRET_KEYS = new Set(['mustchangepassword', 'passwordchangedat']);

@@ -60,11 +60,13 @@ export class SafeExceptionFilter implements ExceptionFilter {
       const status =
         exception.code === 'FORBIDDEN_FIELD'
           ? HttpStatus.FORBIDDEN
-          : CONFLICT_ERROR_CODES.has(exception.code)
-            ? HttpStatus.CONFLICT
-            : VALIDATION_ERROR_CODES.has(exception.code)
-              ? HttpStatus.BAD_REQUEST
-              : HttpStatus.UNPROCESSABLE_ENTITY;
+          : exception.code === 'PAYLOAD_TOO_LARGE'
+            ? HttpStatus.PAYLOAD_TOO_LARGE
+            : CONFLICT_ERROR_CODES.has(exception.code)
+              ? HttpStatus.CONFLICT
+              : VALIDATION_ERROR_CODES.has(exception.code)
+                ? HttpStatus.BAD_REQUEST
+                : HttpStatus.UNPROCESSABLE_ENTITY;
       return {
         statusCode: status,
         error: exception.code,

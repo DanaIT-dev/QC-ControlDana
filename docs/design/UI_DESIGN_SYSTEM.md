@@ -13,7 +13,7 @@ Button, Input, Label, Textarea, Card, Badge, Checkbox, Select, Command, Popover,
 Продуктовые:
 
 - `MultiSelect` — Popover + Command, закрыт по умолчанию, поиск, check 16–18 px слева, label слева.
-- `PageHeader`, `FilterChips`, `StatusBadge`, `DeadlineBadge`, `EmptyState`, `ErrorState`, `ConflictDialog`, `UserAvatar`, `UserMenu`, `AppShell`.
+- `PageHeader`, `FilterChips`, `StatusBadge`, `DeadlineBadge`, `EmptyState`, `ErrorState`, `ConflictDialog`, `UserAvatar`, `UserMenu`, `AppShell`, `AttachmentsPanel`.
 
 Новый UI-компонент добавляется через `pnpm dlx shadcn@latest add <name>` из `apps/web`, затем при необходимости кастомизируется высота контролов до 44 px и токены. Community registries и коммерческие UI kits не используются.
 
@@ -79,7 +79,7 @@ Toolbar: поиск 320–420 px, кнопка «Фильтры» с badge, ко
 
 TanStack Table, manual server pagination/sorting. Белая поверхность, sticky header `#F8FAFC`, compact rows ~56 px, без тяжёлого zebra. Статусы — Badge + иконка. Deadline — текстовая метка и тонкий индикатор, цвет не единственный признак. B/C сворачиваются; RESPONSIBLE не видит B/C controls.
 
-На 360–767 px таблица скрыта, показываются карточки DefectItem.
+На 360–767 px таблица скрыта, показываются карточки DefectItem. Панель вложений на карточке акта не даёт горизонтальный overflow: имя файла `break-all`, кнопки 44 px.
 
 ## Status colors
 

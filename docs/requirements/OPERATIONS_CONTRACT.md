@@ -75,6 +75,9 @@ RESPONSIBLE не мутирует Proposal, получает только A; B/C
 - 403 CSRF, нет capability, mustChangePassword
 - 404 нет сущности или нет row access
 - 409 stale, duplicate, invalid transition, idempotency reuse, last admin, self-archive
+- 413 файл больше лимита
 - внутренние ошибки без Prisma details
+
+Вложения: XOR-владелец, stream upload, ClamAV до READY, архив без физического DELETE. См. [ATTACHMENTS_CONTRACT.md](./ATTACHMENTS_CONTRACT.md).
 
 PostgreSQL RLS по-прежнему не используется: действует прикладной `RegistryAccessScope`.

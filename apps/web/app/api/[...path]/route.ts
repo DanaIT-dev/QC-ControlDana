@@ -37,14 +37,17 @@ async function proxy(
   });
 
   const method = request.method;
-  const body = method === 'GET' || method === 'HEAD' ? undefined : await request.arrayBuffer();
-
-  const upstream = await fetch(upstreamUrl, {
+  const init: RequestInit & { duplex?: 'half' } = {
     method,
     headers,
-    body,
     redirect: 'manual',
-  });
+  };
+  if (method !== 'GET' && method !== 'HEAD') {
+    init.body = request.body;
+    init.duplex = 'half';
+  }
+
+  const upstream = await fetch(upstreamUrl, init);
 
   const responseHeaders = new Headers();
   upstream.headers.forEach((value, key) => {

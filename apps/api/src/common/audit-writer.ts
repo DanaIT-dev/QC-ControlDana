@@ -18,6 +18,7 @@ export interface AuditWriteInput {
   reason?: string | null;
   requestId?: string | null;
   ipAddress?: string | null;
+  source?: 'WEB' | 'SYSTEM';
 }
 
 type AuditDb = {
@@ -41,7 +42,7 @@ export async function writeAuditLog(tx: AuditDb, input: AuditWriteInput): Promis
       oldValue: input.oldValue ?? undefined,
       newValue: input.newValue ?? undefined,
       reason: input.reason ?? null,
-      source: 'WEB',
+      source: input.source ?? 'WEB',
       requestId: input.requestId ?? null,
       ipAddress: input.ipAddress ?? null,
       occurredAt: new Date(),

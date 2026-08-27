@@ -6,14 +6,14 @@
 
 - `apps/web` — Next.js 16, React 19, App Router. Вход, смена пароля, реестр, создание и карточка акта, справочники, пользователи, system-status. Защита маршрутов через `proxy.ts` (не deprecated `middleware`).
 - `apps/api` — NestJS 11 на Fastify. HTTP API, сессии Redis, CSRF, capability matrix, команды актов/дефектов, справочники, пользователи, реестр, health/ready.
-- `apps/worker` — NestJS application context без HTTP. BullMQ-очередь `sgr-maintenance`.
+- `apps/worker` — NestJS application context без HTTP. Очереди BullMQ `sgr-maintenance` и `sgr-attachments` (сканирование ClamAV).
 - `packages/domain` — чистые типы, инварианты и доменные функции. Без React и Prisma.
 - `packages/database` — Prisma schema, клиент, миграции, seed, генерация номера акта.
 - `packages/config` — типобезопасная конфигурация окружения (Zod).
 - `packages/contracts` — общие DTO и перечисления без зависимости от UI.
 - `packages/typescript-config`, `packages/eslint-config` — общее качество кода.
 
-Локальная инфраструктура в `infra/docker/compose.yaml`: PostgreSQL 18, Redis, MinIO.
+Локальная инфраструктура в `infra/docker/compose.yaml`: PostgreSQL 18, Redis, MinIO, ClamAV.
 
 ## Границы модулей и зависимости
 
@@ -22,7 +22,7 @@
 ```
 web → contracts, domain
 api → config, contracts, database, domain
-worker → config
+worker → config, database, domain
 database → domain
 domain → contracts
 config → (нет внутренних пакетов)
@@ -40,9 +40,12 @@ Docker Compose поднимает:
 
 - PostgreSQL 18 с named volume и отдельной test-базой `sgr_registry_test`;
 - Redis для сессий, ограничения перебора пароля, очередей и проверки готовности;
-- MinIO как S3-совместимое хранилище (загрузка файлов — следующий этап).
+- MinIO как приватное S3-совместимое хранилище вложений;
+- ClamAV (`clamd` на localhost:3310) для антивирусной проверки перед статусом READY.
 
-Порты задаются переменными окружения. Демонстрационные пароли только для local development.
+Порты задаются переменными окружения. Первый запуск ClamAV качает сигнатуры и может занять несколько минут. Демонстрационные пароли только для local development.
+
+Тестовый bucket `sgr-attachments-test` и база `*_test` отделены от development. Integration-тесты отказываются работать с bucket без суффикса `-test`.
 
 ## Будущая интеграция с 1С
 

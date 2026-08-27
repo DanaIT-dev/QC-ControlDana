@@ -232,6 +232,7 @@ export class RegistryService {
             proposals: {
               where: { slot: { in: visibleProposalSlots(user.role) }, status: 'ACTIVE' },
               select: {
+                id: true,
                 slot: true,
                 amount: true,
                 currency: true,
@@ -251,6 +252,7 @@ export class RegistryService {
     const defectItems: ActDetailDefectItem[] = act.defectItems.map((item) => {
       const proposals = shapeProposals(
         item.proposals.map((proposal) => ({
+          id: proposal.id,
           slot: proposal.slot,
           amount: proposal.amount,
           currency: proposal.currency,

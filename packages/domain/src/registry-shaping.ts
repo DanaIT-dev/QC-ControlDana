@@ -7,6 +7,7 @@ import {
 import { serializeDecimal } from './deadline';
 
 export interface ProposalSource {
+  id?: string;
   slot: ProposalSlot;
   amount: { toFixed(digits: number): string } | string;
   currency: string;
@@ -17,6 +18,7 @@ export interface ProposalSource {
 }
 
 export interface ShapedProposal {
+  id?: string;
   slot: ProposalSlot;
   amount: string;
   currency: string;
@@ -33,6 +35,7 @@ export interface ShapedProposals {
 
 function toDto(proposal: ProposalSource): ShapedProposal {
   return {
+    ...(proposal.id ? { id: proposal.id } : {}),
     slot: proposal.slot,
     amount: serializeDecimal(proposal.amount),
     currency: proposal.currency,

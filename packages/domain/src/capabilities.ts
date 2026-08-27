@@ -19,6 +19,12 @@ export const CAPABILITIES = [
   'VIEW_PROPOSAL_A',
   'VIEW_HISTORY',
   'CANCEL_ACT',
+  'VIEW_ATTACHMENTS',
+  'UPLOAD_ACT_ATTACHMENT',
+  'UPLOAD_DEFECT_ATTACHMENT',
+  'UPLOAD_PROPOSAL_ATTACHMENT',
+  'ARCHIVE_ATTACHMENT',
+  'DOWNLOAD_ATTACHMENT',
 ] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];
@@ -42,6 +48,12 @@ const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
     'VIEW_PROPOSAL_A',
     'VIEW_HISTORY',
     'CANCEL_ACT',
+    'VIEW_ATTACHMENTS',
+    'UPLOAD_ACT_ATTACHMENT',
+    'UPLOAD_DEFECT_ATTACHMENT',
+    'UPLOAD_PROPOSAL_ATTACHMENT',
+    'ARCHIVE_ATTACHMENT',
+    'DOWNLOAD_ATTACHMENT',
   ],
   SGR_MANAGER: [
     'MANAGE_REFERENCE_DATA',
@@ -59,6 +71,12 @@ const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
     'VIEW_PROPOSAL_A',
     'VIEW_HISTORY',
     'CANCEL_ACT',
+    'VIEW_ATTACHMENTS',
+    'UPLOAD_ACT_ATTACHMENT',
+    'UPLOAD_DEFECT_ATTACHMENT',
+    'UPLOAD_PROPOSAL_ATTACHMENT',
+    'ARCHIVE_ATTACHMENT',
+    'DOWNLOAD_ATTACHMENT',
   ],
   CONTRACTOR_ENGINEER: [
     'VIEW_ALL_ACTS',
@@ -66,6 +84,11 @@ const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
     'MANAGE_PROPOSALS',
     'VIEW_PROPOSAL_A',
     'VIEW_HISTORY',
+    'VIEW_ATTACHMENTS',
+    'UPLOAD_DEFECT_ATTACHMENT',
+    'UPLOAD_PROPOSAL_ATTACHMENT',
+    'ARCHIVE_ATTACHMENT',
+    'DOWNLOAD_ATTACHMENT',
   ],
   RESPONSIBLE_ENGINEER: [
     'VIEW_ASSIGNED_DEFECTS',
@@ -73,6 +96,10 @@ const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
     'COMPLETE_DEFECT',
     'VIEW_PROPOSAL_A',
     'VIEW_HISTORY',
+    'VIEW_ATTACHMENTS',
+    'UPLOAD_DEFECT_ATTACHMENT',
+    'ARCHIVE_ATTACHMENT',
+    'DOWNLOAD_ATTACHMENT',
   ],
 };
 
@@ -95,6 +122,12 @@ export const CAPABILITY_LABELS: Record<Capability, string> = {
   VIEW_PROPOSAL_A: 'Просмотр предложения A',
   VIEW_HISTORY: 'Просмотр истории изменений',
   CANCEL_ACT: 'Аннулирование актов',
+  VIEW_ATTACHMENTS: 'Просмотр вложений',
+  UPLOAD_ACT_ATTACHMENT: 'Загрузка документов акта',
+  UPLOAD_DEFECT_ATTACHMENT: 'Загрузка файлов дефекта',
+  UPLOAD_PROPOSAL_ATTACHMENT: 'Загрузка документов предложения',
+  ARCHIVE_ATTACHMENT: 'Архивирование вложений',
+  DOWNLOAD_ATTACHMENT: 'Скачивание вложений',
 };
 
 export function capabilitiesForRole(role: UserRole): Capability[] {

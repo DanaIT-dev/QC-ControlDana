@@ -26,6 +26,7 @@ import { fetchActDetail } from '../../../lib/registry-api';
 import { formatCalendarDate, formatTimestamp, isSafeDocumentHref } from '../../../lib/registry-url';
 import { queryKeys } from '../../../lib/query-keys';
 import { ActHistory, ActOperations } from './act-operations';
+import { AttachmentsPanel } from '@/components/attachments-panel';
 import { cn } from '@/lib/utils';
 
 export function ActDetailView({ actId, user }: { actId: string; user: SafeUserProfile }) {
@@ -129,6 +130,14 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
           ) : null}
         </CardContent>
       </Card>
+      <AttachmentsPanel
+        title="Вложения акта"
+        listPath={`/api/acts/${act.id}/attachments`}
+        uploadPath={`/api/acts/${act.id}/attachments`}
+        categories={['ACT_DOCUMENT', 'ACT_SCAN', 'OTHER']}
+        canUpload={user.role === 'ADMIN' || user.role === 'SGR_MANAGER'}
+        csrfToken={user.csrfToken}
+      />
       <Tabs defaultValue="defects">
         <TabsList>
           <TabsTrigger value="defects">Дефекты</TabsTrigger>
@@ -189,6 +198,53 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
                   ) : null}
                 </div>
                 {item.notes ? <p className="text-sm">Примечания: {item.notes}</p> : null}
+                <AttachmentsPanel
+                  title="Файлы и фотографии"
+                  listPath={`/api/defects/${item.id}/attachments`}
+                  uploadPath={`/api/defects/${item.id}/attachments`}
+                  categories={
+                    user.role === 'CONTRACTOR_ENGINEER'
+                      ? ['THIRD_PARTY_DOCUMENT']
+                      : user.role === 'RESPONSIBLE_ENGINEER'
+                        ? ['DEFECT_PHOTO', 'OTHER']
+                        : ['DEFECT_PHOTO', 'CLAIM_DOCUMENT', 'THIRD_PARTY_DOCUMENT', 'OTHER']
+                  }
+                  canUpload={
+                    user.role === 'ADMIN' ||
+                    user.role === 'SGR_MANAGER' ||
+                    user.role === 'CONTRACTOR_ENGINEER' ||
+                    user.role === 'RESPONSIBLE_ENGINEER'
+                  }
+                  csrfToken={user.csrfToken}
+                  compact
+                />
+                {item.proposalA?.id ? (
+                  <AttachmentsPanel
+                    title="Документы предложения A"
+                    listPath={`/api/proposals/${item.proposalA.id}/attachments`}
+                    uploadPath={`/api/proposals/${item.proposalA.id}/attachments`}
+                    categories={['PROPOSAL_DOCUMENT']}
+                    canUpload={user.role !== 'RESPONSIBLE_ENGINEER'}
+                    csrfToken={user.csrfToken}
+                    compact
+                  />
+                ) : null}
+                {showBC
+                  ? item.proposalsBC?.map((proposal) =>
+                      proposal.id ? (
+                        <AttachmentsPanel
+                          key={proposal.id}
+                          title={`Документы предложения ${proposal.slot}`}
+                          listPath={`/api/proposals/${proposal.id}/attachments`}
+                          uploadPath={`/api/proposals/${proposal.id}/attachments`}
+                          categories={['PROPOSAL_DOCUMENT']}
+                          canUpload
+                          csrfToken={user.csrfToken}
+                          compact
+                        />
+                      ) : null,
+                    )
+                  : null}
                 <div className="flex flex-wrap gap-2">
                   {item.responsibleEngineers.map((entry) => (
                     <Badge key={entry.id} variant="secondary" className="gap-1.5 pr-2">

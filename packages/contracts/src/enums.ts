@@ -44,3 +44,28 @@ export const ACT_FORM_DISPLAY: Record<ActFormCode, { code: ActFormCode; official
   S1: { code: 'S1', officialLabel: 'С-1' },
   S23: { code: 'S23', officialLabel: 'С-23' },
 };
+
+export const ATTACHMENT_STATUSES = [
+  'UPLOADING',
+  'PENDING_SCAN',
+  'SCANNING',
+  'READY',
+  'REJECTED',
+  'SCAN_FAILED',
+  'ARCHIVED',
+] as const;
+export type AttachmentStatus = (typeof ATTACHMENT_STATUSES)[number];
+
+export const ATTACHMENT_CATEGORIES = [
+  'ACT_DOCUMENT',
+  'ACT_SCAN',
+  'DEFECT_PHOTO',
+  'CLAIM_DOCUMENT',
+  'THIRD_PARTY_DOCUMENT',
+  'PROPOSAL_DOCUMENT',
+  'OTHER',
+] as const;
+export type AttachmentCategory = (typeof ATTACHMENT_CATEGORIES)[number];
+
+export const ATTACHMENT_OWNER_TYPES = ['ACT', 'DEFECT_ITEM', 'PROPOSAL'] as const;
+export type AttachmentOwnerType = (typeof ATTACHMENT_OWNER_TYPES)[number];

@@ -15,6 +15,7 @@ export const queryKeys = {
   act: actKey,
   defectItem: defectItemKey,
   history: historyKey,
+  attachments: (path: string) => ['attachments', path] as const,
   registry: {
     all: ['registry'] as const,
     defects: (query: unknown) => ['registry', 'defects', query] as const,

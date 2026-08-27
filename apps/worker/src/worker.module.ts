@@ -1,6 +1,7 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { loadConfig } from '@sgr-registry/config';
+import { AttachmentScanProcessor } from './attachment-scan.processor';
 import { MaintenanceProcessor } from './maintenance.processor';
 
 @Module({
@@ -11,10 +12,9 @@ import { MaintenanceProcessor } from './maintenance.processor';
         return { connection: { url: config.REDIS_URL } };
       },
     }),
-    BullModule.registerQueue({
-      name: 'sgr-maintenance',
-    }),
+    BullModule.registerQueue({ name: 'sgr-maintenance' }),
+    BullModule.registerQueue({ name: 'sgr-attachments' }),
   ],
-  providers: [MaintenanceProcessor],
+  providers: [MaintenanceProcessor, AttachmentScanProcessor],
 })
 export class WorkerModule {}
