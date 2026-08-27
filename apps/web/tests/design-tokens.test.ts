@@ -36,9 +36,10 @@ describe('design tokens', () => {
 
   it('keeps the favicon SVG vector-only and aligned with brand Q/C tokens', () => {
     const icon = readFileSync(resolve(import.meta.dirname, '../app/icon.svg'), 'utf8');
+    expect(icon).toContain('viewBox="0 0 88 88"');
     expect(icon).toContain('#e81820');
     expect(icon).toContain('#009848');
-    expect(icon).toContain('<rect');
-    expect(icon).not.toMatch(/<image|data:image|javascript:|<script/i);
+    expect(icon).toContain('<circle');
+    expect(icon).not.toMatch(/<rect|<image|data:image|javascript:|<script|fill="white"/i);
   });
 });

@@ -1,6 +1,21 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 35 35" role="img" aria-label="QC.Dana">
-  <rect x="0" y="0" width="16" height="16" rx="3.5" fill="#009848" />
-  <rect x="19" y="0" width="16" height="16" rx="3.5" fill="#e81820" />
-  <rect x="0" y="19" width="16" height="16" rx="3.5" fill="#e81820" />
-  <rect x="19" y="19" width="16" height="16" rx="3.5" fill="#009848" />
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 88 88" width="32" height="32" role="img" aria-label="QC.Dana">
+  <g transform="translate(0 14)">
+    <path
+      d="M71.31 14.24 A 20 20 0 1 1 71.31 45.76"
+      fill="none"
+      stroke="#009848"
+      stroke-width="10"
+      stroke-linecap="butt"
+    />
+    <circle cx="30" cy="30" r="20" fill="none" stroke="#e81820" stroke-width="10" />
+    <line
+      x1="38.17"
+      y1="37.36"
+      x2="52.29"
+      y2="50.07"
+      stroke="#009848"
+      stroke-width="10"
+      stroke-linecap="round"
+    />
+  </g>
 </svg>
