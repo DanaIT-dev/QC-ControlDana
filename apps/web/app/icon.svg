@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 88 60" role="img" aria-label="QC.Dana">
+  <path
+    d="M71.31 14.24 A 20 20 0 1 1 71.31 45.76"
+    fill="none"
+    stroke="#009848"
+    stroke-width="10"
+    stroke-linecap="butt"
+  />
+  <circle cx="30" cy="30" r="20" fill="none" stroke="#e81820" stroke-width="10" />
+  <line
+    x1="38.17"
+    y1="37.36"
+    x2="52.29"
+    y2="50.07"
+    stroke="#009848"
+    stroke-width="10"
+    stroke-linecap="round"
+  />
+</svg>

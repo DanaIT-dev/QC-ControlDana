@@ -1,11 +1,13 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseRegistryListQuery } from '@sgr-registry/domain';
 import { FilterChips } from '../components/filter-chips';
 import { MultiSelect } from '../components/multi-select';
 import { ConflictDialog } from '../components/conflict-dialog';
 import { EmptyState, ErrorState, TableSkeleton } from '../components/states';
+import { QcLogo } from '../components/qc-logo';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -17,8 +19,43 @@ import { buildRegistryFilterChips } from '../lib/filter-chips';
 import { TooltipProvider } from '../components/ui/tooltip';
 import type { RegistryDefectRow } from '@sgr-registry/contracts';
 
+vi.mock('next/link', () => ({
+  default: ({
+    children,
+    href,
+    ...props
+  }: {
+    children: ReactNode;
+    href: string;
+    [key: string]: unknown;
+  }) => (
+    <a href={href} {...props}>
+      {children}
+    </a>
+  ),
+}));
+
 afterEach(() => {
   cleanup();
+});
+
+describe('QcLogo', () => {
+  it('renders an accessible SVG mark with brand tokens and no raster image', () => {
+    const { container } = render(<QcLogo href="/registry" />);
+    expect(screen.getByRole('link', { name: 'QC.Dana' })).toHaveAttribute('href', '/registry');
+    const svg = container.querySelector('svg');
+    expect(svg).toBeTruthy();
+    expect(svg?.getAttribute('aria-hidden')).toBe('true');
+    expect(container.querySelector('img')).toBeNull();
+    expect(container.innerHTML).toContain('var(--brand-q)');
+    expect(container.innerHTML).toContain('var(--brand-c)');
+    expect(container.innerHTML).not.toContain('.png');
+  });
+
+  it('uses an img role and label when the mark is not a link', () => {
+    render(<QcLogo size="login" />);
+    expect(screen.getByRole('img', { name: 'QC.Dana' })).toBeInTheDocument();
+  });
 });
 
 describe('Button variants', () => {

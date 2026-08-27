@@ -3,9 +3,9 @@
 import type { ReactNode } from 'react';
 import type { SafeUserProfile } from '@sgr-registry/contracts';
 import { MenuIcon } from 'lucide-react';
-import Link from 'next/link';
 import { useState } from 'react';
 import { AppNav } from './app-nav';
+import { QcLogo } from '@/components/qc-logo';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
@@ -17,12 +17,7 @@ export function AppShell({ user, children }: { user: SafeUserProfile; children: 
     <div className="min-h-dvh bg-background">
       <header className="sticky top-0 z-40 border-b bg-white">
         <div className="mx-auto flex h-16 max-w-[1600px] items-center gap-3 px-4 md:h-[64px] md:px-6 lg:px-8">
-          <Link
-            href="/registry"
-            className="text-[15px] font-semibold tracking-tight text-foreground"
-          >
-            QC.Dana
-          </Link>
+          <QcLogo href="/registry" />
           <AppNav role={user.role} className="hidden md:flex" />
           <div className="ml-auto hidden md:block">
             <UserMenu user={user} />
@@ -41,7 +36,10 @@ export function AppShell({ user, children }: { user: SafeUserProfile; children: 
             </SheetTrigger>
             <SheetContent side="right" className="w-full max-w-sm sm:max-w-sm">
               <SheetHeader>
-                <SheetTitle>QC.Dana</SheetTitle>
+                <SheetTitle className="flex items-center">
+                  <QcLogo size="sheet" decorative />
+                  <span className="sr-only">QC.Dana</span>
+                </SheetTitle>
               </SheetHeader>
               <div className="flex flex-1 flex-col gap-4 px-4 pb-6">
                 <AppNav role={user.role} onNavigate={() => setOpen(false)} />

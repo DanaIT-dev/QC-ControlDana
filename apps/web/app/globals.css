@@ -26,6 +26,8 @@
   --border: #e2e8f0;
   --input: #e2e8f0;
   --ring: #0087cd;
+  --brand-q: #e81820;
+  --brand-c: #009848;
   --success: #dcfce7;
   --success-foreground: #15803d;
   --warning: #fef9c3;
@@ -65,6 +67,8 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-brand-q: var(--brand-q);
+  --color-brand-c: var(--brand-c);
   --color-success: var(--success);
   --color-success-foreground: var(--success-foreground);
   --color-warning: var(--warning);

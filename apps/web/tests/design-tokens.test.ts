@@ -10,6 +10,8 @@ describe('design tokens', () => {
     expect(DESIGN_TOKENS.card).toBe('#FFFFFF');
     expect(DESIGN_TOKENS.mutedForeground).toBe('#64748B');
     expect(DESIGN_TOKENS.brand).toBe('#0087CD');
+    expect(DESIGN_TOKENS.brandQ).toBe('#E81820');
+    expect(DESIGN_TOKENS.brandC).toBe('#009848');
     expect(DESIGN_TOKENS.primary).toBe('#0070AD');
     expect(DESIGN_TOKENS.accent).toBe('#E0F2FE');
     expect(DESIGN_TOKENS.success).toBe('#DCFCE7');
@@ -25,8 +27,17 @@ describe('design tokens', () => {
     expect(css).toContain('--background: #f8fafc');
     expect(css).toContain('--primary: #0070ad');
     expect(css).toContain('--brand: #0087cd');
+    expect(css).toContain('--brand-q: #e81820');
+    expect(css).toContain('--brand-c: #009848');
     expect(css).not.toMatch(/input\s*\{[^}]*width:\s*100%/s);
     expect(css).toContain("input[type='checkbox']");
     expect(css).toContain('max-width: 1.125rem');
+  });
+
+  it('keeps the favicon SVG vector-only and aligned with brand Q/C tokens', () => {
+    const icon = readFileSync(resolve(import.meta.dirname, '../app/icon.svg'), 'utf8');
+    expect(icon).toContain('#e81820');
+    expect(icon).toContain('#009848');
+    expect(icon).not.toMatch(/<image|data:image|javascript:|<script/i);
   });
 });

@@ -20,6 +20,8 @@ export const DESIGN_TOKENS = {
   border: '#E2E8F0',
   input: '#E2E8F0',
   ring: '#0087CD',
+  brandQ: '#E81820',
+  brandC: '#009848',
   success: '#DCFCE7',
   successForeground: '#15803D',
   warning: '#FEF9C3',
