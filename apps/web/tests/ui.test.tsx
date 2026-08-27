@@ -50,6 +50,8 @@ describe('QcLogo', () => {
     expect(container.innerHTML).toContain('var(--brand-q)');
     expect(container.innerHTML).toContain('var(--brand-c)');
     expect(container.innerHTML).not.toContain('.png');
+    expect(container.querySelectorAll('rect')).toHaveLength(4);
+    expect(container.querySelector('circle')).toBeTruthy();
   });
 
   it('uses an img role and label when the mark is not a link', () => {

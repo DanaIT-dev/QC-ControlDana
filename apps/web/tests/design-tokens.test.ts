@@ -38,6 +38,7 @@ describe('design tokens', () => {
     const icon = readFileSync(resolve(import.meta.dirname, '../app/icon.svg'), 'utf8');
     expect(icon).toContain('#e81820');
     expect(icon).toContain('#009848');
+    expect(icon).toContain('<rect');
     expect(icon).not.toMatch(/<image|data:image|javascript:|<script/i);
   });
 });
