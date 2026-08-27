@@ -1,7 +1,15 @@
 'use client';
 
+import { isPasswordPolicySatisfied, PASSWORD_MIN_LENGTH } from '@sgr-registry/domain';
+import { EyeIcon, EyeOffIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { type FormEvent, useId, useState } from 'react';
+import { type FormEvent, type ReactNode, useId, useState } from 'react';
+import { toast } from 'sonner';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { ApiError, commandFetch } from '../../lib/command-api';
 
 export function ChangePasswordForm({ csrfToken }: { csrfToken: string }) {
@@ -10,8 +18,12 @@ export function ChangePasswordForm({ csrfToken }: { csrfToken: string }) {
   const nextId = useId();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNext, setShowNext] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const policyOk = isPasswordPolicySatisfied(newPassword);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -26,6 +38,8 @@ export function ChangePasswordForm({ csrfToken }: { csrfToken: string }) {
         csrfToken,
         body: { currentPassword, newPassword },
       });
+      setSuccess(true);
+      toast.success('Пароль обновлён');
       router.replace('/registry');
       router.refresh();
     } catch (caught) {
@@ -36,37 +50,86 @@ export function ChangePasswordForm({ csrfToken }: { csrfToken: string }) {
   }
 
   return (
-    <form className="form-grid" onSubmit={onSubmit}>
-      <div className="field">
-        <label htmlFor={currentId}>Текущий пароль</label>
-        <input
-          id={currentId}
-          type="password"
-          autoComplete="current-password"
-          value={currentPassword}
-          onChange={(event) => setCurrentPassword(event.target.value)}
-          required
-        />
+    <form className="grid gap-4" onSubmit={onSubmit}>
+      <div className="grid gap-1.5">
+        <Label htmlFor={currentId}>Текущий пароль</Label>
+        <div className="flex gap-2">
+          <Input
+            id={currentId}
+            type={showCurrent ? 'text' : 'password'}
+            autoComplete="current-password"
+            value={currentPassword}
+            onChange={(event) => setCurrentPassword(event.target.value)}
+            required
+          />
+          <Button
+            type="button"
+            variant="outline"
+            aria-label={showCurrent ? 'Скрыть текущий ввод' : 'Показать текущий ввод'}
+            onClick={() => setShowCurrent((value) => !value)}
+          >
+            {showCurrent ? <EyeOffIcon /> : <EyeIcon />}
+          </Button>
+        </div>
       </div>
-      <div className="field">
-        <label htmlFor={nextId}>Новый пароль</label>
-        <input
-          id={nextId}
-          type="password"
-          autoComplete="new-password"
-          value={newPassword}
-          onChange={(event) => setNewPassword(event.target.value)}
-          required
-        />
+      <div className="grid gap-1.5">
+        <Label htmlFor={nextId}>Новый пароль</Label>
+        <div className="flex gap-2">
+          <Input
+            id={nextId}
+            type={showNext ? 'text' : 'password'}
+            autoComplete="new-password"
+            value={newPassword}
+            onChange={(event) => setNewPassword(event.target.value)}
+            required
+          />
+          <Button
+            type="button"
+            variant="outline"
+            aria-label={showNext ? 'Скрыть новый ввод' : 'Показать новый ввод'}
+            onClick={() => setShowNext((value) => !value)}
+          >
+            {showNext ? <EyeOffIcon /> : <EyeIcon />}
+          </Button>
+        </div>
       </div>
+      <ul className="grid gap-1 text-[13px] text-muted-foreground">
+        <li>Не менее {PASSWORD_MIN_LENGTH} символов</li>
+        <li>Заглавная и строчная буква</li>
+        <li>Цифра и спецсимвол</li>
+        <li className={policyOk ? 'text-success-foreground' : ''}>
+          {policyOk ? 'Требования выполнены' : 'Пароль пока не соответствует политике'}
+        </li>
+      </ul>
       {error ? (
-        <p className="form-error" role="alert">
-          {error}
-        </p>
+        <Alert variant="destructive" className="form-error">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       ) : null}
-      <button type="submit" className="primary-button" disabled={pending}>
+      {success ? (
+        <Alert>
+          <AlertDescription>Пароль обновлён, выполняется переход в реестр.</AlertDescription>
+        </Alert>
+      ) : null}
+      <Button type="submit" disabled={pending}>
         {pending ? 'Сохранение…' : 'Сменить пароль'}
-      </button>
+      </Button>
     </form>
+  );
+}
+
+export function ChangePasswordCard({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex justify-center px-0 py-4">
+      <Card className="w-full max-w-[440px] shadow-none">
+        <CardHeader>
+          <CardTitle className="text-2xl font-semibold">Смена временного пароля</CardTitle>
+          <CardDescription>
+            Перед работой в реестре задайте новый пароль по политике сложности.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>{children}</CardContent>
+      </Card>
+    </div>
   );
 }

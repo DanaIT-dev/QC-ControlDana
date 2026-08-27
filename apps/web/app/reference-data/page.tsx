@@ -1,6 +1,7 @@
 import { hasCapability } from '@sgr-registry/domain';
 import { requireAppUser } from '../../lib/server-auth';
 import { AppShell } from '../app-shell';
+import { ForbiddenState } from '@/components/forbidden-state';
 import { ReferenceDataView } from './reference-data-view';
 
 export const dynamic = 'force-dynamic';
@@ -10,10 +11,7 @@ export default async function ReferenceDataPage() {
   if (!hasCapability(user.role, 'MANAGE_REFERENCE_DATA')) {
     return (
       <AppShell user={user}>
-        <section className="panel">
-          <h2>Недостаточно прав</h2>
-          <p className="lead">Справочники доступны руководителю СГР и администратору.</p>
-        </section>
+        <ForbiddenState description="Справочники доступны руководителю СГР и администратору." />
       </AppShell>
     );
   }

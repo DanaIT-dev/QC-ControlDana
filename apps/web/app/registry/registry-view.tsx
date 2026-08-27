@@ -8,9 +8,21 @@ import {
   type RegistryListQuery,
 } from '@sgr-registry/domain';
 import type { RegistryDefectRow, SafeUserProfile } from '@sgr-registry/contracts';
-import { canViewProposalASum, canViewProposalGroupBC } from '@sgr-registry/domain';
+import { canCreateAct, canViewProposalASum, canViewProposalGroupBC } from '@sgr-registry/domain';
+import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { PageHeader } from '@/components/page-header';
+import { EmptyState, ErrorState, TableSkeleton } from '@/components/states';
+import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   fetchRegistryFilterOptions,
   fetchRegistryList,
@@ -33,7 +45,7 @@ export function RegistryView({ user }: { user: SafeUserProfile }) {
     }
   }, [params]);
   const [searchDraft, setSearchDraft] = useState(query.search ?? '');
-  const [mobileFilters, setMobileFilters] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [expandBC, setExpandBC] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const queryRef = useRef(query);
@@ -114,25 +126,32 @@ export function RegistryView({ user }: { user: SafeUserProfile }) {
   const totalCount = listQuery.data?.totalCount ?? 0;
   const page = listQuery.data?.page ?? query.page;
   const pageSize = listQuery.data?.pageSize ?? query.pageSize;
+  const totalPages = listQuery.data?.totalPages || 1;
   const from = totalCount === 0 ? 0 : (page - 1) * pageSize + 1;
   const to = Math.min(page * pageSize, totalCount);
 
   return (
-    <div className="registry-page">
-      <div className="registry-toolbar">
-        <button
-          type="button"
-          className="ghost-button filters-open"
-          onClick={() => setMobileFilters(true)}
-        >
-          Фильтры
-        </button>
-      </div>
+    <div className="registry-page grid gap-4">
+      <PageHeader
+        title="Реестр дефектных актов"
+        description="Контроль сроков, статусов и назначений по дефектным актам СГР."
+        actions={
+          canCreateAct(user.role) ? (
+            <Button asChild>
+              <Link href="/acts/new">
+                <Plus data-icon="inline-start" />
+                Создать акт
+              </Link>
+            </Button>
+          ) : null
+        }
+      />
       <RegistrySummary
         summary={summaryQuery.data}
         query={query}
         canViewSum={canViewProposalASum(user.role)}
         onChange={replaceQuery}
+        loading={summaryQuery.isLoading}
       />
       <RegistryFilters
         query={query}
@@ -145,84 +164,132 @@ export function RegistryView({ user }: { user: SafeUserProfile }) {
         }}
         onChange={replaceQuery}
         onReset={() => replaceQuery(parseRegistryListQuery({}))}
-        mobileOpen={mobileFilters}
-        onCloseMobile={() => setMobileFilters(false)}
+        sheetOpen={filtersOpen}
+        onSheetOpenChange={setFiltersOpen}
+        resultCount={listQuery.isSuccess ? totalCount : undefined}
       />
       {listQuery.isError ? (
-        <section className="panel">
-          <p className="form-error">Не удалось загрузить реестр.</p>
-          <button type="button" className="primary-button" onClick={() => void listQuery.refetch()}>
-            Повторить
-          </button>
-        </section>
-      ) : null}
-      {!listQuery.isError && !listQuery.isLoading && rows.length === 0 ? (
-        <section className="panel empty-state">
-          <h2>Нет строк</h2>
-          <p className="lead">По текущим условиям нет доступных дефектов.</p>
-        </section>
-      ) : null}
-      {!isMobile ? (
-        <RegistryTable
-          rows={rows}
-          canViewBC={canViewProposalGroupBC(user.role)}
-          expandBC={expandBC}
-          onToggleBC={() => {
-            const next = !expandBC;
-            writeExpandBC(next);
-            setExpandBC(next);
-          }}
-          onOpen={openRow}
-          sortBy={query.sortBy}
-          sortDirection={query.sortDirection}
-          onSort={onSort}
-          loading={listQuery.isLoading}
+        <ErrorState
+          description="Не удалось загрузить реестр."
+          onRetry={() => void listQuery.refetch()}
         />
-      ) : (
-        <RegistryCards rows={rows} onOpen={openRow} />
-      )}
-      <div className="pagination">
-        <p>
+      ) : null}
+      {!listQuery.isError && listQuery.isLoading ? <TableSkeleton /> : null}
+      {!listQuery.isError && !listQuery.isLoading && rows.length === 0 ? (
+        <EmptyState title="Нет строк" description="По текущим условиям нет доступных дефектов." />
+      ) : null}
+      {!listQuery.isError && !listQuery.isLoading && rows.length > 0 ? (
+        isMobile ? (
+          <RegistryCards rows={rows} onOpen={openRow} />
+        ) : (
+          <RegistryTable
+            rows={rows}
+            canViewBC={canViewProposalGroupBC(user.role)}
+            expandBC={expandBC}
+            onToggleBC={() => {
+              const next = !expandBC;
+              writeExpandBC(next);
+              setExpandBC(next);
+            }}
+            onOpen={openRow}
+            sortBy={query.sortBy}
+            sortDirection={query.sortDirection}
+            onSort={onSort}
+            loading={false}
+          />
+        )
+      ) : null}
+      <div className="flex flex-col gap-3 rounded-[10px] border bg-card px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-muted-foreground">
           {from}–{to} из {totalCount}
         </p>
-        <label>
-          Строк на странице
-          <select
-            value={pageSize}
-            onChange={(event) =>
-              replaceQuery({
-                ...query,
-                page: 1,
-                pageSize: Number(event.target.value) as (typeof REGISTRY_PAGE_SIZES)[number],
-              })
-            }
-          >
-            {REGISTRY_PAGE_SIZES.map((size) => (
-              <option key={size} value={size}>
-                {size}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="pagination-buttons">
-          <button
-            type="button"
-            className="ghost-button"
-            disabled={page <= 1}
-            onClick={() => replaceQuery({ ...query, page: page - 1 })}
-          >
-            Назад
-          </button>
-          <button
-            type="button"
-            className="ghost-button"
-            disabled={page >= (listQuery.data?.totalPages || 1)}
-            onClick={() => replaceQuery({ ...query, page: page + 1 })}
-          >
-            Вперёд
-          </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-2 text-sm">
+            Строк на странице
+            <Select
+              value={String(pageSize)}
+              onValueChange={(value) =>
+                replaceQuery({
+                  ...query,
+                  page: 1,
+                  pageSize: Number(value) as (typeof REGISTRY_PAGE_SIZES)[number],
+                })
+              }
+            >
+              <SelectTrigger aria-label="Строк на странице" className="w-[88px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {REGISTRY_PAGE_SIZES.map((size) => (
+                  <SelectItem key={size} value={String(size)}>
+                    {size}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
+          <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              disabled={page <= 1}
+              aria-label="Назад"
+              onClick={() => replaceQuery({ ...query, page: page - 1 })}
+            >
+              <ChevronLeft />
+            </Button>
+            <div className="hidden items-center gap-1 md:flex">
+              {visiblePages(page, totalPages).map((item) =>
+                item === '…' ? (
+                  <span key={`e-${item}`} className="px-1 text-muted-foreground">
+                    …
+                  </span>
+                ) : (
+                  <Button
+                    key={item}
+                    type="button"
+                    variant={item === page ? 'secondary' : 'ghost'}
+                    size="icon-sm"
+                    aria-current={item === page ? 'page' : undefined}
+                    onClick={() => replaceQuery({ ...query, page: item })}
+                  >
+                    {item}
+                  </Button>
+                ),
+              )}
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              disabled={page >= totalPages}
+              aria-label="Вперёд"
+              onClick={() => replaceQuery({ ...query, page: page + 1 })}
+            >
+              <ChevronRight />
+            </Button>
+          </div>
         </div>
       </div>
     </div>
   );
+}
+
+function visiblePages(page: number, totalPages: number): Array<number | '…'> {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, index) => index + 1);
+  }
+  const items = new Set(
+    [1, totalPages, page, page - 1, page + 1].filter((value) => value >= 1 && value <= totalPages),
+  );
+  const sorted = [...items].sort((a, b) => a - b);
+  const result: Array<number | '…'> = [];
+  for (const [index, value] of sorted.entries()) {
+    if (index > 0 && value - (sorted[index - 1] ?? 0) > 1) {
+      result.push('…');
+    }
+    result.push(value);
+  }
+  return result;
 }

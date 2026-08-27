@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { fetchCurrentUser } from '../../lib/server-auth';
 import { AppShell } from '../app-shell';
-import { ChangePasswordForm } from './change-password-form';
+import { ChangePasswordCard, ChangePasswordForm } from './change-password-form';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,11 +15,9 @@ export default async function ChangePasswordPage() {
   }
   return (
     <AppShell user={user}>
-      <section className="panel">
-        <h1>Смена временного пароля</h1>
-        <p className="lead">Перед работой в реестре задайте новый пароль по политике сложности.</p>
+      <ChangePasswordCard>
         <ChangePasswordForm csrfToken={user.csrfToken} />
-      </section>
+      </ChangePasswordCard>
     </AppShell>
   );
 }

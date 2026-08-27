@@ -18,7 +18,7 @@ const ACCOUNTS = {
 async function login(page: Page, email: string, password: string) {
   await page.goto('/login');
   await page.getByLabel('Электронная почта').fill(email);
-  await page.getByLabel('Пароль').fill(password);
+  await page.getByLabel('Пароль', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Войти' }).click();
 }
 
@@ -38,7 +38,9 @@ test.describe('authentication browser flows', () => {
     await expect(page.getByText(ACCOUNTS.admin.role)).toBeVisible();
     await page.getByRole('link', { name: 'Состояние системы' }).click();
     await expect(page).toHaveURL(/\/system-status$/);
-    await expect(page.getByText('Техническое состояние системы')).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Техническое состояние системы' }),
+    ).toBeVisible();
     const localStorageKeys = await page.evaluate(() => Object.keys(window.localStorage));
     const sessionStorageKeys = await page.evaluate(() => Object.keys(window.sessionStorage));
     expect(localStorageKeys.join(' ')).not.toMatch(/token|session|password/i);
@@ -61,13 +63,14 @@ test.describe('authentication browser flows', () => {
   test('wrong password shows the generic error', async ({ page }) => {
     await login(page, ACCOUNTS.admin.email, 'Wrong-Password-2026!');
     await expect(page.locator('.form-error')).toHaveText('Неверный логин или пароль');
-    await expect(page.getByLabel('Пароль')).toHaveValue('');
+    await expect(page.getByLabel('Пароль', { exact: true })).toHaveValue('');
     await expect(page.getByLabel('Электронная почта')).toHaveValue(ACCOUNTS.admin.email);
   });
 
   test('logout returns to login and blocks registry', async ({ page }) => {
     await login(page, ACCOUNTS.admin.email, DEMO_PASSWORD);
-    await page.getByRole('button', { name: 'Выйти' }).click();
+    await page.getByRole('button', { name: 'Меню пользователя' }).click();
+    await page.getByRole('menuitem', { name: 'Выйти' }).click();
     await expect(page).toHaveURL(/\/login$/);
     await page.goto('/registry');
     await expect(page).toHaveURL(/\/login$/);

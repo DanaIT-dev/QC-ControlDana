@@ -2,7 +2,11 @@
 
 Внутренний продукт Dana Holding. Модульный монолит: web, API, worker, PostgreSQL, Redis и S3-совместимое хранилище.
 
-Текущий этап — полный операционный контур: справочники, пользователи, создание и корректировка актов, назначения, сроки, статусы, предложения и история. Загрузка файлов, 1С, уведомления и PostgreSQL RLS не входят в эту версию.
+Текущий этап — полный операционный контур и единый UI на shadcn/ui: справочники, пользователи, создание и корректировка актов, назначения, сроки, статусы, предложения и история. Загрузка файлов, 1С, уведомления и PostgreSQL RLS не входят в эту версию.
+
+## UI
+
+Клиент `apps/web` использует Next.js App Router, Tailwind CSS v4, shadcn/ui (Radix, исходники в `apps/web/components/ui`), Lucide, TanStack Query и TanStack Table. Дизайн-токены и правила описаны в [UI design system](docs/design/UI_DESIGN_SYSTEM.md).
 
 ## Требования
 
@@ -35,20 +39,20 @@ pnpm dev
 
 ## Корневые команды
 
-| Команда                          | Назначение                                    |
-| -------------------------------- | --------------------------------------------- |
-| `pnpm dev`                       | Web, API и worker                             |
-| `pnpm build`                     | Production-сборка пакетов и приложений        |
-| `pnpm lint`                      | ESLint                                        |
-| `pnpm typecheck`                 | TypeScript                                    |
-| `pnpm test`                      | Unit-тесты                                    |
-| `pnpm test:integration`          | Integration-тесты только против `*_test` базы |
-| `pnpm test:e2e`                  | Playwright (Chromium): вход и реестр          |
-| `pnpm test:registry:performance` | 100k строк только в `*_test` базе             |
-| `pnpm format:check`              | Проверка Prettier                             |
-| `pnpm db:generate`               | Prisma Client                                 |
-| `pnpm db:migrate`                | `prisma migrate deploy`                       |
-| `pnpm db:seed`                   | Демонстрационные данные                       |
+| Команда                          | Назначение                                                   |
+| -------------------------------- | ------------------------------------------------------------ |
+| `pnpm dev`                       | Web, API и worker                                            |
+| `pnpm build`                     | Production-сборка пакетов и приложений                       |
+| `pnpm lint`                      | ESLint                                                       |
+| `pnpm typecheck`                 | TypeScript                                                   |
+| `pnpm test`                      | Unit-тесты                                                   |
+| `pnpm test:integration`          | Integration-тесты только против `*_test` базы                |
+| `pnpm test:e2e`                  | Playwright (Chromium): вход, реестр, операции, визуальный QA |
+| `pnpm test:registry:performance` | 100k строк только в `*_test` базе                            |
+| `pnpm format:check`              | Проверка Prettier                                            |
+| `pnpm db:generate`               | Prisma Client                                                |
+| `pnpm db:migrate`                | `prisma migrate deploy`                                      |
+| `pnpm db:seed`                   | Демонстрационные данные                                      |
 
 ## Переменные окружения
 
@@ -58,6 +62,7 @@ pnpm dev
 
 ## Документация
 
+- [UI-система](docs/design/UI_DESIGN_SYSTEM.md)
 - [Операционный контур](docs/requirements/OPERATIONS_CONTRACT.md)
 - [Матрица прав](docs/requirements/PERMISSIONS_MATRIX.md)
 - [Журнал аудита](docs/requirements/AUDIT_CONTRACT.md)

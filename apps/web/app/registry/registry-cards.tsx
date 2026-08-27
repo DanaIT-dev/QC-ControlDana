@@ -1,7 +1,11 @@
 'use client';
 
 import type { RegistryDefectRow } from '@sgr-registry/contracts';
+import { DeadlineBadge, deadlineToneClass, StatusBadge } from '@/components/status-badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import { formatCalendarDate } from '../../lib/registry-url';
+import { cn } from '@/lib/utils';
 
 export function RegistryCards({
   rows,
@@ -11,35 +15,38 @@ export function RegistryCards({
   onOpen: (row: RegistryDefectRow) => void;
 }) {
   return (
-    <ul className="registry-cards">
+    <ul className="registry-cards grid gap-3">
       {rows.map((row) => (
         <li key={row.rowId}>
-          <article className={`defect-card defect-card--${row.deadlineState.toLowerCase()}`}>
-            <p className="defect-card__kicker">
-              {row.formLabel} · {row.actNumber}
-            </p>
-            <h3>{row.objectName}</h3>
-            <p>{row.location}</p>
-            <p>{row.defectTypeName}</p>
-            <p>
-              <span
-                className={`status-pill status-pill--${row.defectStatus === 'COMPLETED' ? 'ok' : 'progress'}`}
-              >
-                {row.defectStatusLabel}
-              </span>
-            </p>
-            <p>
-              Эффективный срок: {formatCalendarDate(row.effectiveDeadline)}
-              {row.deadlineStateLabel ? ` · ${row.deadlineStateLabel}` : ''}
-            </p>
-            <p>
-              Инженеры: {row.responsibleEngineers.map((item) => item.fullName).join(', ') || '—'}
-            </p>
-            <p>Виновные: {row.liableOrganizations.map((item) => item.name).join(', ') || '—'}</p>
-            <button type="button" className="primary-button" onClick={() => onOpen(row)}>
-              Открыть
-            </button>
-          </article>
+          <Card
+            className={cn(
+              'defect-card gap-0 py-0 shadow-none',
+              deadlineToneClass(row.deadlineState),
+            )}
+          >
+            <CardContent className="grid gap-2 p-4">
+              <p className="text-[13px] text-muted-foreground">
+                {row.formLabel} · {row.actNumber}
+              </p>
+              <h3 className="text-base font-semibold">{row.objectName}</h3>
+              <p className="text-sm">{row.location}</p>
+              <p className="text-sm">{row.defectTypeName}</p>
+              <StatusBadge status={row.defectStatus} label={row.defectStatusLabel} />
+              <p className="text-sm">
+                Эффективный срок: {formatCalendarDate(row.effectiveDeadline)}
+              </p>
+              <DeadlineBadge state={row.deadlineState} label={row.deadlineStateLabel} />
+              <p className="text-sm text-muted-foreground">
+                Инженеры: {row.responsibleEngineers.map((item) => item.fullName).join(', ') || '—'}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Виновные: {row.liableOrganizations.map((item) => item.name).join(', ') || '—'}
+              </p>
+              <Button type="button" className="mt-1 min-h-11" onClick={() => onOpen(row)}>
+                Открыть
+              </Button>
+            </CardContent>
+          </Card>
         </li>
       ))}
     </ul>

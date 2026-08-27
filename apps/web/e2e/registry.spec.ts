@@ -12,7 +12,7 @@ const ACCOUNTS = {
 async function login(page: Page, email: string) {
   await page.goto('/login');
   await page.getByLabel('Электронная почта').fill(email);
-  await page.getByLabel('Пароль').fill(DEMO_PASSWORD);
+  await page.getByLabel('Пароль', { exact: true }).fill(DEMO_PASSWORD);
   await page.getByRole('button', { name: 'Войти' }).click();
   await expect(page).toHaveURL(/\/registry/);
 }
@@ -85,17 +85,16 @@ test.describe('role-aware registry', () => {
     await page.getByPlaceholder('Номер акта, объект, адрес, заказчик…').fill('Северный');
     await page.getByPlaceholder('Номер акта, объект, адрес, заказчик…').press('Enter');
     await expect(page).toHaveURL(/search=/);
-    await page
-      .locator('fieldset')
-      .filter({ has: page.getByText('Статус', { exact: true }) })
-      .getByRole('checkbox', { name: 'В работе' })
-      .click();
+    await page.getByRole('combobox', { name: 'Статус' }).first().click();
+    await page.getByRole('option', { name: 'В работе' }).click();
+    await page.keyboard.press('Escape');
     await expect(page).toHaveURL(/statuses=/);
     await page.getByRole('button', { name: 'Просрочено' }).click();
     await expect(page).toHaveURL(/deadlineState=/);
     await page.getByRole('button', { name: 'Номер акта' }).click();
     await expect(page).toHaveURL(/sortBy=actNumber/);
-    await page.getByLabel('Строк на странице').selectOption('25');
+    await page.getByLabel('Строк на странице').click();
+    await page.getByRole('option', { name: '25' }).click();
     await expect(page).toHaveURL(/pageSize=25/);
 
     const firstNumber = page.locator('.registry-table tbody tr').first();
@@ -115,7 +114,7 @@ test.describe('role-aware registry', () => {
     await page.getByPlaceholder('Номер акта, объект, адрес, заказчик…').fill('zzz-no-such-row');
     await page.getByPlaceholder('Номер акта, объект, адрес, заказчик…').press('Enter');
     await expect(page.getByRole('heading', { name: 'Нет строк' })).toBeVisible();
-    await page.getByRole('button', { name: 'Сбросить все фильтры' }).click();
+    await page.getByRole('button', { name: 'Сбросить' }).click();
 
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(page.locator('.defect-card').first()).toBeVisible();
@@ -127,6 +126,7 @@ test.describe('role-aware registry', () => {
     );
     expect(overflow).toBe(false);
 
+    await page.getByRole('button', { name: 'Открыть меню' }).click();
     await page.getByRole('button', { name: 'Выйти' }).click();
     await expect(page).toHaveURL(/\/login/);
     expect(errors.filter((message) => !message.includes('favicon'))).toEqual([]);

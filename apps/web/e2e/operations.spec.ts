@@ -5,9 +5,14 @@ const DEMO_PASSWORD = 'Dana-SGR-Demo-2026!';
 async function login(page: Page, email: string, password = DEMO_PASSWORD) {
   await page.goto('/login');
   await page.getByLabel('Электронная почта').fill(email);
-  await page.getByLabel('Пароль').fill(password);
+  await page.getByLabel('Пароль', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Войти' }).click();
   await expect(page).toHaveURL(/\/registry/);
+}
+
+async function chooseFirst(page: Page, label: string) {
+  await page.getByRole('combobox', { name: label }).first().click();
+  await page.getByRole('option').first().click();
 }
 
 test.describe('operational workflow', () => {
@@ -15,32 +20,38 @@ test.describe('operational workflow', () => {
     await login(page, 'alexey.viktorov@example.sgr.local');
     await page.getByRole('link', { name: 'Пользователи' }).click();
     await expect(page).toHaveURL(/\/users$/);
-    await page.getByRole('button', { name: 'Создать пользователя' }).click();
+    await page.getByRole('button', { name: 'Добавить пользователя' }).click();
     const stamp = Date.now();
     await page.getByLabel('ФИО').fill(`Е2Е Пользователь ${stamp}`);
     await page.getByLabel('Электронная почта').fill(`e2e.${stamp}@example.sgr.local`);
     await page.getByRole('button', { name: 'Создать', exact: true }).click();
     await expect(page.getByText('Временный пароль показывается один раз')).toBeVisible();
+    await page.getByRole('button', { name: 'Закрыть' }).click();
 
     await page.getByRole('link', { name: 'Справочники' }).click();
+    await page.getByRole('button', { name: 'Создать' }).click();
     await page.getByLabel('Название объекта').fill(`Е2Е объект ${stamp}`);
     await page.getByLabel('Адрес объекта').fill('Минск, тест');
     await page.getByRole('button', { name: 'Создать', exact: true }).click();
-    await expect(page.getByText(`Е2Е объект ${stamp}`)).toBeVisible();
+    await expect(page.getByRole('cell', { name: `Е2Е объект ${stamp}` })).toBeVisible();
 
     await page.getByRole('link', { name: 'Создать акт' }).click();
-    await expect(page.getByLabel('Объект').locator('option').nth(1)).toBeAttached();
-    await page.getByLabel('Объект').selectOption({ index: 1 });
-    await page.getByLabel('Заказчик').selectOption({ index: 1 });
+    await chooseFirst(page, 'Объект');
+    await chooseFirst(page, 'Заказчик');
     await page.getByLabel('Помещение').fill('Квартира 101');
     await page.getByLabel('Описание').fill('Течь стояка');
-    await page.getByLabel('Вид дефекта').selectOption({ index: 1 });
-    await page.getByLabel('Ответственные инженеры').selectOption({ index: 0 });
+    await chooseFirst(page, 'Вид дефекта');
+    await page.getByRole('combobox', { name: 'Ответственные инженеры' }).click();
+    await page.getByRole('option').first().click();
+    await page.keyboard.press('Escape');
     await page.getByRole('button', { name: 'Добавить дефект' }).click();
     await page.getByLabel('Помещение').nth(1).fill('Квартира 102');
     await page.getByLabel('Описание').nth(1).fill('Окна');
-    await page.getByLabel('Вид дефекта').nth(1).selectOption({ index: 1 });
-    await page.getByLabel('Ответственные инженеры').nth(1).selectOption({ index: 0 });
+    await page.getByRole('combobox', { name: 'Вид дефекта' }).nth(1).click();
+    await page.getByRole('option').first().click();
+    await page.getByRole('combobox', { name: 'Ответственные инженеры' }).nth(1).click();
+    await page.getByRole('option').first().click();
+    await page.keyboard.press('Escape');
     await page.getByRole('button', { name: 'Создать акт' }).click();
     await expect(page).toHaveURL(/\/acts\//);
     await expect(page.getByText('История изменений')).toBeVisible();

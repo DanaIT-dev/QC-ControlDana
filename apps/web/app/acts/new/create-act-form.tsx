@@ -3,6 +3,23 @@
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
+import { toast } from 'sonner';
+import { MultiSelect } from '@/components/multi-select';
+import { PageHeader } from '@/components/page-header';
+import { ErrorState } from '@/components/states';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import { ApiError, commandFetch } from '../../../lib/command-api';
 
 interface Lookups {
@@ -93,6 +110,7 @@ export function CreateActForm({ csrfToken }: { csrfToken: string }) {
           })),
         },
       });
+      toast.success('Акт создан');
       router.replace(`/acts/${created.id}`);
       router.refresh();
     } catch (caught) {
@@ -103,198 +121,197 @@ export function CreateActForm({ csrfToken }: { csrfToken: string }) {
   }
 
   const data = lookups.data;
-  return (
-    <section className="panel">
-      <h1>Создание акта</h1>
-      <div className="form-grid">
-        <div className="field">
-          <label htmlFor="form-code">Форма</label>
-          <select
-            id="form-code"
-            value={formCode}
-            onChange={(event) => setFormCode(event.target.value as 'S1' | 'S23')}
-          >
-            <option value="S1">С-1</option>
-            <option value="S23">С-23</option>
-          </select>
-        </div>
-        <div className="field">
-          <label htmlFor="object">Объект</label>
-          <select
-            id="object"
-            value={objectId}
-            onChange={(event) => setObjectId(event.target.value)}
-            required
-          >
-            <option value="">Выберите объект</option>
-            {(data?.propertyObjects ?? []).map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="field">
-          <label htmlFor="customer">Заказчик</label>
-          <select
-            id="customer"
-            value={customerOrganizationId}
-            onChange={(event) => setCustomerOrganizationId(event.target.value)}
-            required
-          >
-            <option value="">Выберите заказчика</option>
-            {(data?.customers ?? []).map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.officialName}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="field">
-          <label htmlFor="issued-on">Дата акта</label>
-          <input
-            id="issued-on"
-            type="date"
-            value={issuedOn}
-            onChange={(event) => setIssuedOn(event.target.value)}
-          />
-        </div>
-        <div className="field">
-          <label htmlFor="doc-ref">Документ</label>
-          <input
-            id="doc-ref"
-            value={signedDocumentRef}
-            onChange={(event) => setSignedDocumentRef(event.target.value)}
-          />
-        </div>
-      </div>
-      <h2>Дефекты</h2>
-      {defects.map((item, index) => (
-        <article className="defect-card" key={item.key}>
-          <p className="defect-card__kicker">Дефект {index + 1}</p>
-          <div className="form-grid">
-            <div className="field">
-              <label htmlFor={`loc-${item.key}`}>Помещение</label>
-              <input
-                id={`loc-${item.key}`}
-                value={item.location}
-                onChange={(event) => updateDefect(index, { location: event.target.value })}
-                required
-              />
-            </div>
-            <div className="field">
-              <label htmlFor={`type-${item.key}`}>Вид дефекта</label>
-              <select
-                id={`type-${item.key}`}
-                value={item.defectTypeId}
-                onChange={(event) => updateDefect(index, { defectTypeId: event.target.value })}
-              >
-                <option value="">Выберите вид</option>
-                {(data?.defectTypes ?? []).map((type) => (
-                  <option key={type.id} value={type.id}>
-                    {type.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="field">
-              <label htmlFor={`claim-${item.key}`}>Описание</label>
-              <textarea
-                id={`claim-${item.key}`}
-                value={item.claimDetails}
-                onChange={(event) => updateDefect(index, { claimDetails: event.target.value })}
-                required
-              />
-            </div>
-            <div className="field">
-              <label htmlFor={`eng-${item.key}`}>Ответственные инженеры</label>
-              <select
-                id={`eng-${item.key}`}
-                multiple
-                value={item.responsibleEngineerIds}
-                onChange={(event) =>
-                  updateDefect(index, {
-                    responsibleEngineerIds: [...event.target.selectedOptions].map(
-                      (option) => option.value,
-                    ),
-                  })
-                }
-              >
-                {(data?.responsibleEngineers ?? []).map((engineer) => (
-                  <option key={engineer.id} value={engineer.id}>
-                    {engineer.fullName}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="field">
-              <label htmlFor={`org-${item.key}`}>Виновные организации</label>
-              <select
-                id={`org-${item.key}`}
-                multiple
-                value={item.liableOrganizationIds}
-                onChange={(event) =>
-                  updateDefect(index, {
-                    liableOrganizationIds: [...event.target.selectedOptions].map(
-                      (option) => option.value,
-                    ),
-                  })
-                }
-              >
-                {(data?.liableOrganizations ?? []).map((org) => (
-                  <option key={org.id} value={org.id}>
-                    {org.officialName}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="field">
-              <label htmlFor={`plan-${item.key}`}>Плановый срок</label>
-              <input
-                id={`plan-${item.key}`}
-                type="date"
-                value={item.plannedDeadline}
-                onChange={(event) => updateDefect(index, { plannedDeadline: event.target.value })}
-              />
-            </div>
-          </div>
-          {defects.length > 1 ? (
-            <button
-              type="button"
-              className="ghost-button"
-              onClick={() => setDefects(defects.filter((_, i) => i !== index))}
-            >
-              Удалить карточку
-            </button>
-          ) : null}
-        </article>
-      ))}
-      <div className="toolbar">
-        <button
-          type="button"
-          className="ghost-button"
-          onClick={() => setDefects([...defects, emptyDefect()])}
-        >
-          Добавить дефект
-        </button>
-        <button
-          type="button"
-          className="primary-button"
-          onClick={() => void onCreate()}
-          disabled={pending}
-        >
-          {pending ? 'Создание…' : 'Создать акт'}
-        </button>
-      </div>
-      {error ? (
-        <p className="form-error" role="alert">
-          {error}
-        </p>
-      ) : null}
-    </section>
-  );
 
   function updateDefect(index: number, patch: Partial<DraftDefect>) {
     setDefects(defects.map((item, current) => (current === index ? { ...item, ...patch } : item)));
   }
+
+  return (
+    <div className="grid gap-4 pb-24">
+      <PageHeader title="Создание акта" description="Укажите данные акта и хотя бы один дефект." />
+      {lookups.isError ? (
+        <ErrorState
+          description="Не удалось загрузить справочники."
+          onRetry={() => void lookups.refetch()}
+        />
+      ) : null}
+      <Card className="shadow-none">
+        <CardHeader>
+          <CardTitle className="text-lg">Данные акта</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-1.5">
+            <Label htmlFor="form-code">Форма</Label>
+            <Select value={formCode} onValueChange={(value) => setFormCode(value as 'S1' | 'S23')}>
+              <SelectTrigger id="form-code" aria-label="Форма">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="S1">С-1</SelectItem>
+                <SelectItem value="S23">С-23</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="object">Объект</Label>
+            <Select value={objectId} onValueChange={setObjectId}>
+              <SelectTrigger id="object" aria-label="Объект">
+                <SelectValue placeholder="Выберите объект" />
+              </SelectTrigger>
+              <SelectContent>
+                {(data?.propertyObjects ?? []).map((item) => (
+                  <SelectItem key={item.id} value={item.id}>
+                    {item.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="customer">Заказчик</Label>
+            <Select value={customerOrganizationId} onValueChange={setCustomerOrganizationId}>
+              <SelectTrigger id="customer" aria-label="Заказчик">
+                <SelectValue placeholder="Выберите заказчика" />
+              </SelectTrigger>
+              <SelectContent>
+                {(data?.customers ?? []).map((item) => (
+                  <SelectItem key={item.id} value={item.id}>
+                    {item.officialName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="issued-on">Дата акта</Label>
+            <Input
+              id="issued-on"
+              type="date"
+              value={issuedOn}
+              onChange={(event) => setIssuedOn(event.target.value)}
+            />
+          </div>
+          <div className="grid gap-1.5 md:col-span-2">
+            <Label htmlFor="doc-ref">Документ</Label>
+            <Input
+              id="doc-ref"
+              value={signedDocumentRef}
+              onChange={(event) => setSignedDocumentRef(event.target.value)}
+            />
+          </div>
+        </CardContent>
+      </Card>
+      {defects.map((item, index) => (
+        <Collapsible key={item.key} defaultOpen className="md:block">
+          <Card className="defect-card shadow-none">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CollapsibleTrigger asChild>
+                <button type="button" className="text-left">
+                  <CardTitle className="text-base">Дефект {index + 1}</CardTitle>
+                </button>
+              </CollapsibleTrigger>
+              {defects.length > 1 ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => setDefects(defects.filter((_, i) => i !== index))}
+                >
+                  Удалить карточку
+                </Button>
+              ) : null}
+            </CardHeader>
+            <CollapsibleContent>
+              <CardContent className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-1.5">
+                  <Label htmlFor={`loc-${item.key}`}>Помещение</Label>
+                  <Input
+                    id={`loc-${item.key}`}
+                    value={item.location}
+                    onChange={(event) => updateDefect(index, { location: event.target.value })}
+                    required
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor={`type-${item.key}`}>Вид дефекта</Label>
+                  <Select
+                    value={item.defectTypeId}
+                    onValueChange={(value) => updateDefect(index, { defectTypeId: value })}
+                  >
+                    <SelectTrigger id={`type-${item.key}`} aria-label="Вид дефекта">
+                      <SelectValue placeholder="Выберите вид" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(data?.defectTypes ?? []).map((type) => (
+                        <SelectItem key={type.id} value={type.id}>
+                          {type.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-1.5 md:col-span-2">
+                  <Label htmlFor={`claim-${item.key}`}>Описание</Label>
+                  <Textarea
+                    id={`claim-${item.key}`}
+                    value={item.claimDetails}
+                    onChange={(event) => updateDefect(index, { claimDetails: event.target.value })}
+                    required
+                  />
+                </div>
+                <MultiSelect
+                  label="Ответственные инженеры"
+                  options={(data?.responsibleEngineers ?? []).map((engineer) => ({
+                    id: engineer.id,
+                    label: engineer.fullName,
+                  }))}
+                  values={item.responsibleEngineerIds}
+                  onChange={(responsibleEngineerIds) =>
+                    updateDefect(index, { responsibleEngineerIds })
+                  }
+                />
+                <MultiSelect
+                  label="Виновные организации"
+                  options={(data?.liableOrganizations ?? []).map((org) => ({
+                    id: org.id,
+                    label: org.officialName,
+                  }))}
+                  values={item.liableOrganizationIds}
+                  onChange={(liableOrganizationIds) =>
+                    updateDefect(index, { liableOrganizationIds })
+                  }
+                />
+                <div className="grid gap-1.5">
+                  <Label htmlFor={`plan-${item.key}`}>Плановый срок</Label>
+                  <Input
+                    id={`plan-${item.key}`}
+                    type="date"
+                    value={item.plannedDeadline}
+                    onChange={(event) =>
+                      updateDefect(index, { plannedDeadline: event.target.value })
+                    }
+                  />
+                </div>
+              </CardContent>
+            </CollapsibleContent>
+          </Card>
+        </Collapsible>
+      ))}
+      {error ? <ErrorState description={error} /> : null}
+      <div className="sticky bottom-0 z-10 flex flex-wrap gap-2 border-t bg-background/95 py-3 backdrop-blur">
+        <Button type="button" variant="outline" onClick={() => router.push('/registry')}>
+          Отменить
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => setDefects([...defects, emptyDefect()])}
+        >
+          Добавить дефект
+        </Button>
+        <Button type="button" onClick={() => void onCreate()} disabled={pending}>
+          {pending ? 'Создание…' : 'Создать акт'}
+        </Button>
+      </div>
+    </div>
+  );
 }

@@ -1,42 +1,29 @@
 'use client';
 
-import { CSRF_HEADER_NAME } from '@sgr-registry/domain';
-import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { DropdownMenuItem } from '@/components/ui/dropdown-menu';
+import { useLogout } from '@/lib/logout';
 
-export function LogoutButton({ csrfToken, className }: { csrfToken: string; className?: string }) {
-  const router = useRouter();
-  const [pending, setPending] = useState(false);
-
-  async function onLogout() {
-    if (pending) {
-      return;
-    }
-    setPending(true);
-    try {
-      await fetch('/api/auth/logout', {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          [CSRF_HEADER_NAME]: csrfToken,
-        },
-        body: '{}',
-      });
-    } finally {
-      router.replace('/login');
-      router.refresh();
-    }
-  }
-
+export function LogoutButton({ csrfToken }: { csrfToken: string }) {
+  const { logout, pending } = useLogout(csrfToken);
   return (
-    <button
-      type="button"
-      className={className ?? 'primary-button'}
-      onClick={onLogout}
+    <Button type="button" variant="outline" onClick={() => void logout()} disabled={pending}>
+      {pending ? 'Выход…' : 'Выйти'}
+    </Button>
+  );
+}
+
+export function LogoutMenuItem({ csrfToken }: { csrfToken: string }) {
+  const { logout, pending } = useLogout(csrfToken);
+  return (
+    <DropdownMenuItem
+      variant="destructive"
       disabled={pending}
+      onSelect={() => {
+        void logout();
+      }}
     >
       {pending ? 'Выход…' : 'Выйти'}
-    </button>
+    </DropdownMenuItem>
   );
 }

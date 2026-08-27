@@ -1,46 +1,45 @@
 'use client';
 
-import { hasCapability } from '@sgr-registry/domain';
 import type { UserRole } from '@sgr-registry/contracts';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { navItemsForRole } from '../lib/app-nav';
+import { cn } from '@/lib/utils';
 
-export function AppNav({ role }: { role: UserRole }) {
+export function AppNav({
+  role,
+  onNavigate,
+  className,
+}: {
+  role: UserRole;
+  onNavigate?: () => void;
+  className?: string;
+}) {
   const pathname = usePathname();
   return (
-    <nav className="site-nav" aria-label="Основная навигация">
-      <Link
-        className={navClass(
-          pathname === '/registry' || (pathname.startsWith('/acts/') && pathname !== '/acts/new'),
-        )}
-        href="/registry"
-      >
-        Реестр
-      </Link>
-      {hasCapability(role, 'CREATE_ACT') ? (
-        <Link className={navClass(pathname === '/acts/new')} href="/acts/new">
-          Создать акт
-        </Link>
-      ) : null}
-      {hasCapability(role, 'MANAGE_REFERENCE_DATA') ? (
-        <Link className={navClass(pathname.startsWith('/reference-data'))} href="/reference-data">
-          Справочники
-        </Link>
-      ) : null}
-      {hasCapability(role, 'MANAGE_USERS') ? (
-        <Link className={navClass(pathname.startsWith('/users'))} href="/users">
-          Пользователи
-        </Link>
-      ) : null}
-      {hasCapability(role, 'VIEW_SYSTEM_STATUS') ? (
-        <Link className={navClass(pathname === '/system-status')} href="/system-status">
-          Состояние системы
-        </Link>
-      ) : null}
+    <nav
+      className={cn('flex flex-col gap-1 md:flex-row md:items-center md:gap-1', className)}
+      aria-label="Основная навигация"
+    >
+      {navItemsForRole(role).map((item) => {
+        const active = item.match(pathname);
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            onClick={onNavigate}
+            className={cn(
+              'inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-medium transition-colors',
+              active
+                ? 'bg-accent text-accent-foreground'
+                : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+            )}
+            aria-current={active ? 'page' : undefined}
+          >
+            {item.label}
+          </Link>
+        );
+      })}
     </nav>
   );
-}
-
-function navClass(active: boolean): string {
-  return active ? 'site-nav__link site-nav__link--active' : 'site-nav__link';
 }

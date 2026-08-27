@@ -1,8 +1,13 @@
 'use client';
 
 import { AUTH_LOGIN_FAILED_MESSAGE, AUTH_RATE_LIMITED_MESSAGE } from '@sgr-registry/domain';
+import { EyeIcon, EyeOffIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { type FormEvent, useId, useState } from 'react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 export function LoginForm() {
   const router = useRouter();
@@ -51,10 +56,10 @@ export function LoginForm() {
   }
 
   return (
-    <form className="login-form" onSubmit={onSubmit} noValidate>
-      <div className="field">
-        <label htmlFor={emailId}>Электронная почта</label>
-        <input
+    <form className="grid gap-4" onSubmit={onSubmit} noValidate>
+      <div className="grid gap-1.5">
+        <Label htmlFor={emailId}>Электронная почта</Label>
+        <Input
           id={emailId}
           name="email"
           type="email"
@@ -66,10 +71,10 @@ export function LoginForm() {
           disabled={pending}
         />
       </div>
-      <div className="field">
-        <label htmlFor={passwordId}>Пароль</label>
-        <div className="password-row">
-          <input
+      <div className="grid gap-1.5">
+        <Label htmlFor={passwordId}>Пароль</Label>
+        <div className="flex gap-2">
+          <Input
             id={passwordId}
             name="password"
             type={showPassword ? 'text' : 'password'}
@@ -81,24 +86,25 @@ export function LoginForm() {
             aria-invalid={Boolean(error)}
             aria-describedby={error ? errorId : undefined}
           />
-          <button
+          <Button
             type="button"
-            className="ghost-button"
+            variant="outline"
             onClick={() => setShowPassword((value) => !value)}
             disabled={pending}
+            aria-label={showPassword ? 'Скрыть ввод' : 'Показать ввод'}
           >
-            {showPassword ? 'Скрыть' : 'Показать'}
-          </button>
+            {showPassword ? <EyeOffIcon /> : <EyeIcon />}
+          </Button>
         </div>
       </div>
       {error ? (
-        <p className="form-error" id={errorId} role="alert">
-          {error}
-        </p>
+        <Alert id={errorId} variant="destructive" className="form-error">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       ) : null}
-      <button type="submit" className="primary-button" disabled={pending}>
+      <Button type="submit" disabled={pending} className="w-full">
         {pending ? 'Вход…' : 'Войти'}
-      </button>
+      </Button>
     </form>
   );
 }
