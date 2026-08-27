@@ -4,8 +4,8 @@
 
 Монорепозиторий pnpm workspace:
 
-- `apps/web` — Next.js 16, React 19, App Router. Вход, реестр дефектов, карточка акта, system-status для ADMIN. Защита маршрутов через `proxy.ts` (не deprecated `middleware`).
-- `apps/api` — NestJS 11 на Fastify. HTTP API, сессии Redis, RBAC, реестр DefectItem, health/ready, requestId, безопасный обработчик ошибок.
+- `apps/web` — Next.js 16, React 19, App Router. Вход, смена пароля, реестр, создание и карточка акта, справочники, пользователи, system-status. Защита маршрутов через `proxy.ts` (не deprecated `middleware`).
+- `apps/api` — NestJS 11 на Fastify. HTTP API, сессии Redis, CSRF, capability matrix, команды актов/дефектов, справочники, пользователи, реестр, health/ready.
 - `apps/worker` — NestJS application context без HTTP. BullMQ-очередь `sgr-maintenance`.
 - `packages/domain` — чистые типы, инварианты и доменные функции. Без React и Prisma.
 - `packages/database` — Prisma schema, клиент, миграции, seed, генерация номера акта.
@@ -49,6 +49,12 @@ Docker Compose поднимает:
 Интеграция с 1С не входит в текущую версию: нет импорта, синхронизации и внешнего API 1С.
 
 Когда она появится, её следует подключать адаптером на границе `apps/api` или `apps/worker`, который отображает внешние документы на уже существующие доменные сущности (`Act`, `DefectItem`, `Organization`). Доменная модель не должна получать поля «1С» или знать протокол обмена. Конфликты и идемпотентность импорта остаются в антикоррупционном слое, а не в `packages/domain`.
+
+## Операционные команды
+
+Мутации идут через command-specific DTO со strict whitelist, не через generic PATCH. Цепочка: сессия → mustChangePassword → CSRF → capability → RegistryAccessScope → валидация → инвариант → optimistic concurrency → transaction + AuditLog → safe serializer.
+
+Идемпотентность создания акта хранится в `idempotency_records` с уникальным ключом `(actorUserId, command, idempotencyKey)`.
 
 ## Реестр DefectItem
 

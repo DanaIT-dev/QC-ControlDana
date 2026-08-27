@@ -449,6 +449,7 @@ describe('registry integration', () => {
         objectId,
         customerOrganizationId,
         status,
+        issuedOn: issuedAt,
         createdAt: issuedAt,
         cancelledAt: status === 'CANCELLED' ? issuedAt : null,
         cancellationReason: status === 'CANCELLED' ? 'test' : null,

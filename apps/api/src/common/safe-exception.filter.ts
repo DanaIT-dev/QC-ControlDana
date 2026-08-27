@@ -7,7 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { DomainError } from '@sgr-registry/domain';
+import { DomainError, CONFLICT_ERROR_CODES, VALIDATION_ERROR_CODES } from '@sgr-registry/domain';
 import { MissingConfigurationError } from '@sgr-registry/config';
 
 interface ErrorBody {
@@ -57,8 +57,16 @@ export class SafeExceptionFilter implements ExceptionFilter {
     }
 
     if (exception instanceof DomainError) {
+      const status =
+        exception.code === 'FORBIDDEN_FIELD'
+          ? HttpStatus.FORBIDDEN
+          : CONFLICT_ERROR_CODES.has(exception.code)
+            ? HttpStatus.CONFLICT
+            : VALIDATION_ERROR_CODES.has(exception.code)
+              ? HttpStatus.BAD_REQUEST
+              : HttpStatus.UNPROCESSABLE_ENTITY;
       return {
-        statusCode: HttpStatus.UNPROCESSABLE_ENTITY,
+        statusCode: status,
         error: exception.code,
         message: exception.message,
         requestId,

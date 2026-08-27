@@ -8,4 +8,5 @@ export interface AuthenticatedUser {
   sessionVersion: number;
   sessionHash: string;
   csrfToken: string;
+  mustChangePassword: boolean;
 }

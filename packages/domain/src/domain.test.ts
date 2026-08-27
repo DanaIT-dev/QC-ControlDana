@@ -234,20 +234,34 @@ describe('capabilities', () => {
   it('maps each role to the expected product capabilities', () => {
     expect(capabilitiesForRole('ADMIN')).toEqual([
       'MANAGE_USERS',
-      'MANAGE_DIRECTORIES',
+      'MANAGE_REFERENCE_DATA',
+      'VIEW_SYSTEM_STATUS',
       'VIEW_ALL_ACTS',
       'CREATE_ACT',
+      'EDIT_ACT_HEADER',
+      'ADD_DEFECT',
+      'EDIT_ASSIGNMENTS',
+      'EDIT_PLANNED_DEADLINE',
+      'EDIT_CLAIM_DEADLINE',
+      'EDIT_THIRD_PARTY_DEADLINE',
+      'COMPLETE_DEFECT',
+      'REOPEN_DEFECT',
+      'MANAGE_PROPOSALS',
+      'VIEW_PROPOSAL_A',
+      'VIEW_HISTORY',
       'CANCEL_ACT',
-      'VIEW_AUDIT',
     ]);
-    expect(capabilitiesForRole('SGR_MANAGER')).toContain('ASSIGN_ENGINEERS');
+    expect(capabilitiesForRole('SGR_MANAGER')).toContain('CREATE_ACT');
+    expect(capabilitiesForRole('SGR_MANAGER')).not.toContain('MANAGE_USERS');
     expect(capabilitiesForRole('RESPONSIBLE_ENGINEER')).toEqual([
       'VIEW_ASSIGNED_DEFECTS',
-      'EDIT_ASSIGNED_DEFECTS',
-      'COMPLETE_ASSIGNED_DEFECTS',
+      'EDIT_PLANNED_DEADLINE',
+      'COMPLETE_DEFECT',
       'VIEW_PROPOSAL_A',
+      'VIEW_HISTORY',
     ]);
-    expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).toContain('MANAGE_ORGANIZATIONS');
+    expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).toContain('EDIT_THIRD_PARTY_DEADLINE');
+    expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('MANAGE_REFERENCE_DATA');
     expect(hasCapability('RESPONSIBLE_ENGINEER', 'VIEW_ALL_ACTS')).toBe(false);
     expect(roleLabel('ADMIN')).toBe('Администратор');
   });

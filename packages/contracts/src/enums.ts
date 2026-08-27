@@ -28,6 +28,9 @@ export type OrganizationRole = (typeof ORGANIZATION_ROLES)[number];
 export const PROPOSAL_SLOTS = ['A', 'B', 'C'] as const;
 export type ProposalSlot = (typeof PROPOSAL_SLOTS)[number];
 
+export const PROPOSAL_STATUSES = ['ACTIVE', 'ARCHIVED'] as const;
+export type ProposalStatus = (typeof PROPOSAL_STATUSES)[number];
+
 export const DEADLINE_STATES = [
   'NO_DEADLINE',
   'NORMAL',

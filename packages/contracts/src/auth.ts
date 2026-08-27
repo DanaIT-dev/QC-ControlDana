@@ -15,7 +15,17 @@ export interface SafeUserProfile {
   role: UserRole;
   roleLabel: string;
   csrfToken: string;
+  mustChangePassword: boolean;
 }
+
+export const changePasswordRequestSchema = z
+  .object({
+    currentPassword: z.string().min(1).max(128),
+    newPassword: z.string().min(1).max(128),
+  })
+  .strict();
+
+export type ChangePasswordRequest = z.infer<typeof changePasswordRequestSchema>;
 
 export interface CapabilitiesResponse {
   role: UserRole;

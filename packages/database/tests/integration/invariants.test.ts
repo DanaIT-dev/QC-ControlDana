@@ -12,6 +12,7 @@ const prisma = createPrismaClient(databaseUrl);
 
 async function cleanup(): Promise<void> {
   await prisma.$executeRawUnsafe('TRUNCATE TABLE "audit_logs"');
+  await prisma.idempotencyRecord.deleteMany();
   await prisma.proposal.deleteMany();
   await prisma.defectItemLiableOrganization.deleteMany();
   await prisma.defectItemEngineer.deleteMany();
@@ -124,6 +125,7 @@ describe('database invariants', () => {
         objectId: object.id,
         customerOrganizationId: customer.id,
         status: 'IN_PROGRESS',
+        issuedOn: new Date('2026-08-26T12:00:00.000Z'),
       },
     });
 
@@ -206,6 +208,7 @@ describe('database invariants', () => {
         objectId: object.id,
         customerOrganizationId: customer.id,
         status: 'IN_PROGRESS',
+        issuedOn: new Date('2026-08-26T12:00:00.000Z'),
       },
     });
     const item = await prisma.defectItem.create({
@@ -302,6 +305,7 @@ describe('database invariants', () => {
         objectId: object.id,
         customerOrganizationId: customer.id,
         status: 'IN_PROGRESS',
+        issuedOn: new Date('2026-08-26T12:00:00.000Z'),
       },
     });
     await prisma.defectItem.create({

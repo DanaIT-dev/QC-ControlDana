@@ -2,20 +2,23 @@ import type { UserRole } from '@sgr-registry/contracts';
 
 export const CAPABILITIES = [
   'MANAGE_USERS',
-  'MANAGE_DIRECTORIES',
+  'MANAGE_REFERENCE_DATA',
+  'VIEW_SYSTEM_STATUS',
   'VIEW_ALL_ACTS',
-  'CREATE_ACT',
-  'CANCEL_ACT',
-  'VIEW_AUDIT',
-  'EDIT_ANY_ACT',
-  'ASSIGN_ENGINEERS',
-  'VIEW_COMMERCIAL_PROPOSALS',
-  'EDIT_COMMERCIAL_PROPOSALS',
   'VIEW_ASSIGNED_DEFECTS',
-  'EDIT_ASSIGNED_DEFECTS',
-  'COMPLETE_ASSIGNED_DEFECTS',
+  'CREATE_ACT',
+  'EDIT_ACT_HEADER',
+  'ADD_DEFECT',
+  'EDIT_ASSIGNMENTS',
+  'EDIT_PLANNED_DEADLINE',
+  'EDIT_CLAIM_DEADLINE',
+  'EDIT_THIRD_PARTY_DEADLINE',
+  'COMPLETE_DEFECT',
+  'REOPEN_DEFECT',
+  'MANAGE_PROPOSALS',
   'VIEW_PROPOSAL_A',
-  'MANAGE_ORGANIZATIONS',
+  'VIEW_HISTORY',
+  'CANCEL_ACT',
 ] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];
@@ -23,53 +26,75 @@ export type Capability = (typeof CAPABILITIES)[number];
 const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
   ADMIN: [
     'MANAGE_USERS',
-    'MANAGE_DIRECTORIES',
+    'MANAGE_REFERENCE_DATA',
+    'VIEW_SYSTEM_STATUS',
     'VIEW_ALL_ACTS',
     'CREATE_ACT',
+    'EDIT_ACT_HEADER',
+    'ADD_DEFECT',
+    'EDIT_ASSIGNMENTS',
+    'EDIT_PLANNED_DEADLINE',
+    'EDIT_CLAIM_DEADLINE',
+    'EDIT_THIRD_PARTY_DEADLINE',
+    'COMPLETE_DEFECT',
+    'REOPEN_DEFECT',
+    'MANAGE_PROPOSALS',
+    'VIEW_PROPOSAL_A',
+    'VIEW_HISTORY',
     'CANCEL_ACT',
-    'VIEW_AUDIT',
   ],
   SGR_MANAGER: [
+    'MANAGE_REFERENCE_DATA',
     'VIEW_ALL_ACTS',
     'CREATE_ACT',
-    'EDIT_ANY_ACT',
-    'ASSIGN_ENGINEERS',
-    'CANCEL_ACT',
-    'VIEW_COMMERCIAL_PROPOSALS',
-    'EDIT_COMMERCIAL_PROPOSALS',
-    'VIEW_AUDIT',
-  ],
-  RESPONSIBLE_ENGINEER: [
-    'VIEW_ASSIGNED_DEFECTS',
-    'EDIT_ASSIGNED_DEFECTS',
-    'COMPLETE_ASSIGNED_DEFECTS',
+    'EDIT_ACT_HEADER',
+    'ADD_DEFECT',
+    'EDIT_ASSIGNMENTS',
+    'EDIT_PLANNED_DEADLINE',
+    'EDIT_CLAIM_DEADLINE',
+    'EDIT_THIRD_PARTY_DEADLINE',
+    'COMPLETE_DEFECT',
+    'REOPEN_DEFECT',
+    'MANAGE_PROPOSALS',
     'VIEW_PROPOSAL_A',
+    'VIEW_HISTORY',
+    'CANCEL_ACT',
   ],
   CONTRACTOR_ENGINEER: [
     'VIEW_ALL_ACTS',
-    'MANAGE_ORGANIZATIONS',
-    'VIEW_COMMERCIAL_PROPOSALS',
-    'EDIT_COMMERCIAL_PROPOSALS',
-    'VIEW_AUDIT',
+    'EDIT_THIRD_PARTY_DEADLINE',
+    'MANAGE_PROPOSALS',
+    'VIEW_PROPOSAL_A',
+    'VIEW_HISTORY',
+  ],
+  RESPONSIBLE_ENGINEER: [
+    'VIEW_ASSIGNED_DEFECTS',
+    'EDIT_PLANNED_DEADLINE',
+    'COMPLETE_DEFECT',
+    'VIEW_PROPOSAL_A',
+    'VIEW_HISTORY',
   ],
 };
 
 export const CAPABILITY_LABELS: Record<Capability, string> = {
   MANAGE_USERS: 'Управление пользователями',
-  MANAGE_DIRECTORIES: 'Управление справочниками',
+  MANAGE_REFERENCE_DATA: 'Управление справочниками',
+  VIEW_SYSTEM_STATUS: 'Состояние системы',
   VIEW_ALL_ACTS: 'Просмотр всех актов',
-  CREATE_ACT: 'Создание актов',
-  CANCEL_ACT: 'Аннулирование актов',
-  VIEW_AUDIT: 'Просмотр журнала аудита',
-  EDIT_ANY_ACT: 'Редактирование любых актов',
-  ASSIGN_ENGINEERS: 'Назначение инженеров',
-  VIEW_COMMERCIAL_PROPOSALS: 'Просмотр коммерческих предложений',
-  EDIT_COMMERCIAL_PROPOSALS: 'Редактирование коммерческих предложений',
   VIEW_ASSIGNED_DEFECTS: 'Просмотр назначенных дефектов',
-  EDIT_ASSIGNED_DEFECTS: 'Редактирование назначенных дефектов',
-  COMPLETE_ASSIGNED_DEFECTS: 'Завершение назначенных дефектов',
+  CREATE_ACT: 'Создание актов',
+  EDIT_ACT_HEADER: 'Изменение шапки акта',
+  ADD_DEFECT: 'Добавление дефектов',
+  EDIT_ASSIGNMENTS: 'Назначение инженеров и организаций',
+  EDIT_PLANNED_DEADLINE: 'Изменение планового срока',
+  EDIT_CLAIM_DEADLINE: 'Изменение срока претензии',
+  EDIT_THIRD_PARTY_DEADLINE: 'Изменение срока третьей стороны',
+  COMPLETE_DEFECT: 'Завершение дефекта',
+  REOPEN_DEFECT: 'Возврат дефекта в работу',
+  MANAGE_PROPOSALS: 'Управление предложениями',
   VIEW_PROPOSAL_A: 'Просмотр предложения A',
-  MANAGE_ORGANIZATIONS: 'Управление организациями',
+  VIEW_HISTORY: 'Просмотр истории изменений',
+  CANCEL_ACT: 'Аннулирование актов',
 };
 
 export function capabilitiesForRole(role: UserRole): Capability[] {
@@ -78,4 +103,16 @@ export function capabilitiesForRole(role: UserRole): Capability[] {
 
 export function hasCapability(role: UserRole, capability: Capability): boolean {
   return ROLE_CAPABILITIES[role].includes(capability);
+}
+
+export function canManageUsers(role: UserRole): boolean {
+  return hasCapability(role, 'MANAGE_USERS');
+}
+
+export function canManageReferenceData(role: UserRole): boolean {
+  return hasCapability(role, 'MANAGE_REFERENCE_DATA');
+}
+
+export function canCreateAct(role: UserRole): boolean {
+  return hasCapability(role, 'CREATE_ACT');
 }

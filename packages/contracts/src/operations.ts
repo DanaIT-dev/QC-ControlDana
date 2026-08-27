@@ -1,0 +1,197 @@
+import { z } from 'zod';
+import { ORGANIZATION_ROLES, USER_ROLES, USER_STATUSES } from './enums';
+
+const uuid = z.uuid();
+const calendarDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const decimalAmount = z.string().regex(/^\d+(\.\d{1,2})?$/);
+
+export const expectedVersionSchema = z.number().int().positive();
+
+export const createUserRequestSchema = z
+  .object({
+    fullName: z.string(),
+    email: z.string(),
+    role: z.enum(USER_ROLES),
+  })
+  .strict();
+
+export const patchUserRequestSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    fullName: z.string().optional(),
+    role: z.enum(USER_ROLES).optional(),
+  })
+  .strict();
+
+export const versionedReasonSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    reason: z.string().optional(),
+  })
+  .strict();
+
+export const usersListQuerySchema = z
+  .object({
+    search: z.string().optional(),
+    role: z.enum(USER_ROLES).optional(),
+    status: z.enum(USER_STATUSES).optional(),
+    page: z.coerce.number().int().positive().optional(),
+    pageSize: z.coerce.number().int().positive().max(100).optional(),
+  })
+  .strict();
+
+export const referenceListQuerySchema = z
+  .object({
+    search: z.string().optional(),
+    status: z.enum(['ACTIVE', 'ARCHIVED', 'ALL']).optional(),
+    page: z.coerce.number().int().positive().optional(),
+    pageSize: z.coerce.number().int().positive().max(100).optional(),
+    sortBy: z.string().optional(),
+    sortDirection: z.enum(['asc', 'desc']).optional(),
+  })
+  .strict();
+
+export const propertyObjectWriteSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema.optional(),
+    name: z.string(),
+    address: z.string(),
+    commissionedAt: z.union([calendarDate, z.null()]).optional(),
+    warrantyEndsAt: z.union([calendarDate, z.null()]).optional(),
+  })
+  .strict();
+
+export const organizationWriteSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema.optional(),
+    officialName: z.string(),
+    unp: z.union([z.string(), z.null()]).optional(),
+    postalAddress: z.string(),
+    email: z.string(),
+    phone: z.string(),
+    contactPerson: z.string(),
+    roles: z.array(z.enum(ORGANIZATION_ROLES)).optional(),
+  })
+  .strict();
+
+export const codedReferenceWriteSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema.optional(),
+    code: z.string(),
+    name: z.string(),
+    sortOrder: z.number().int().optional(),
+  })
+  .strict();
+
+export const createActDefectItemSchema = z
+  .object({
+    location: z.string(),
+    defectTypeId: uuid,
+    claimDetails: z.string(),
+    notes: z.union([z.string(), z.null()]).optional(),
+    responsibleEngineerIds: z.array(uuid),
+    liableOrganizationIds: z.array(uuid),
+    plannedDeadline: z.union([calendarDate, z.null()]).optional(),
+    claimDeadline: z.union([calendarDate, z.null()]).optional(),
+    thirdPartyDeadline: z.union([calendarDate, z.null()]).optional(),
+  })
+  .strict();
+
+export const createActRequestSchema = z
+  .object({
+    formCode: z.enum(['S1', 'S23']),
+    objectId: uuid,
+    customerOrganizationId: uuid,
+    issuedOn: calendarDate,
+    signedDocumentRef: z.union([z.string(), z.null()]).optional(),
+    defectItems: z.array(createActDefectItemSchema).min(1),
+  })
+  .strict();
+
+export const patchActHeaderRequestSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    objectId: uuid.optional(),
+    customerOrganizationId: uuid.optional(),
+    issuedOn: calendarDate.optional(),
+    signedDocumentRef: z.union([z.string(), z.null()]).optional(),
+  })
+  .strict();
+
+export const addDefectRequestSchema = createActDefectItemSchema.extend({
+  expectedActVersion: expectedVersionSchema,
+});
+
+export const replaceAssignmentsRequestSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    responsibleEngineerIds: z.array(uuid),
+    liableOrganizationIds: z.array(uuid),
+    confirmRemoveLastEngineer: z.boolean().optional(),
+  })
+  .strict();
+
+export const patchDeadlinesRequestSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    plannedDeadline: z.union([calendarDate, z.null()]).optional(),
+    claimDeadline: z.union([calendarDate, z.null()]).optional(),
+    thirdPartyDeadline: z.union([calendarDate, z.null()]).optional(),
+    reason: z.string().optional(),
+    confirmCompletedEdit: z.boolean().optional(),
+  })
+  .strict();
+
+export const completeDefectRequestSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    readyAt: calendarDate.optional(),
+    comment: z.string().optional(),
+  })
+  .strict();
+
+export const reopenDefectRequestSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    reason: z.string(),
+  })
+  .strict();
+
+export const upsertProposalRequestSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema.optional(),
+    amount: decimalAmount,
+    alternativeContractorOrganizationId: uuid,
+  })
+  .strict();
+
+export const archiveProposalRequestSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    reason: z.string(),
+  })
+  .strict();
+
+export const restoreProposalRequestSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+  })
+  .strict();
+
+export const historyQuerySchema = z
+  .object({
+    cursor: z.string().optional(),
+    limit: z.coerce.number().int().positive().max(100).optional(),
+  })
+  .strict();
+
+export type CreateUserRequest = z.infer<typeof createUserRequestSchema>;
+export type PatchUserRequest = z.infer<typeof patchUserRequestSchema>;
+export type CreateActRequest = z.infer<typeof createActRequestSchema>;
+export type PatchActHeaderRequest = z.infer<typeof patchActHeaderRequestSchema>;
+export type AddDefectRequest = z.infer<typeof addDefectRequestSchema>;
+export type ReplaceAssignmentsRequest = z.infer<typeof replaceAssignmentsRequestSchema>;
+export type PatchDeadlinesRequest = z.infer<typeof patchDeadlinesRequestSchema>;
+export type CompleteDefectRequest = z.infer<typeof completeDefectRequestSchema>;
+export type ReopenDefectRequest = z.infer<typeof reopenDefectRequestSchema>;
+export type UpsertProposalRequest = z.infer<typeof upsertProposalRequestSchema>;

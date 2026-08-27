@@ -7,6 +7,7 @@ import { CsrfGuard } from './csrf.guard';
 import { Argon2PasswordHasher } from './password-hasher';
 import { RedisSessionStore } from './redis-session.store';
 import { RolesGuard } from './roles.guard';
+import { CapabilityGuard } from '../common/capability.guard';
 
 @Module({
   controllers: [AuthController],
@@ -18,7 +19,17 @@ import { RolesGuard } from './roles.guard';
     RolesGuard,
     CsrfGuard,
     BrowserOriginGuard,
+    CapabilityGuard,
   ],
-  exports: [AuthService, AuthenticationGuard, RolesGuard, CsrfGuard, RedisSessionStore],
+  exports: [
+    AuthService,
+    AuthenticationGuard,
+    RolesGuard,
+    CsrfGuard,
+    BrowserOriginGuard,
+    RedisSessionStore,
+    Argon2PasswordHasher,
+    CapabilityGuard,
+  ],
 })
 export class AuthModule {}

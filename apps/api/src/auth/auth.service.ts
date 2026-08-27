@@ -7,7 +7,11 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { loadConfig } from '@sgr-registry/config';
-import { loginRequestSchema, type SafeUserProfile } from '@sgr-registry/contracts';
+import {
+  changePasswordRequestSchema,
+  loginRequestSchema,
+  type SafeUserProfile,
+} from '@sgr-registry/contracts';
 import {
   AUTH_LOGIN_FAILED_MESSAGE,
   AUTH_RATE_LIMITED_MESSAGE,
@@ -17,6 +21,7 @@ import {
   normalizeEmail,
   roleLabel,
   type AuthAuditAction,
+  assertPasswordPolicy,
 } from '@sgr-registry/domain';
 import type { FastifyRequest } from 'fastify';
 import type { AuthenticatedUser } from './authenticated-user';
@@ -27,6 +32,7 @@ import { RedisUnavailableError } from './redis.constants';
 import { clientIp } from './request-meta';
 import { RedisSessionStore } from './redis-session.store';
 import type { StoredSession } from './session-store';
+import { toJsonValue } from '../common/audit-writer';
 
 const DUMMY_PASSWORD_MATERIAL = 'sgr-dummy-verify-material-not-a-user-password';
 
@@ -241,6 +247,7 @@ export class AuthService {
       sessionVersion: user.sessionVersion,
       sessionHash,
       csrfToken: stored.csrfToken,
+      mustChangePassword: user.mustChangePassword,
     };
   }
 
@@ -258,6 +265,74 @@ export class AuthService {
         capabilities.map((capability) => [capability, CAPABILITY_LABELS[capability]]),
       ),
     };
+  }
+
+  async changePassword(
+    user: AuthenticatedUser,
+    body: unknown,
+    request: FastifyRequest,
+  ): Promise<{ profile: SafeUserProfile; sessionId: string }> {
+    const parsed = changePasswordRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException('Некорректные данные');
+    }
+    const stored = await this.prisma.client.user.findUnique({ where: { id: user.id } });
+    if (!stored?.passwordHash) {
+      throw new UnauthorizedException('Требуется авторизация');
+    }
+    const matches = await this.hasher.verify(stored.passwordHash, parsed.data.currentPassword);
+    if (!matches) {
+      throw new BadRequestException('Неверный текущий пароль');
+    }
+    assertPasswordPolicy(parsed.data.newPassword);
+    const passwordHash = await this.hasher.hash(parsed.data.newPassword);
+    const updated = await this.prisma.client.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash,
+        mustChangePassword: false,
+        passwordChangedAt: new Date(),
+        sessionVersion: { increment: 1 },
+        version: { increment: 1 },
+      },
+    });
+    try {
+      await this.sessions.deleteAllForUser(user.id);
+    } catch (error) {
+      throw unavailableOrRethrow(error);
+    }
+    const sessionId = generateOpaqueToken(32);
+    const sessionHash = hashSessionId(sessionId);
+    const csrfToken = generateOpaqueToken(32);
+    const now = new Date();
+    const config = loadConfig();
+    const ttlSeconds = config.SESSION_TTL_SECONDS;
+    try {
+      await this.sessions.save(
+        sessionHash,
+        user.id,
+        {
+          userId: user.id,
+          sessionVersion: updated.sessionVersion,
+          csrfToken,
+          createdAt: now.toISOString(),
+          expiresAt: new Date(now.getTime() + ttlSeconds * 1000).toISOString(),
+        },
+        ttlSeconds,
+      );
+    } catch (error) {
+      throw unavailableOrRethrow(error);
+    }
+    await this.writeAudit({
+      actorUserId: user.id,
+      action: 'USER_PASSWORD_CHANGED',
+      entityType: 'USER',
+      entityId: user.id,
+      ipAddress: clientIp(request, config.TRUST_PROXY),
+      requestId: requestIdOf(request),
+      newValue: { mustChangePassword: false },
+    });
+    return { sessionId, profile: toSafeProfile(updated, csrfToken) };
   }
 
   async logout(user: AuthenticatedUser, request: FastifyRequest): Promise<void> {
@@ -349,7 +424,7 @@ export class AuthService {
     entityId: string;
     ipAddress: string | null;
     requestId: string | null;
-    newValue?: { email?: string };
+    newValue?: Record<string, unknown>;
   }): Promise<void> {
     await this.prisma.client.auditLog.create({
       data: {
@@ -357,7 +432,7 @@ export class AuthService {
         action: input.action,
         entityType: input.entityType,
         entityId: input.entityId,
-        newValue: input.newValue ?? undefined,
+        newValue: input.newValue ? toJsonValue(input.newValue) : undefined,
         ipAddress: input.ipAddress,
         requestId: input.requestId,
         occurredAt: new Date(),
@@ -367,7 +442,13 @@ export class AuthService {
 }
 
 export function toSafeProfile(
-  user: { id: string; fullName: string; email: string; role: SafeUserProfile['role'] },
+  user: {
+    id: string;
+    fullName: string;
+    email: string;
+    role: SafeUserProfile['role'];
+    mustChangePassword?: boolean;
+  },
   csrfToken: string,
 ): SafeUserProfile {
   return {
@@ -377,6 +458,7 @@ export function toSafeProfile(
     role: user.role,
     roleLabel: roleLabel(user.role),
     csrfToken,
+    mustChangePassword: Boolean(user.mustChangePassword),
   };
 }
 

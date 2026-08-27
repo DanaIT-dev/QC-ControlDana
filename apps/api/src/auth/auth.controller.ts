@@ -38,6 +38,24 @@ export class AuthController {
     return this.authService.capabilities(user);
   }
 
+  @Post('change-password')
+  @HttpCode(200)
+  @UseGuards(BrowserOriginGuard, AuthenticationGuard, CsrfGuard)
+  async changePassword(
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: FastifyRequest,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ): Promise<ReturnType<typeof toSafeProfile>> {
+    const { profile, sessionId } = await this.authService.changePassword(
+      user,
+      request.body,
+      request,
+    );
+    const config = loadConfig();
+    setSessionCookie(reply, sessionId, config.NODE_ENV === 'production');
+    return profile;
+  }
+
   @Post('logout')
   @HttpCode(200)
   @UseGuards(BrowserOriginGuard, AuthenticationGuard, CsrfGuard)

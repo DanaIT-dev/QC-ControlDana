@@ -135,6 +135,10 @@ export function toActHeader(act: {
   formCode: ActFormCode;
   officialNumber: string;
   status: ActStatus;
+  version?: number;
+  objectId?: string;
+  customerOrganizationId?: string;
+  issuedOn?: Date | null;
   createdAt: Date;
   cancelledAt: Date | null;
   cancellationReason: string | null;
@@ -154,11 +158,15 @@ export function toActHeader(act: {
     officialNumber: act.officialNumber,
     status: act.status,
     statusLabel: actStatusLabel(act.status),
+    version: act.version ?? 1,
+    objectId: act.objectId ?? '',
     objectName: act.propertyObject.name,
     objectAddress: act.propertyObject.address,
     commissionedAt: calendarField(act.propertyObject.commissionedAt),
     warrantyEndsAt: calendarField(act.propertyObject.warrantyEndsAt),
+    customerOrganizationId: act.customerOrganizationId ?? '',
     customerName: act.customer.officialName,
+    issuedOn: act.issuedOn ? calendarField(act.issuedOn) : null,
     signedDocumentRef: act.signedDocumentRef,
     createdAt: act.createdAt.toISOString(),
     cancelledAt: timestampField(act.cancelledAt),

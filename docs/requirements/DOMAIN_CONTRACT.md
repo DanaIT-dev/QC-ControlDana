@@ -17,6 +17,7 @@
 - `objectId`
 - `customerOrganizationId`
 - `signedDocumentRef` — ссылка или идентификатор подписанного документа, пока nullable
+- `issuedOn` — календарная дата акта (date-only, Europe/Minsk, хранение timestamptz)
 - `status` — `IN_PROGRESS`, `COMPLETED` или `CANCELLED`
 - `version` — optimistic concurrency
 - `createdAt`, `updatedAt` — серверные метки времени (`timestamptz`)
@@ -80,7 +81,8 @@
 
 - `amount` — сумма предложения, не фактические затраты;
 - валюта по умолчанию `BYN`;
-- уникальность `(defectItemId, slot)`.
+- уникальность активных предложений `(defectItemId, slot)` при `status = ACTIVE`;
+- архив/восстановление без hard delete.
 
 На этом этапе предложение не является подтверждённым расходом.
 
@@ -111,13 +113,16 @@
 
 - Календарный год номера акта берётся из серверного UTC-времени создания.
 - «Активный» DefectItem на этом этапе — любая строка, не связанная с аннулированным актом; отдельной отмены строки нет.
-- Optimistic concurrency хранится в `version`, но конфликтные сценарии UI появятся позже.
+- Optimistic concurrency хранится в `version` и проверяется через `expectedVersion` (`409 STALE_WRITE`).
+- Пользовательские CRUD-интерфейсы актов, справочников и пользователей реализованы на этапе 4. См. [OPERATIONS_CONTRACT.md](./OPERATIONS_CONTRACT.md).
 - Демонстрационные персональные данные вымышлены.
 
 ## Отложено на следующие этапы
 
-- пользовательские CRUD-интерфейсы создания и редактирования актов;
 - загрузка документов в S3/MinIO;
 - интеграция с 1С;
+- уведомления;
+- фактические расходы и взыскания;
+- электронная подпись;
 - production deployment;
 - PostgreSQL RLS (сейчас используется прикладной access scope в запросах).

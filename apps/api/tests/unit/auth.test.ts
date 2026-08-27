@@ -7,6 +7,7 @@ import { AuthenticationGuard } from '../../src/auth/authentication.guard';
 import { AuthService } from '../../src/auth/auth.service';
 import {
   generateOpaqueToken,
+  generateTemporaryPassword,
   hashArgon2id,
   hashSessionId,
   safeEqual,
@@ -152,6 +153,7 @@ describe('CsrfGuard', () => {
       sessionVersion: 1,
       sessionHash: 'abc',
       csrfToken: 'csrf-correct',
+      mustChangePassword: false,
     } satisfies AuthenticatedUser;
     expect(
       guard.canActivate(httpContext({ user, headers: { 'x-csrf-token': 'csrf-correct' } })),
@@ -234,9 +236,20 @@ describe('AuthService login secrets and dummy verify', () => {
 describe('capabilities contract', () => {
   it('keeps role mappings aligned with the domain contract', () => {
     expect(capabilitiesForRole('ADMIN')).toContain('MANAGE_USERS');
-    expect(capabilitiesForRole('SGR_MANAGER')).toContain('ASSIGN_ENGINEERS');
+    expect(capabilitiesForRole('SGR_MANAGER')).toContain('CREATE_ACT');
     expect(capabilitiesForRole('RESPONSIBLE_ENGINEER')).not.toContain('VIEW_ALL_ACTS');
-    expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).toContain('MANAGE_ORGANIZATIONS');
+    expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).toContain('EDIT_THIRD_PARTY_DEADLINE');
+  });
+});
+
+describe('temporary password generation', () => {
+  it('produces a password that satisfies the policy', () => {
+    const password = generateTemporaryPassword();
+    expect(password.length).toBeGreaterThanOrEqual(12);
+    expect(/[A-Z]/.test(password)).toBe(true);
+    expect(/[a-z]/.test(password)).toBe(true);
+    expect(/\d/.test(password)).toBe(true);
+    expect(/[^A-Za-z0-9]/.test(password)).toBe(true);
   });
 });
 

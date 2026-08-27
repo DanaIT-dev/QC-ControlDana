@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
 import { SESSION_COOKIE_NAME } from '@sgr-registry/domain';
 import type { CapabilitiesResponse, SafeUserProfile } from '@sgr-registry/contracts';
 
@@ -33,6 +34,17 @@ async function fetchApi<T>(path: string): Promise<{ status: number; data: T | nu
 export async function fetchCurrentUser(): Promise<SafeUserProfile | null> {
   const result = await fetchApi<SafeUserProfile>('/api/auth/me');
   return result.data;
+}
+
+export async function requireAppUser(): Promise<SafeUserProfile> {
+  const user = await fetchCurrentUser();
+  if (!user) {
+    redirect('/login');
+  }
+  if (user.mustChangePassword) {
+    redirect('/change-password');
+  }
+  return user;
 }
 
 export async function fetchCapabilities(): Promise<CapabilitiesResponse | null> {

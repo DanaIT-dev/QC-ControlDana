@@ -59,7 +59,7 @@ export class RegistryService {
         ...registryListSelect,
         proposals: {
           ...registryListSelect.proposals,
-          where: { slot: { in: visibleProposalSlots(user.role) } },
+          where: { slot: { in: visibleProposalSlots(user.role) }, status: 'ACTIVE' },
         },
       },
       orderBy: registryOrderBy(query.sortBy, query.sortDirection),
@@ -99,7 +99,7 @@ export class RegistryService {
         canViewProposalASum(user.role)
           ? this.prisma.client.proposal.aggregate({
               _sum: { amount: true },
-              where: { slot: 'A', defectItem: where },
+              where: { slot: 'A', status: 'ACTIVE', defectItem: where },
             })
           : Promise.resolve(null),
       ]);
@@ -189,6 +189,10 @@ export class RegistryService {
         formCode: true,
         officialNumber: true,
         status: true,
+        version: true,
+        objectId: true,
+        customerOrganizationId: true,
+        issuedOn: true,
         createdAt: true,
         cancelledAt: true,
         cancellationReason: true,
@@ -209,12 +213,14 @@ export class RegistryService {
             id: true,
             location: true,
             status: true,
+            version: true,
+            claimDetails: true,
             plannedDeadline: true,
             claimDeadline: true,
             readyAt: true,
             thirdPartyDeadline: true,
             notes: true,
-            defectType: { select: { name: true } },
+            defectType: { select: { id: true, name: true } },
             responsibleEngineers: {
               select: { user: { select: { id: true, fullName: true } } },
               orderBy: { user: { fullName: 'asc' } },
@@ -224,11 +230,14 @@ export class RegistryService {
               orderBy: { organization: { officialName: 'asc' } },
             },
             proposals: {
-              where: { slot: { in: visibleProposalSlots(user.role) } },
+              where: { slot: { in: visibleProposalSlots(user.role) }, status: 'ACTIVE' },
               select: {
                 slot: true,
                 amount: true,
                 currency: true,
+                version: true,
+                status: true,
+                alternativeContractorOrganizationId: true,
                 alternativeContractor: { select: { officialName: true } },
               },
             },
@@ -246,6 +255,9 @@ export class RegistryService {
           amount: proposal.amount,
           currency: proposal.currency,
           contractorName: proposal.alternativeContractor.officialName,
+          organizationId: proposal.alternativeContractorOrganizationId,
+          version: proposal.version,
+          status: proposal.status,
         })),
         user.role,
       );
@@ -260,9 +272,12 @@ export class RegistryService {
       return {
         id: item.id,
         location: item.location,
+        defectTypeId: item.defectType.id,
         defectTypeName: item.defectType.name,
         status: item.status,
         statusLabel: defectItemStatusLabel(item.status),
+        version: item.version,
+        claimDetails: item.claimDetails,
         responsibleEngineers: item.responsibleEngineers.map((entry) => ({
           id: entry.user.id,
           fullName: entry.user.fullName,

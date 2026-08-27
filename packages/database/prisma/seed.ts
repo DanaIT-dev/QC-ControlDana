@@ -162,6 +162,29 @@ async function seed(): Promise<void> {
           });
         }
 
+        await tx.workType.upsert({
+          where: { code: 'ARCHIVED_DEMO' },
+          update: { active: false, archivedAt: new Date('2026-02-01T12:00:00.000Z') },
+          create: {
+            code: 'ARCHIVED_DEMO',
+            name: 'Архивный вид работ (демо)',
+            sortOrder: 99,
+            active: false,
+            archivedAt: new Date('2026-02-01T12:00:00.000Z'),
+          },
+        });
+        await tx.defectType.upsert({
+          where: { code: 'ARCHIVED_DEFECT' },
+          update: { active: false, archivedAt: new Date('2026-02-01T12:00:00.000Z') },
+          create: {
+            code: 'ARCHIVED_DEFECT',
+            name: 'Архивный вид дефекта (демо)',
+            sortOrder: 99,
+            active: false,
+            archivedAt: new Date('2026-02-01T12:00:00.000Z'),
+          },
+        });
+
         if (isProduction) {
           return;
         }
@@ -181,6 +204,21 @@ async function seed(): Promise<void> {
         if (!engineerNorth || !engineerRiver) {
           throw new Error('Demo engineers were not seeded');
         }
+
+        await tx.user.upsert({
+          where: { email: 'archived.user@example.sgr.local' },
+          update: { status: 'ARCHIVED', archivedAt: new Date('2026-01-15T12:00:00.000Z') },
+          create: {
+            id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            fullName: 'Архивный Пользователь',
+            email: 'archived.user@example.sgr.local',
+            role: 'RESPONSIBLE_ENGINEER',
+            status: 'ARCHIVED',
+            archivedAt: new Date('2026-01-15T12:00:00.000Z'),
+            mustChangePassword: false,
+            passwordHash: preparedDemoPasswordHash,
+          },
+        });
 
         const northPark = await tx.propertyObject.upsert({
           where: { id: '11111111-1111-4111-8111-111111111111' },
@@ -203,6 +241,18 @@ async function seed(): Promise<void> {
             address: 'г. Минск, пр. Демонстрационный, 15',
             commissionedAt: new Date('2025-03-15T00:00:00.000Z'),
             warrantyEndsAt: new Date('2030-03-15T00:00:00.000Z'),
+          },
+        });
+
+        await tx.propertyObject.upsert({
+          where: { id: '33333333-3333-4333-8333-333333333333' },
+          update: { active: false, archivedAt: new Date('2026-02-01T12:00:00.000Z') },
+          create: {
+            id: '33333333-3333-4333-8333-333333333333',
+            name: 'ЖК «Архивный корпус» (демо)',
+            address: 'г. Минск, ул. Закрытая, 9',
+            active: false,
+            archivedAt: new Date('2026-02-01T12:00:00.000Z'),
           },
         });
 
@@ -743,6 +793,63 @@ async function seedDemoRegistry(
       },
     });
   }
+
+  const firstDefect = await tx.defectItem.findFirst({
+    where: { actId: firstAct.id },
+    orderBy: { location: 'asc' },
+  });
+  if (firstDefect) {
+    const archivedProposal = await tx.proposal.findFirst({
+      where: { defectItemId: firstDefect.id, slot: 'C', status: 'ARCHIVED' },
+    });
+    if (!archivedProposal) {
+      await tx.proposal.create({
+        data: {
+          defectItemId: firstDefect.id,
+          slot: 'C',
+          alternativeContractorOrganizationId: ctx.altC.id,
+          amount: new Prisma.Decimal('10.00'),
+          currency: 'BYN',
+          status: 'ARCHIVED',
+          archivedAt: new Date('2026-04-01T12:00:00.000Z'),
+          archiveReason: 'Демонстрационный отзыв предложения',
+        },
+      });
+    }
+    const historyCount = await tx.auditLog.count({
+      where: { entityType: 'ACT', entityId: firstAct.id, action: 'ACT_CREATED' },
+    });
+    if (historyCount === 0) {
+      await tx.auditLog.createMany({
+        data: [
+          {
+            actorUserId: ctx.engineerNorth.id,
+            actorName: 'Дмитрий Орлов',
+            action: 'ACT_CREATED',
+            entityType: 'ACT',
+            entityId: firstAct.id,
+            newValue: { officialNumber: 'С-1-2026-000001' },
+            source: 'WEB',
+            occurredAt: new Date('2026-03-01T10:00:00.000Z'),
+          },
+          {
+            actorUserId: ctx.engineerNorth.id,
+            actorName: 'Дмитрий Орлов',
+            action: 'DEADLINE_UPDATED',
+            entityType: 'DEFECT_ITEM',
+            entityId: firstDefect.id,
+            parentEntityType: 'ACT',
+            parentEntityId: firstAct.id,
+            oldValue: { plannedDeadline: '2026-03-10' },
+            newValue: { plannedDeadline: '2026-03-20' },
+            reason: 'Согласовано продление',
+            source: 'WEB',
+            occurredAt: new Date('2026-03-05T10:00:00.000Z'),
+          },
+        ],
+      });
+    }
+  }
 }
 
 async function ensureNumberedAct(
@@ -779,6 +886,7 @@ async function ensureNumberedAct(
       objectId: input.objectId,
       customerOrganizationId: input.customerOrganizationId,
       signedDocumentRef: input.signedDocumentRef ?? null,
+      issuedOn: input.issuedAt,
       status: input.cancelled ? 'CANCELLED' : 'IN_PROGRESS',
       createdAt: input.issuedAt,
       cancelledAt: input.cancelled ? input.issuedAt : null,
@@ -827,6 +935,7 @@ async function ensureDemoAct(
       objectId: input.objectId,
       customerOrganizationId: input.customerOrganizationId,
       signedDocumentRef: null,
+      issuedOn: input.issuedAt,
       status: input.cancelled ? 'CANCELLED' : 'IN_PROGRESS',
       createdAt: input.issuedAt,
       cancelledAt: input.cancelled ? input.issuedAt : null,
@@ -981,12 +1090,13 @@ async function upsertDemoUser(
   const email = normalizeEmail(input.email);
   const user = await tx.user.upsert({
     where: { email },
-    update: {},
+    update: { mustChangePassword: false },
     create: {
       fullName: input.fullName,
       email,
       phone: input.phone,
       role: input.role,
+      mustChangePassword: false,
     },
   });
 
@@ -999,6 +1109,7 @@ async function upsertDemoUser(
     data: {
       passwordHash: input.passwordHash,
       passwordChangedAt: new Date(),
+      mustChangePassword: false,
       ...(user.passwordHash ? { sessionVersion: { increment: 1 } } : {}),
     },
   });

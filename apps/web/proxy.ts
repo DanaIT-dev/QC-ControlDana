@@ -14,7 +14,12 @@ export function proxy(request: NextRequest) {
   }
 
   if (
-    (pathname === '/registry' || pathname === '/system-status' || pathname.startsWith('/acts/')) &&
+    (pathname === '/registry' ||
+      pathname === '/system-status' ||
+      pathname === '/users' ||
+      pathname === '/reference-data' ||
+      pathname === '/change-password' ||
+      pathname.startsWith('/acts/')) &&
     !hasSession
   ) {
     const destination = request.nextUrl.clone();
@@ -26,5 +31,16 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/', '/login', '/registry', '/system-status', '/acts/:path*'],
+  matcher: [
+    '/',
+    '/login',
+    '/registry',
+    '/system-status',
+    '/users',
+    '/users/:path*',
+    '/reference-data',
+    '/reference-data/:path*',
+    '/change-password',
+    '/acts/:path*',
+  ],
 };

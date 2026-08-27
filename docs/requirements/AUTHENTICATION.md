@@ -64,14 +64,11 @@ TTL сессии и индекса — 30 дней. Если Redis недост�
 
 ## Роли и capabilities
 
-Capabilities считает сервер (`GET /api/auth/capabilities`). Клиент отображает список, но не является источником прав.
+Актуальная матрица: [PERMISSIONS_MATRIX.md](./PERMISSIONS_MATRIX.md). Capabilities считает сервер (`GET /api/auth/capabilities`). Клиент отображает список, но не является источником прав.
 
-- `ADMIN`: `MANAGE_USERS`, `MANAGE_DIRECTORIES`, `VIEW_ALL_ACTS`, `CREATE_ACT`, `CANCEL_ACT`, `VIEW_AUDIT`
-- `SGR_MANAGER`: `VIEW_ALL_ACTS`, `CREATE_ACT`, `EDIT_ANY_ACT`, `ASSIGN_ENGINEERS`, `CANCEL_ACT`, `VIEW_COMMERCIAL_PROPOSALS`, `EDIT_COMMERCIAL_PROPOSALS`, `VIEW_AUDIT`
-- `RESPONSIBLE_ENGINEER`: `VIEW_ASSIGNED_DEFECTS`, `EDIT_ASSIGNED_DEFECTS`, `COMPLETE_ASSIGNED_DEFECTS`, `VIEW_PROPOSAL_A`
-- `CONTRACTOR_ENGINEER`: `VIEW_ALL_ACTS`, `MANAGE_ORGANIZATIONS`, `VIEW_COMMERCIAL_PROPOSALS`, `EDIT_COMMERCIAL_PROPOSALS`, `VIEW_AUDIT`
+`mustChangePassword` блокирует продуктовые API до смены пароля на `/change-password`.
 
-`/registry` доступна любой активной сессии. `/system-status` — только `ADMIN`. `GET /api/health` и `GET /api/ready` остаются машинными.
+`/registry` доступна активной сессии без обязательной смены пароля. `/system-status` и `/users` — только `ADMIN`. `/reference-data` и `/acts/new` — ADMIN и SGR_MANAGER. `GET /api/health` и `GET /api/ready` остаются машинными.
 
 ## Аудит
 

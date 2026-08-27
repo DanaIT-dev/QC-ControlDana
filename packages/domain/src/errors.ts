@@ -42,3 +42,103 @@ export class ActCancellationError extends DomainError {
     this.name = 'ActCancellationError';
   }
 }
+
+export class ValidationError extends DomainError {
+  readonly field: string;
+
+  constructor(field: string, message: string) {
+    super('VALIDATION_ERROR', message);
+    this.name = 'ValidationError';
+    this.field = field;
+  }
+}
+
+export class UnknownFieldError extends DomainError {
+  constructor(fields: readonly string[]) {
+    super('UNKNOWN_FIELD', `Неизвестные поля: ${fields.join(', ')}`);
+    this.name = 'UnknownFieldError';
+  }
+}
+
+export class StaleWriteError extends DomainError {
+  constructor() {
+    super('STALE_WRITE', 'Запись изменена другим пользователем. Обновите данные и повторите.');
+    this.name = 'StaleWriteError';
+  }
+}
+
+export class DuplicateValueError extends DomainError {
+  constructor(message = 'Такое значение уже существует') {
+    super('DUPLICATE_VALUE', message);
+    this.name = 'DuplicateValueError';
+  }
+}
+
+export class InvalidTransitionError extends DomainError {
+  constructor(message = 'Недопустимый переход статуса') {
+    super('INVALID_TRANSITION', message);
+    this.name = 'InvalidTransitionError';
+  }
+}
+
+export class IdempotencyConflictError extends DomainError {
+  constructor() {
+    super(
+      'IDEMPOTENCY_KEY_REUSE',
+      'Ключ идемпотентности уже использован с другим содержимым запроса',
+    );
+    this.name = 'IdempotencyConflictError';
+  }
+}
+
+export class LastAdminProtectedError extends DomainError {
+  constructor() {
+    super(
+      'LAST_ADMIN_PROTECTED',
+      'Нельзя архивировать или понизить последнего активного администратора',
+    );
+    this.name = 'LastAdminProtectedError';
+  }
+}
+
+export class SelfArchiveError extends DomainError {
+  constructor() {
+    super('SELF_ARCHIVE_FORBIDDEN', 'Нельзя архивировать текущую учётную запись');
+    this.name = 'SelfArchiveError';
+  }
+}
+
+export class ForbiddenFieldError extends DomainError {
+  constructor(field: string) {
+    super('FORBIDDEN_FIELD', `Недостаточно прав для изменения поля ${field}`);
+    this.name = 'ForbiddenFieldError';
+  }
+}
+
+export class DeadlineReasonRequiredError extends DomainError {
+  constructor() {
+    super('DEADLINE_REASON_REQUIRED', 'Укажите причину изменения или очистки срока');
+    this.name = 'DeadlineReasonRequiredError';
+  }
+}
+
+export const CONFLICT_ERROR_CODES = new Set([
+  'STALE_WRITE',
+  'DUPLICATE_PROPOSAL_SLOT',
+  'DUPLICATE_VALUE',
+  'UNP_CONFLICT',
+  'INVALID_TRANSITION',
+  'IDEMPOTENCY_KEY_REUSE',
+  'LAST_ADMIN_PROTECTED',
+  'SELF_ARCHIVE_FORBIDDEN',
+  'ACT_NUMBER_IMMUTABLE',
+  'DEFECT_ITEM_COMPLETION_INVALID',
+  'ACT_CANCELLATION_INVALID',
+  'DEADLINE_REASON_REQUIRED',
+]);
+
+export const VALIDATION_ERROR_CODES = new Set([
+  'VALIDATION_ERROR',
+  'PASSWORD_POLICY',
+  'UNKNOWN_FIELD',
+]);

@@ -6,9 +6,21 @@ import { RedisModule } from './auth/redis.module';
 import { SafeExceptionFilter } from './common/safe-exception.filter';
 import { HealthModule } from './health/health.module';
 import { RegistryModule } from './registry/registry.module';
+import { UsersModule } from './users/users.module';
+import { ReferenceDataModule } from './reference-data/reference-data.module';
+import { OperationsModule } from './operations/operations.module';
 
 @Module({
-  imports: [PrismaModule, RedisModule, AuthModule, HealthModule, RegistryModule],
+  imports: [
+    PrismaModule,
+    RedisModule,
+    AuthModule,
+    HealthModule,
+    RegistryModule,
+    UsersModule,
+    ReferenceDataModule,
+    OperationsModule,
+  ],
   providers: [
     {
       provide: APP_FILTER,

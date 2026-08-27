@@ -6,6 +6,9 @@ export interface RegistryProposalDto {
   amount: string;
   currency: string;
   contractorName: string;
+  organizationId?: string;
+  version?: number;
+  status?: 'ACTIVE' | 'ARCHIVED';
 }
 
 export interface RegistryDefectRow {
@@ -78,9 +81,12 @@ export interface RegistryFilterOptionsResponse {
 export interface ActDetailDefectItem {
   id: string;
   location: string;
+  defectTypeId: string;
   defectTypeName: string;
   status: DefectItemStatus;
   statusLabel: string;
+  version: number;
+  claimDetails: string;
   responsibleEngineers: Array<{ id: string; fullName: string }>;
   liableOrganizations: Array<{ id: string; name: string }>;
   plannedDeadline: string | null;
@@ -102,11 +108,15 @@ export interface ActDetailResponse {
   officialNumber: string;
   status: string;
   statusLabel: string;
+  version: number;
+  objectId: string;
   objectName: string;
   objectAddress: string;
   commissionedAt: string | null;
   warrantyEndsAt: string | null;
+  customerOrganizationId: string;
   customerName: string;
+  issuedOn: string | null;
   signedDocumentRef: string | null;
   createdAt: string;
   cancelledAt: string | null;

@@ -39,7 +39,8 @@ export function LoginForm() {
         setError(AUTH_LOGIN_FAILED_MESSAGE);
         return;
       }
-      router.replace('/registry');
+      const profile = (await response.json()) as { mustChangePassword?: boolean };
+      router.replace(profile.mustChangePassword ? '/change-password' : '/registry');
       router.refresh();
     } catch {
       setPassword('');

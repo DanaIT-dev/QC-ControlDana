@@ -37,6 +37,37 @@ export function generateOpaqueToken(bytes = 32): string {
   return randomBytes(bytes).toString('base64url');
 }
 
+const TEMP_PASSWORD_UPPER = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+const TEMP_PASSWORD_LOWER = 'abcdefghijkmnopqrstuvwxyz';
+const TEMP_PASSWORD_DIGITS = '23456789';
+const TEMP_PASSWORD_SPECIAL = '!@#$%^&*-_=+';
+const TEMP_PASSWORD_ALL = `${TEMP_PASSWORD_UPPER}${TEMP_PASSWORD_LOWER}${TEMP_PASSWORD_DIGITS}${TEMP_PASSWORD_SPECIAL}`;
+
+function pickChar(alphabet: string): string {
+  const index = randomBytes(1)[0]! % alphabet.length;
+  return alphabet[index]!;
+}
+
+export function generateTemporaryPassword(length = 16): string {
+  const size = Math.max(length, 12);
+  const chars = [
+    pickChar(TEMP_PASSWORD_UPPER),
+    pickChar(TEMP_PASSWORD_LOWER),
+    pickChar(TEMP_PASSWORD_DIGITS),
+    pickChar(TEMP_PASSWORD_SPECIAL),
+    ...Array.from({ length: size - 4 }, () => pickChar(TEMP_PASSWORD_ALL)),
+  ];
+  for (let i = chars.length - 1; i > 0; i -= 1) {
+    const j = randomBytes(1)[0]! % (i + 1);
+    const current = chars[i]!;
+    chars[i] = chars[j]!;
+    chars[j] = current;
+  }
+  const password = chars.join('');
+  assertPasswordPolicy(password);
+  return password;
+}
+
 export function hashSessionId(sessionId: string): string {
   return createHash('sha256').update(sessionId).digest('hex');
 }

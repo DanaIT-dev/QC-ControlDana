@@ -12,7 +12,7 @@ export function AppShell({ user, children }: { user: SafeUserProfile; children: 
             <p className="site-header__eyebrow">Dana Holding · внутренний продукт</p>
             <p className="site-header__title">Реестр дефектных актов</p>
           </div>
-          <AppNav isAdmin={user.role === 'ADMIN'} />
+          <AppNav role={user.role} />
           <div className="site-header__user">
             <p className="site-header__who">
               <span className="site-header__name">{user.fullName}</span>

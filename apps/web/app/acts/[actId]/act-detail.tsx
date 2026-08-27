@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { fetchActDetail } from '../../../lib/registry-api';
 import { formatCalendarDate, formatTimestamp, isSafeDocumentHref } from '../../../lib/registry-url';
+import { ActOperations } from './act-operations';
 
 export function ActDetailView({ actId, user }: { actId: string; user: SafeUserProfile }) {
   const params = useSearchParams();
@@ -83,6 +84,7 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
             </a>
           </p>
         ) : null}
+        <ActOperations act={act} user={user} />
       </header>
       <ol className="act-items">
         {act.defectItems.map((item) => (
@@ -130,6 +132,7 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
                   : '—'}
               </p>
             ) : null}
+            <ActOperations act={act} item={item} user={user} />
           </li>
         ))}
       </ol>

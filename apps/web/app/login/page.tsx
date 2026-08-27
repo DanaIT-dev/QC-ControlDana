@@ -6,6 +6,9 @@ export const dynamic = 'force-dynamic';
 
 export default async function LoginPage() {
   const user = await fetchCurrentUser();
+  if (user?.mustChangePassword) {
+    redirect('/change-password');
+  }
   if (user) {
     redirect('/registry');
   }

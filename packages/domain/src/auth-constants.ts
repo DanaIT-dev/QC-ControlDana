@@ -12,6 +12,7 @@ export const AUTH_AUDIT_ACTIONS = [
   'LOGOUT_ALL',
   'SESSION_REJECTED_ARCHIVED_USER',
   'SESSION_REJECTED_VERSION_MISMATCH',
+  'USER_PASSWORD_CHANGED',
 ] as const;
 
 export type AuthAuditAction = (typeof AUTH_AUDIT_ACTIONS)[number];

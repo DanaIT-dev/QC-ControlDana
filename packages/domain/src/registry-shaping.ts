@@ -11,6 +11,9 @@ export interface ProposalSource {
   amount: { toFixed(digits: number): string } | string;
   currency: string;
   contractorName: string;
+  organizationId?: string;
+  version?: number;
+  status?: 'ACTIVE' | 'ARCHIVED';
 }
 
 export interface ShapedProposal {
@@ -18,6 +21,9 @@ export interface ShapedProposal {
   amount: string;
   currency: string;
   contractorName: string;
+  organizationId?: string;
+  version?: number;
+  status?: 'ACTIVE' | 'ARCHIVED';
 }
 
 export interface ShapedProposals {
@@ -31,6 +37,9 @@ function toDto(proposal: ProposalSource): ShapedProposal {
     amount: serializeDecimal(proposal.amount),
     currency: proposal.currency,
     contractorName: proposal.contractorName,
+    ...(proposal.organizationId ? { organizationId: proposal.organizationId } : {}),
+    ...(proposal.version !== undefined ? { version: proposal.version } : {}),
+    ...(proposal.status ? { status: proposal.status } : {}),
   };
 }
 

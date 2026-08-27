@@ -1,6 +1,7 @@
 import {
   CanActivate,
   ExecutionContext,
+  ForbiddenException,
   Inject,
   Injectable,
   UnauthorizedException,
@@ -28,9 +29,12 @@ export class AuthenticationGuard implements CanActivate {
 
     try {
       request.user = await this.authService.resolveSession(sessionId, request);
+      if (request.user.mustChangePassword && !isPasswordChangeAllowed(request.url)) {
+        throw new ForbiddenException('Необходимо сменить временный пароль');
+      }
       return true;
     } catch (error) {
-      if (error instanceof UnauthorizedException) {
+      if (error instanceof UnauthorizedException || error instanceof ForbiddenException) {
         throw error;
       }
       if (error instanceof RedisUnavailableError) {
@@ -39,4 +43,9 @@ export class AuthenticationGuard implements CanActivate {
       throw new UnauthorizedException('Требуется авторизация');
     }
   }
+}
+
+function isPasswordChangeAllowed(url: string): boolean {
+  const path = url.split('?')[0] ?? '';
+  return /\/auth\/(me|capabilities|logout|logout-all|change-password)$/.test(path);
 }

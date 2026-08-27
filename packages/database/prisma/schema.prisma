@@ -46,27 +46,41 @@ enum ProposalSlot {
   C
 }
 
+enum ProposalStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum AuditSource {
+  WEB
+}
+
 model User {
-  id                  String    @id @default(uuid()) @db.Uuid
+  id                  String     @id @default(uuid()) @db.Uuid
   fullName            String
-  email               String    @unique
+  email               String     @unique
   phone               String?
   passwordHash        String?
-  passwordChangedAt   DateTime? @db.Timestamptz(3)
-  sessionVersion      Int       @default(1)
-  lastLoginAt         DateTime? @db.Timestamptz(3)
+  passwordChangedAt   DateTime?  @db.Timestamptz(3)
+  mustChangePassword  Boolean    @default(false)
+  sessionVersion      Int        @default(1)
+  lastLoginAt         DateTime?  @db.Timestamptz(3)
   role                UserRole
   status              UserStatus @default(ACTIVE)
-  createdAt           DateTime  @default(now()) @db.Timestamptz(3)
-  updatedAt           DateTime  @updatedAt @db.Timestamptz(3)
-  archivedAt          DateTime? @db.Timestamptz(3)
+  version             Int        @default(1)
+  createdAt           DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime   @updatedAt @db.Timestamptz(3)
+  archivedAt          DateTime?  @db.Timestamptz(3)
 
   objectAssignments     PropertyObjectEngineer[]
   defectItemAssignments DefectItemEngineer[]
   cancelledActs         Act[]                    @relation("ActCancelledBy")
   uploadedAttachments   Attachment[]
   auditLogs             AuditLog[]
+  idempotencyRecords    IdempotencyRecord[]
 
+  @@index([role, status])
+  @@index([status, createdAt])
   @@map("users")
 }
 
@@ -79,10 +93,13 @@ model PropertyObject {
   createdAt      DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime  @updatedAt @db.Timestamptz(3)
   active         Boolean   @default(true)
+  archivedAt     DateTime? @db.Timestamptz(3)
+  version        Int       @default(1)
 
   engineers PropertyObjectEngineer[]
   acts      Act[]
 
+  @@index([active, name])
   @@map("property_objects")
 }
 
@@ -109,9 +126,11 @@ model Organization {
   email         String
   phone         String
   contactPerson String
-  active        Boolean  @default(true)
-  createdAt     DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt     DateTime @updatedAt @db.Timestamptz(3)
+  active        Boolean   @default(true)
+  archivedAt    DateTime? @db.Timestamptz(3)
+  version       Int       @default(1)
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(3)
 
   roles        OrganizationRoleAssignment[]
   workTypes    OrganizationWorkType[]
@@ -120,6 +139,7 @@ model Organization {
   proposals    Proposal[]
 
   @@unique([unp])
+  @@index([active, officialName])
   @@map("organizations")
 }
 
@@ -136,16 +156,19 @@ model OrganizationRoleAssignment {
 }
 
 model WorkType {
-  id        String   @id @default(uuid()) @db.Uuid
-  code      String   @unique
-  name      String
-  sortOrder Int
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  id         String    @id @default(uuid()) @db.Uuid
+  code       String    @unique
+  name       String
+  sortOrder  Int
+  active     Boolean   @default(true)
+  archivedAt DateTime? @db.Timestamptz(3)
+  version    Int       @default(1)
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime  @updatedAt @db.Timestamptz(3)
 
   organizations OrganizationWorkType[]
 
+  @@index([active, sortOrder])
   @@map("work_types")
 }
 
@@ -161,16 +184,19 @@ model OrganizationWorkType {
 }
 
 model DefectType {
-  id        String   @id @default(uuid()) @db.Uuid
-  code      String   @unique
-  name      String
-  active    Boolean  @default(true)
-  sortOrder Int
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  id         String    @id @default(uuid()) @db.Uuid
+  code       String    @unique
+  name       String
+  active     Boolean   @default(true)
+  archivedAt DateTime? @db.Timestamptz(3)
+  version    Int       @default(1)
+  sortOrder  Int
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime  @updatedAt @db.Timestamptz(3)
 
   defectItems DefectItem[]
 
+  @@index([active, sortOrder])
   @@map("defect_types")
 }
 
@@ -183,6 +209,7 @@ model Act {
   objectId               String      @db.Uuid
   customerOrganizationId String      @db.Uuid
   signedDocumentRef      String?
+  issuedOn               DateTime    @db.Timestamptz(3)
   status                 ActStatus
   version                Int         @default(1)
   createdAt              DateTime    @default(now()) @db.Timestamptz(3)
@@ -270,19 +297,23 @@ model DefectItemLiableOrganization {
 }
 
 model Proposal {
-  id                                String       @id @default(uuid()) @db.Uuid
-  defectItemId                      String       @db.Uuid
-  slot                              ProposalSlot
-  alternativeContractorOrganizationId String     @db.Uuid
-  amount                            Decimal      @db.Decimal(14, 2)
-  currency                          String       @default("BYN")
-  createdAt                         DateTime     @default(now()) @db.Timestamptz(3)
-  updatedAt                         DateTime     @updatedAt @db.Timestamptz(3)
+  id                                  String         @id @default(uuid()) @db.Uuid
+  defectItemId                        String         @db.Uuid
+  slot                                ProposalSlot
+  alternativeContractorOrganizationId String         @db.Uuid
+  amount                              Decimal        @db.Decimal(14, 2)
+  currency                            String         @default("BYN")
+  status                              ProposalStatus @default(ACTIVE)
+  archivedAt                          DateTime?      @db.Timestamptz(3)
+  archiveReason                       String?
+  version                             Int            @default(1)
+  createdAt                           DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt                           DateTime       @updatedAt @db.Timestamptz(3)
 
   defectItem            DefectItem   @relation(fields: [defectItemId], references: [id], onDelete: Restrict)
   alternativeContractor Organization @relation(fields: [alternativeContractorOrganizationId], references: [id], onDelete: Restrict)
 
-  @@unique([defectItemId, slot])
+  @@index([defectItemId, slot, status])
   @@map("proposals")
 }
 
@@ -306,22 +337,46 @@ model Attachment {
 }
 
 model AuditLog {
-  id          String   @id @default(uuid()) @db.Uuid
-  actorUserId String?  @db.Uuid
-  action      String
-  entityType  String
-  entityId    String
-  oldValue    Json?
-  newValue    Json?
-  occurredAt  DateTime @default(now()) @db.Timestamptz(3)
-  ipAddress   String?
-  requestId   String?
+  id               String      @id @default(uuid()) @db.Uuid
+  actorUserId      String?     @db.Uuid
+  actorName        String?
+  action           String
+  entityType       String
+  entityId         String
+  parentEntityType String?
+  parentEntityId   String?
+  oldValue         Json?
+  newValue         Json?
+  reason           String?
+  source           AuditSource @default(WEB)
+  occurredAt       DateTime    @default(now()) @db.Timestamptz(3)
+  ipAddress        String?
+  requestId        String?
 
   actor User? @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
 
-  @@index([entityType, entityId])
+  @@index([entityType, entityId, occurredAt])
+  @@index([parentEntityType, parentEntityId, occurredAt])
   @@index([occurredAt])
   @@map("audit_logs")
+}
+
+model IdempotencyRecord {
+  id             String   @id @default(uuid()) @db.Uuid
+  actorUserId    String   @db.Uuid
+  command        String
+  idempotencyKey String
+  requestHash    String
+  statusCode     Int
+  responseBody   Json
+  resourceId     String?
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  actor User @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@unique([actorUserId, command, idempotencyKey])
+  @@index([createdAt])
+  @@map("idempotency_records")
 }
 
 model SystemSettings {
