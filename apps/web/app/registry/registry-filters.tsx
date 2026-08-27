@@ -9,7 +9,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { buildRegistryFilterChips, type RegistryFilterOptions } from '@/lib/filter-chips';
 
@@ -119,13 +118,13 @@ export function RegistryFilters({
       <Sheet open={sheetOpen} onOpenChange={onSheetOpenChange}>
         <SheetContent
           side="right"
-          className="flex w-full flex-col sm:max-w-[480px]"
+          className="flex h-[100dvh] max-h-[100dvh] w-full flex-col gap-0 overflow-hidden sm:max-w-[480px]"
           showCloseButton
         >
-          <SheetHeader>
+          <SheetHeader className="shrink-0">
             <SheetTitle>Фильтры</SheetTitle>
           </SheetHeader>
-          <ScrollArea className="min-h-0 flex-1 px-4">
+          <div data-slot="filter-sheet-body" className="min-h-0 flex-1 overflow-y-auto px-4">
             <div className="grid gap-6 pb-6">
               <section className="grid gap-3">
                 <h3 className="text-sm font-semibold">Основное</h3>
@@ -233,15 +232,24 @@ export function RegistryFilters({
                 />
               </section>
             </div>
-          </ScrollArea>
-          <SheetFooter className="border-t">
-            <div className="flex w-full items-center justify-between gap-2">
+          </div>
+          <SheetFooter
+            data-slot="filter-sheet-footer"
+            className="mt-0 shrink-0 border-t pb-[max(1rem,env(safe-area-inset-bottom))]"
+          >
+            <div className="flex w-full flex-col gap-3">
               <p className="text-sm text-muted-foreground">Активных фильтров: {active}</p>
-              <div className="flex gap-2">
-                <Button type="button" variant="ghost" onClick={onReset} disabled={active === 0}>
+              <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-row sm:justify-end">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="min-h-11"
+                  onClick={onReset}
+                  disabled={active === 0}
+                >
                   Сбросить все фильтры
                 </Button>
-                <Button type="button" onClick={() => onSheetOpenChange(false)}>
+                <Button type="button" className="min-h-11" onClick={() => onSheetOpenChange(false)}>
                   Показать результаты
                 </Button>
               </div>

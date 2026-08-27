@@ -24,6 +24,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { UserAvatar } from '@/components/user-avatar';
 import { fetchActDetail } from '../../../lib/registry-api';
 import { formatCalendarDate, formatTimestamp, isSafeDocumentHref } from '../../../lib/registry-url';
+import { queryKeys } from '../../../lib/query-keys';
 import { ActHistory, ActOperations } from './act-operations';
 import { cn } from '@/lib/utils';
 
@@ -37,7 +38,7 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
     return encoded ? `/registry?${encoded}` : '/registry';
   })();
   const detailQuery = useQuery({
-    queryKey: ['act', actId],
+    queryKey: queryKeys.act(actId),
     queryFn: () => fetchActDetail(actId),
     retry: false,
   });

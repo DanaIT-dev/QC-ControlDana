@@ -7,7 +7,7 @@ import type {
 } from '@sgr-registry/contracts';
 import { AUDIT_ACTION_LABELS, canViewProposalGroupBC, hasCapability } from '@sgr-registry/domain';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { ConflictDialog } from '@/components/conflict-dialog';
 import { EmptyState, ErrorState } from '@/components/states';
@@ -31,8 +31,16 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { ApiError, commandFetch } from '../../../lib/command-api';
+import { historyKey, queryKeys } from '../../../lib/query-keys';
 
 export function ActOperations({
   act,
@@ -50,8 +58,14 @@ export function ActOperations({
     try {
       await commandFetch(path, { method, csrfToken: user.csrfToken, body });
       toast.success('Изменения сохранены');
-      await queryClient.invalidateQueries({ queryKey: ['act', act.id] });
-      await queryClient.invalidateQueries({ queryKey: ['registry'] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.act(act.id) }),
+        queryClient.invalidateQueries({ queryKey: historyKey(act.id) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.registry.all }),
+        item
+          ? queryClient.invalidateQueries({ queryKey: queryKeys.defectItem(item.id) })
+          : Promise.resolve(),
+      ]);
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
         setConflict(true);
@@ -63,7 +77,8 @@ export function ActOperations({
 
   async function refresh() {
     setConflict(false);
-    await queryClient.invalidateQueries({ queryKey: ['act', act.id] });
+    await queryClient.invalidateQueries({ queryKey: queryKeys.act(act.id) });
+    await queryClient.invalidateQueries({ queryKey: historyKey(act.id) });
   }
 
   if (!item) {
@@ -213,7 +228,7 @@ function AddDefectButton({
   onSave: (body: unknown) => void;
 }) {
   const lookups = useQuery({
-    queryKey: ['lookups'],
+    queryKey: queryKeys.lookups,
     queryFn: async () => {
       const response = await fetch('/api/operations/lookups', { credentials: 'include' });
       return (await response.json()) as {
@@ -367,6 +382,13 @@ function DeadlineEditor({
   );
 }
 
+function proposalForSlot(item: ActDetailDefectItem, slot: 'A' | 'B' | 'C') {
+  if (slot === 'A') {
+    return item.proposalA;
+  }
+  return item.proposalsBC?.find((proposal) => proposal.slot === slot) ?? null;
+}
+
 function ProposalEditor({
   item,
   canViewBC,
@@ -377,7 +399,7 @@ function ProposalEditor({
   onSave: (slot: 'A' | 'B' | 'C', body: unknown) => void;
 }) {
   const lookups = useQuery({
-    queryKey: ['lookups'],
+    queryKey: queryKeys.lookups,
     queryFn: async () => {
       const response = await fetch('/api/operations/lookups', { credentials: 'include' });
       return (await response.json()) as {
@@ -386,14 +408,58 @@ function ProposalEditor({
     },
   });
   const [open, setOpen] = useState(false);
+  const [slot, setSlot] = useState<'A' | 'B' | 'C'>('A');
+  const [amount, setAmount] = useState(item.proposalA?.amount ?? '0.00');
+  const [organizationId, setOrganizationId] = useState(item.proposalA?.organizationId ?? '');
+  const [validationError, setValidationError] = useState<string | null>(null);
   const slots: Array<'A' | 'B' | 'C'> = canViewBC ? ['A', 'B', 'C'] : ['A'];
+  const contractors = lookups.data?.alternativeContractors ?? [];
+  const currentProposal = proposalForSlot(item, slot);
+  const organizationOptions =
+    organizationId &&
+    !contractors.some((org) => org.id === organizationId) &&
+    currentProposal?.contractorName
+      ? [{ id: organizationId, officialName: currentProposal.contractorName }, ...contractors]
+      : contractors;
+
+  useEffect(() => {
+    if (!open || organizationId || !lookups.data?.alternativeContractors?.length) {
+      return;
+    }
+    const fallback =
+      proposalForSlot(item, slot)?.organizationId ??
+      lookups.data.alternativeContractors[0]?.id ??
+      '';
+    if (fallback) {
+      setOrganizationId(fallback);
+    }
+  }, [open, organizationId, lookups.data, item, slot]);
+
+  function openEditor() {
+    const initial = proposalForSlot(item, 'A');
+    setSlot('A');
+    setAmount(initial?.amount ?? '0.00');
+    setOrganizationId(initial?.organizationId ?? contractors[0]?.id ?? '');
+    setValidationError(null);
+    setOpen(true);
+  }
+
+  function onSlotChange(next: 'A' | 'B' | 'C') {
+    setSlot(next);
+    const proposal = proposalForSlot(item, next);
+    setAmount(proposal?.amount ?? '0.00');
+    if (proposal?.organizationId) {
+      setOrganizationId(proposal.organizationId);
+    }
+  }
+
   return (
     <>
-      <Button type="button" variant="outline" onClick={() => setOpen(true)}>
+      <Button type="button" variant="outline" onClick={openEditor}>
         Сохранить предложение
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[min(100dvh,40rem)] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Предложение</DialogTitle>
           </DialogHeader>
@@ -401,49 +467,89 @@ function ProposalEditor({
             className="grid gap-3"
             onSubmit={(event) => {
               event.preventDefault();
-              const form = new FormData(event.currentTarget);
-              const slot = form.get('slot') as 'A' | 'B' | 'C';
+              if (!organizationId) {
+                setValidationError('Выберите организацию');
+                return;
+              }
+              setValidationError(null);
               onSave(slot, {
-                amount: form.get('amount'),
-                alternativeContractorOrganizationId: form.get('organizationId'),
+                amount,
+                alternativeContractorOrganizationId: organizationId,
                 expectedVersion: item.proposalA?.version,
               });
               setOpen(false);
             }}
           >
             <div className="grid gap-1.5">
-              <Label>Слот</Label>
-              <select
-                name="slot"
-                defaultValue="A"
-                className="h-11 rounded-lg border border-input bg-white px-3 text-sm"
+              <Label htmlFor="proposal-slot">Слот</Label>
+              <Select
+                value={slot}
+                onValueChange={(value) => onSlotChange(value as 'A' | 'B' | 'C')}
               >
-                {slots.map((slot) => (
-                  <option key={slot} value={slot}>
-                    {slot}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger id="proposal-slot" aria-label="Слот">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent
+                  position="popper"
+                  className="max-h-[min(16rem,var(--radix-select-content-available-height))]"
+                >
+                  {slots.map((value) => (
+                    <SelectItem key={value} value={value}>
+                      {value}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="grid gap-1.5">
-              <Label>Сумма</Label>
-              <Input name="amount" defaultValue={item.proposalA?.amount ?? '0.00'} required />
+              <Label htmlFor="proposal-amount">Сумма</Label>
+              <Input
+                id="proposal-amount"
+                name="amount"
+                value={amount}
+                onChange={(event) => setAmount(event.target.value)}
+                required
+              />
             </div>
             <div className="grid gap-1.5">
-              <Label>Организация</Label>
-              <select
-                name="organizationId"
-                className="h-11 rounded-lg border border-input bg-white px-3 text-sm"
+              <Label htmlFor="proposal-organization">Организация</Label>
+              <Select
+                value={organizationId || undefined}
+                onValueChange={(value) => {
+                  setOrganizationId(value);
+                  setValidationError(null);
+                }}
+                disabled={lookups.isLoading || organizationOptions.length === 0}
               >
-                {(lookups.data?.alternativeContractors ?? []).map((org) => (
-                  <option key={org.id} value={org.id}>
-                    {org.officialName}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger
+                  id="proposal-organization"
+                  aria-label="Организация"
+                  aria-invalid={Boolean(validationError)}
+                  aria-busy={lookups.isLoading}
+                >
+                  <SelectValue
+                    placeholder={lookups.isLoading ? 'Загрузка…' : 'Выберите организацию'}
+                  />
+                </SelectTrigger>
+                <SelectContent
+                  position="popper"
+                  className="max-h-[min(16rem,var(--radix-select-content-available-height))]"
+                >
+                  {organizationOptions.map((org) => (
+                    <SelectItem key={org.id} value={org.id}>
+                      {org.officialName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {validationError ? (
+                <p className="text-sm text-destructive">{validationError}</p>
+              ) : null}
             </div>
             <DialogFooter>
-              <Button type="submit">Сохранить</Button>
+              <Button type="submit" disabled={lookups.isLoading}>
+                Сохранить
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -493,7 +599,8 @@ function ReopenDialog({ onConfirm }: { onConfirm: (reason: string) => void }) {
 
 export function ActHistory({ actId }: { actId: string }) {
   const history = useQuery({
-    queryKey: ['history', actId],
+    queryKey: historyKey(actId),
+    refetchOnMount: 'always',
     queryFn: async () => {
       const response = await fetch(`/api/acts/${actId}/history`, { credentials: 'include' });
       if (!response.ok) {

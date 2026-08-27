@@ -28,7 +28,12 @@ import {
   fetchRegistryList,
   fetchRegistrySummary,
 } from '../../lib/registry-api';
-import { queryFromSearchParams, searchParamsFromQuery } from '../../lib/registry-url';
+import {
+  queryFromSearchParams,
+  registryNavigation,
+  searchParamsFromQuery,
+} from '../../lib/registry-url';
+import { queryKeys } from '../../lib/query-keys';
 import { RegistryCards } from './registry-cards';
 import { RegistryFilters } from './registry-filters';
 import { RegistrySummary } from './registry-summary';
@@ -72,32 +77,54 @@ export function RegistryView({ user }: { user: SafeUserProfile }) {
       if (trimmed === applied || (trimmed.length === 1 && !applied)) {
         return;
       }
-      const search = searchParamsFromQuery({
-        ...current,
-        page: 1,
-        search: trimmed.length >= 2 ? trimmed : null,
+      const navigation = registryNavigation({
+        current,
+        next: {
+          ...current,
+          page: 1,
+          search: trimmed.length >= 2 ? trimmed : null,
+        },
+        mode: 'replace',
       });
-      router.replace(search ? `/registry?${search}` : '/registry', { scroll: false });
+      if (!navigation) {
+        return;
+      }
+      router.replace(navigation.href, { scroll: false });
     }, 350);
     return () => window.clearTimeout(handle);
   }, [searchDraft, router]);
 
   const listQuery = useQuery({
-    queryKey: ['registry', 'defects', query],
+    queryKey: queryKeys.registry.defects(query),
     queryFn: () => fetchRegistryList(query),
   });
   const summaryQuery = useQuery({
-    queryKey: ['registry', 'summary', query],
+    queryKey: queryKeys.registry.summary(query),
     queryFn: () => fetchRegistrySummary(query),
   });
   const optionsQuery = useQuery({
-    queryKey: ['registry', 'filter-options'],
+    queryKey: queryKeys.registry.filterOptions,
     queryFn: fetchRegistryFilterOptions,
   });
 
+  function navigateQuery(next: RegistryListQuery, mode: 'push' | 'replace') {
+    const navigation = registryNavigation({ current: query, next, mode });
+    if (!navigation) {
+      return;
+    }
+    if (navigation.method === 'push') {
+      router.push(navigation.href, { scroll: false });
+      return;
+    }
+    router.replace(navigation.href, { scroll: false });
+  }
+
+  function pushQuery(next: RegistryListQuery) {
+    navigateQuery(next, 'push');
+  }
+
   function replaceQuery(next: RegistryListQuery) {
-    const search = searchParamsFromQuery(next);
-    router.replace(search ? `/registry?${search}` : '/registry', { scroll: false });
+    navigateQuery(next, 'replace');
   }
 
   function openRow(row: RegistryDefectRow) {
@@ -150,7 +177,7 @@ export function RegistryView({ user }: { user: SafeUserProfile }) {
         summary={summaryQuery.data}
         query={query}
         canViewSum={canViewProposalASum(user.role)}
-        onChange={replaceQuery}
+        onChange={pushQuery}
         loading={summaryQuery.isLoading}
       />
       <RegistryFilters
@@ -160,10 +187,10 @@ export function RegistryView({ user }: { user: SafeUserProfile }) {
         onSearchDraft={setSearchDraft}
         onSearchSubmit={() => {
           const trimmed = searchDraft.trim();
-          replaceQuery({ ...query, page: 1, search: trimmed.length >= 2 ? trimmed : null });
+          pushQuery({ ...query, page: 1, search: trimmed.length >= 2 ? trimmed : null });
         }}
-        onChange={replaceQuery}
-        onReset={() => replaceQuery(parseRegistryListQuery({}))}
+        onChange={pushQuery}
+        onReset={() => pushQuery(parseRegistryListQuery({}))}
         sheetOpen={filtersOpen}
         onSheetOpenChange={setFiltersOpen}
         resultCount={listQuery.isSuccess ? totalCount : undefined}

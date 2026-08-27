@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { MultiSelect } from '@/components/multi-select';
 import { PageHeader } from '@/components/page-header';
@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { ApiError, commandFetch } from '../../../lib/command-api';
+import { queryKeys } from '../../../lib/query-keys';
 
 interface Lookups {
   propertyObjects: Array<{ id: string; name: string }>;
@@ -30,7 +31,7 @@ interface Lookups {
   liableOrganizations: Array<{ id: string; officialName: string }>;
 }
 
-interface DraftDefect {
+export interface DraftDefect {
   key: string;
   location: string;
   defectTypeId: string;
@@ -43,9 +44,11 @@ interface DraftDefect {
   thirdPartyDeadline: string;
 }
 
-function emptyDefect(): DraftDefect {
+export const INITIAL_DRAFT_DEFECT_KEY = 'draft-defect-0';
+
+export function createDraftDefect(key: string): DraftDefect {
   return {
-    key: crypto.randomUUID(),
+    key,
     location: '',
     defectTypeId: '',
     claimDetails: '',
@@ -61,7 +64,7 @@ function emptyDefect(): DraftDefect {
 export function CreateActForm({ csrfToken }: { csrfToken: string }) {
   const router = useRouter();
   const lookups = useQuery({
-    queryKey: ['lookups'],
+    queryKey: queryKeys.lookups,
     queryFn: async () => {
       const response = await fetch('/api/operations/lookups', { credentials: 'include' });
       if (!response.ok) {
@@ -75,10 +78,17 @@ export function CreateActForm({ csrfToken }: { csrfToken: string }) {
   const [customerOrganizationId, setCustomerOrganizationId] = useState('');
   const [issuedOn, setIssuedOn] = useState(() => new Date().toISOString().slice(0, 10));
   const [signedDocumentRef, setSignedDocumentRef] = useState('');
-  const [defects, setDefects] = useState<DraftDefect[]>([emptyDefect()]);
+  const [defects, setDefects] = useState<DraftDefect[]>(() => [
+    createDraftDefect(INITIAL_DRAFT_DEFECT_KEY),
+  ]);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-  const idempotencyKey = useMemo(() => crypto.randomUUID(), []);
+  const idempotencyKeyRef = useRef<string | null>(null);
+
+  function readIdempotencyKey() {
+    idempotencyKeyRef.current ??= crypto.randomUUID();
+    return idempotencyKeyRef.current;
+  }
 
   async function onCreate() {
     if (pending) {
@@ -90,7 +100,7 @@ export function CreateActForm({ csrfToken }: { csrfToken: string }) {
       const created = await commandFetch<{ id: string }>('/api/acts', {
         method: 'POST',
         csrfToken,
-        idempotencyKey,
+        idempotencyKey: readIdempotencyKey(),
         body: {
           formCode,
           objectId,
@@ -123,7 +133,9 @@ export function CreateActForm({ csrfToken }: { csrfToken: string }) {
   const data = lookups.data;
 
   function updateDefect(index: number, patch: Partial<DraftDefect>) {
-    setDefects(defects.map((item, current) => (current === index ? { ...item, ...patch } : item)));
+    setDefects((current) =>
+      current.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)),
+    );
   }
 
   return (
@@ -202,99 +214,17 @@ export function CreateActForm({ csrfToken }: { csrfToken: string }) {
         </CardContent>
       </Card>
       {defects.map((item, index) => (
-        <Collapsible key={item.key} defaultOpen className="md:block">
-          <Card className="defect-card shadow-none">
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CollapsibleTrigger asChild>
-                <button type="button" className="text-left">
-                  <CardTitle className="text-base">Дефект {index + 1}</CardTitle>
-                </button>
-              </CollapsibleTrigger>
-              {defects.length > 1 ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => setDefects(defects.filter((_, i) => i !== index))}
-                >
-                  Удалить карточку
-                </Button>
-              ) : null}
-            </CardHeader>
-            <CollapsibleContent>
-              <CardContent className="grid gap-4 md:grid-cols-2">
-                <div className="grid gap-1.5">
-                  <Label htmlFor={`loc-${item.key}`}>Помещение</Label>
-                  <Input
-                    id={`loc-${item.key}`}
-                    value={item.location}
-                    onChange={(event) => updateDefect(index, { location: event.target.value })}
-                    required
-                  />
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor={`type-${item.key}`}>Вид дефекта</Label>
-                  <Select
-                    value={item.defectTypeId}
-                    onValueChange={(value) => updateDefect(index, { defectTypeId: value })}
-                  >
-                    <SelectTrigger id={`type-${item.key}`} aria-label="Вид дефекта">
-                      <SelectValue placeholder="Выберите вид" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(data?.defectTypes ?? []).map((type) => (
-                        <SelectItem key={type.id} value={type.id}>
-                          {type.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid gap-1.5 md:col-span-2">
-                  <Label htmlFor={`claim-${item.key}`}>Описание</Label>
-                  <Textarea
-                    id={`claim-${item.key}`}
-                    value={item.claimDetails}
-                    onChange={(event) => updateDefect(index, { claimDetails: event.target.value })}
-                    required
-                  />
-                </div>
-                <MultiSelect
-                  label="Ответственные инженеры"
-                  options={(data?.responsibleEngineers ?? []).map((engineer) => ({
-                    id: engineer.id,
-                    label: engineer.fullName,
-                  }))}
-                  values={item.responsibleEngineerIds}
-                  onChange={(responsibleEngineerIds) =>
-                    updateDefect(index, { responsibleEngineerIds })
-                  }
-                />
-                <MultiSelect
-                  label="Виновные организации"
-                  options={(data?.liableOrganizations ?? []).map((org) => ({
-                    id: org.id,
-                    label: org.officialName,
-                  }))}
-                  values={item.liableOrganizationIds}
-                  onChange={(liableOrganizationIds) =>
-                    updateDefect(index, { liableOrganizationIds })
-                  }
-                />
-                <div className="grid gap-1.5">
-                  <Label htmlFor={`plan-${item.key}`}>Плановый срок</Label>
-                  <Input
-                    id={`plan-${item.key}`}
-                    type="date"
-                    value={item.plannedDeadline}
-                    onChange={(event) =>
-                      updateDefect(index, { plannedDeadline: event.target.value })
-                    }
-                  />
-                </div>
-              </CardContent>
-            </CollapsibleContent>
-          </Card>
-        </Collapsible>
+        <DraftDefectCard
+          key={item.key}
+          item={item}
+          index={index}
+          lookups={data}
+          canRemove={defects.length > 1}
+          onRemove={() =>
+            setDefects((current) => current.filter((_, itemIndex) => itemIndex !== index))
+          }
+          onChange={(patch) => updateDefect(index, patch)}
+        />
       ))}
       {error ? <ErrorState description={error} /> : null}
       <div className="sticky bottom-0 z-10 flex flex-wrap gap-2 border-t bg-background/95 py-3 backdrop-blur">
@@ -304,7 +234,9 @@ export function CreateActForm({ csrfToken }: { csrfToken: string }) {
         <Button
           type="button"
           variant="outline"
-          onClick={() => setDefects([...defects, emptyDefect()])}
+          onClick={() =>
+            setDefects((current) => [...current, createDraftDefect(crypto.randomUUID())])
+          }
         >
           Добавить дефект
         </Button>
@@ -313,5 +245,113 @@ export function CreateActForm({ csrfToken }: { csrfToken: string }) {
         </Button>
       </div>
     </div>
+  );
+}
+
+function DraftDefectCard({
+  item,
+  index,
+  lookups,
+  canRemove,
+  onRemove,
+  onChange,
+}: {
+  item: DraftDefect;
+  index: number;
+  lookups: Lookups | undefined;
+  canRemove: boolean;
+  onRemove: () => void;
+  onChange: (patch: Partial<DraftDefect>) => void;
+}) {
+  const fieldId = useId();
+  const locationId = `${fieldId}-location`;
+  const typeId = `${fieldId}-type`;
+  const claimId = `${fieldId}-claim`;
+  const planId = `${fieldId}-plan`;
+
+  return (
+    <Collapsible defaultOpen className="md:block">
+      <Card className="defect-card shadow-none" data-draft-key={item.key}>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CollapsibleTrigger asChild>
+            <button type="button" className="text-left">
+              <CardTitle className="text-base">Дефект {index + 1}</CardTitle>
+            </button>
+          </CollapsibleTrigger>
+          {canRemove ? (
+            <Button type="button" variant="ghost" onClick={onRemove}>
+              Удалить карточку
+            </Button>
+          ) : null}
+        </CardHeader>
+        <CollapsibleContent>
+          <CardContent className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-1.5">
+              <Label htmlFor={locationId}>Помещение</Label>
+              <Input
+                id={locationId}
+                value={item.location}
+                onChange={(event) => onChange({ location: event.target.value })}
+                required
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor={typeId}>Вид дефекта</Label>
+              <Select
+                value={item.defectTypeId}
+                onValueChange={(value) => onChange({ defectTypeId: value })}
+              >
+                <SelectTrigger id={typeId} aria-label="Вид дефекта">
+                  <SelectValue placeholder="Выберите вид" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(lookups?.defectTypes ?? []).map((type) => (
+                    <SelectItem key={type.id} value={type.id}>
+                      {type.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1.5 md:col-span-2">
+              <Label htmlFor={claimId}>Описание</Label>
+              <Textarea
+                id={claimId}
+                value={item.claimDetails}
+                onChange={(event) => onChange({ claimDetails: event.target.value })}
+                required
+              />
+            </div>
+            <MultiSelect
+              label="Ответственные инженеры"
+              options={(lookups?.responsibleEngineers ?? []).map((engineer) => ({
+                id: engineer.id,
+                label: engineer.fullName,
+              }))}
+              values={item.responsibleEngineerIds}
+              onChange={(responsibleEngineerIds) => onChange({ responsibleEngineerIds })}
+            />
+            <MultiSelect
+              label="Виновные организации"
+              options={(lookups?.liableOrganizations ?? []).map((org) => ({
+                id: org.id,
+                label: org.officialName,
+              }))}
+              values={item.liableOrganizationIds}
+              onChange={(liableOrganizationIds) => onChange({ liableOrganizationIds })}
+            />
+            <div className="grid gap-1.5">
+              <Label htmlFor={planId}>Плановый срок</Label>
+              <Input
+                id={planId}
+                type="date"
+                value={item.plannedDeadline}
+                onChange={(event) => onChange({ plannedDeadline: event.target.value })}
+              />
+            </div>
+          </CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
   );
 }
