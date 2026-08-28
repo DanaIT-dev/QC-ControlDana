@@ -46,7 +46,7 @@ Docker Compose поднимает:
 - ClamAV (`clamd` на localhost:3310) для антивирусной проверки перед статусом READY; образ закреплён по digest, index включает `linux/arm64`.
 - Mailpit (SMTP 127.0.0.1:1025, UI 127.0.0.1:8025) только для development/test; образ закреплён по digest, index включает `linux/arm64`. Production SMTP задаётся env.
 
-Порты задаются переменными окружения. Первый запуск ClamAV качает сигнатуры и может занять несколько минут. Демонстрационные пароли только для local development.
+Порты инфраструктуры публикуются только на loopback (`127.0.0.1:HOST:CONTAINER`). Приложения внутри Docker ходят по service names, процессы на host — через localhost. Mailpit UI/SMTP и ClamAV также только на localhost.
 
 Тестовый bucket `sgr-attachments-test` и база `*_test` отделены от development. Integration-тесты отказываются работать с bucket без суффикса `-test`.
 

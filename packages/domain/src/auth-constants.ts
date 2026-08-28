@@ -2,7 +2,6 @@ export const AUTH_LOGIN_FAILED_MESSAGE = 'Неверный логин или п�
 export const AUTH_RATE_LIMITED_MESSAGE = 'Слишком много попыток входа. Попробуйте позже.';
 export const SESSION_COOKIE_NAME = 'sgr_session';
 export const CSRF_HEADER_NAME = 'x-csrf-token';
-export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
 
 export const AUTH_AUDIT_ACTIONS = [
   'LOGIN_SUCCEEDED',

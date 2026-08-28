@@ -50,6 +50,8 @@ type MultipartFile = {
   file: Readable;
 };
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export class HashingLimiter extends Transform {
   readonly hash = createHash('sha256');
   size = 0;
@@ -485,6 +487,9 @@ export class AttachmentsService {
   }
 
   private async loadScoped(user: AuthenticatedUser, attachmentId: string) {
+    if (!UUID_PATTERN.test(attachmentId)) {
+      throw new NotFoundException('Запись не найдена');
+    }
     const attachment = await this.prisma.attachment.findUnique({
       where: { id: attachmentId },
       include: { uploadedBy: true, proposal: true },

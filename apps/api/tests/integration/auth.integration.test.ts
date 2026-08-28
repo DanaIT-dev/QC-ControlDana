@@ -377,4 +377,100 @@ describe('auth integration', () => {
     expect(forbidden.statusCode).toBe(403);
     expect(allowed.statusCode).toBe(200);
   });
+
+  it('sets cookie maxAge to absolute lifetime and Redis TTL to idle timeout', async () => {
+    const user = await createUser('ADMIN');
+    const response = await login(user.email, DEMO_PASSWORD);
+    const cookie = response.cookies.find((item) => item.name === SESSION_COOKIE_NAME);
+    expect(cookie?.maxAge).toBe(7 * 24 * 60 * 60);
+    const sessionId = cookieValue(response)!;
+    const key = `sgr-test:sess:${hashSessionId(sessionId)}`;
+    const ttl = await redis.ttl(key);
+    expect(ttl).toBeGreaterThan(0);
+    expect(ttl).toBeLessThanOrEqual(12 * 60 * 60);
+    const stored = JSON.parse((await redis.get(key))!) as {
+      createdAt: string;
+      lastActivityAt: string;
+      absoluteExpiresAt: string;
+    };
+    expect(Date.parse(stored.absoluteExpiresAt) - Date.parse(stored.createdAt)).toBe(
+      7 * 24 * 60 * 60 * 1000,
+    );
+  });
+
+  it('does not extend absolute lifetime after activity', async () => {
+    const user = await createUser('ADMIN');
+    const loggedIn = await login(user.email, DEMO_PASSWORD);
+    const sessionId = cookieValue(loggedIn)!;
+    const key = `sgr-test:sess:${hashSessionId(sessionId)}`;
+    const before = JSON.parse((await redis.get(key))!) as {
+      lastActivityAt: string;
+      absoluteExpiresAt: string;
+    };
+    await new Promise((resolve) => {
+      setTimeout(resolve, 20);
+    });
+    const me = await inject({
+      method: 'GET',
+      url: '/api/auth/me',
+      cookies: { [SESSION_COOKIE_NAME]: sessionId },
+    });
+    expect(me.statusCode).toBe(200);
+    const after = JSON.parse((await redis.get(key))!) as {
+      lastActivityAt: string;
+      absoluteExpiresAt: string;
+    };
+    expect(after.absoluteExpiresAt).toBe(before.absoluteExpiresAt);
+    expect(Date.parse(after.lastActivityAt)).toBeGreaterThanOrEqual(
+      Date.parse(before.lastActivityAt),
+    );
+  });
+
+  it('rejects an idle-expired session with controlled timestamps', async () => {
+    const user = await createUser('ADMIN');
+    const loggedIn = await login(user.email, DEMO_PASSWORD);
+    const sessionId = cookieValue(loggedIn)!;
+    const key = `sgr-test:sess:${hashSessionId(sessionId)}`;
+    const stored = JSON.parse((await redis.get(key))!) as Record<string, string>;
+    stored.lastActivityAt = new Date(Date.now() - 13 * 60 * 60 * 1000).toISOString();
+    await redis.set(key, JSON.stringify(stored), 'EX', 60);
+    const me = await inject({
+      method: 'GET',
+      url: '/api/auth/me',
+      cookies: { [SESSION_COOKIE_NAME]: sessionId },
+    });
+    expect(me.statusCode).toBe(401);
+    expect(await redis.get(key)).toBeNull();
+  });
+
+  it('rejects an absolute-expired session even with fresh activity timestamps', async () => {
+    const user = await createUser('ADMIN');
+    const loggedIn = await login(user.email, DEMO_PASSWORD);
+    const sessionId = cookieValue(loggedIn)!;
+    const key = `sgr-test:sess:${hashSessionId(sessionId)}`;
+    const stored = JSON.parse((await redis.get(key))!) as Record<string, string>;
+    const created = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
+    stored.createdAt = created.toISOString();
+    stored.lastActivityAt = new Date().toISOString();
+    stored.absoluteExpiresAt = new Date(created.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    await redis.set(key, JSON.stringify(stored), 'EX', 60);
+    const me = await inject({
+      method: 'GET',
+      url: '/api/auth/me',
+      cookies: { [SESSION_COOKIE_NAME]: sessionId },
+    });
+    expect(me.statusCode).toBe(401);
+  });
+
+  it('sends JSON API CSP and production-safe baseline headers', async () => {
+    const response = await inject({ method: 'GET', url: '/api/health' });
+    const csp = String(response.headers['content-security-policy'] ?? '');
+    expect(csp).toMatch(/default-src 'none'/);
+    expect(csp).toMatch(/base-uri 'none'/);
+    expect(csp).toMatch(/frame-ancestors 'none'/);
+    expect(csp).toMatch(/form-action 'none'/);
+    expect(String(response.headers['x-content-type-options'])).toBe('nosniff');
+    expect(String(response.headers['x-frame-options']).toLowerCase()).toBe('deny');
+    expect(response.headers['strict-transport-security']).toBeUndefined();
+  });
 });

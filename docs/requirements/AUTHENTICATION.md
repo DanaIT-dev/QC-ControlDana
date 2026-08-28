@@ -33,26 +33,33 @@
 Сессии живут только в Redis. Cookie `sgr_session`:
 
 - HttpOnly;
-- SameSite=Lax;
+- SameSite=Lax (для переходов из email-уведомлений; CSRF обязателен на мутациях);
 - Path=/;
-- Max-Age 30 дней;
-- Secure только в production;
+- Max-Age равен абсолютному сроку жизни (по умолчанию 7 дней);
+- Secure всегда в production; `Secure=false` только для HTTP localhost в development/test;
 - Domain не задаётся;
-- значение — непрозрачный случайный идентификатор (≥256 бит), не UUID и не JSON с userId/ролью.
+- значение — непрозрачный случайный идентификатор (≥256 бит), не UUID и не JSON с userId/ролью;
+- не сохраняется в `localStorage` / `sessionStorage`.
 
 В Redis хранится SHA-256 идентификатора, не исходное значение cookie.
 
 Ключи (префикс по умолчанию `sgr`, в тестах `sgr-test`):
 
-- `sgr:sess:{sha256}` — данные сессии: `userId`, `sessionVersion`, `csrfToken`, `createdAt`, `expiresAt`;
+- `sgr:sess:{sha256}` — данные сессии: `userId`, `sessionVersion`, `csrfToken`, `createdAt`, `lastActivityAt`, `absoluteExpiresAt`;
 - `sgr:user-sess:{userId}` — индекс сессий пользователя для logout-all и блокировки;
 - `sgr:login-fail:{email}:{ip}` — счётчик неуспешных входов.
 
-TTL сессии и индекса — 30 дней. Если Redis недоступен, авторизация закрывается: защищённый запрос получает 401 без внутренних деталей.
+Срок жизни:
+
+- idle timeout (`SESSION_IDLE_TIMEOUT_SECONDS`, по умолчанию 12 часов) — продлевается активностью;
+- absolute lifetime (`SESSION_ABSOLUTE_LIFETIME_SECONDS`, по умолчанию 7 дней) — считается от `createdAt` и не продлевается;
+- TTL ключа Redis = минимум оставшегося idle и remaining absolute, поэтому сессия не живёт дольше absolute lifetime.
+
+Если Redis недоступен, авторизация закрывается: защищённый запрос получает 401 без внутренних деталей.
 
 Роль и статус читаются из PostgreSQL на каждый защищённый запрос. Значение роли в Redis не является источником истины. `ARCHIVED` пользователь не входит, получает ту же ошибку, что и при неверном пароле, и теряет активные сессии.
 
-`POST /api/auth/logout` удаляет текущую сессию. `POST /api/auth/logout-all` увеличивает `sessionVersion` и удаляет все сессии пользователя.
+`POST /api/auth/logout` удаляет текущую сессию. `POST /api/auth/logout-all` и смена пароля увеличивают `sessionVersion` и удаляют все сессии пользователя.
 
 ## CSRF
 
@@ -74,7 +81,7 @@ TTL сессии и индекса — 30 дней. Если Redis недост�
 
 Append-only `AuditLog`: `LOGIN_SUCCEEDED`, `LOGIN_FAILED`, `LOGIN_RATE_LIMITED`, `LOGOUT`, `LOGOUT_ALL`, `SESSION_REJECTED_ARCHIVED_USER`, `SESSION_REJECTED_VERSION_MISMATCH`.
 
-Не записываются пароль, cookie, session id, csrfToken, passwordHash.
+Не записываются пароль, cookie, session id, csrfToken, passwordHash, temporaryPassword.
 
 ## Тесты
 
@@ -89,7 +96,7 @@ Integration-тесты используют только `TEST_DATABASE_URL` с 
 ## Production
 
 - не задавать `SEED_DEMO_PASSWORD` как рабочий пароль;
-- `NODE_ENV=production` включает Secure cookie;
+- `NODE_ENV=production` включает Secure cookie, HTTPS `WEB_ORIGIN` / `PUBLIC_APP_URL` и запрещает idle > 12 часов и absolute > 7 дней;
 - `TRUST_PROXY` включать только за известным reverse proxy;
 - `WEB_ORIGIN` должен быть точным origin веб-приложения;
 - Redis обязателен: без него вход и защищённые маршруты недоступны.

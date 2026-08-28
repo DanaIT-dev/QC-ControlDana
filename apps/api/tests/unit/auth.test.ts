@@ -1,4 +1,6 @@
 import 'reflect-metadata';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { ForbiddenException, HttpException, UnauthorizedException } from '@nestjs/common';
 import type { ExecutionContext } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
@@ -11,6 +13,7 @@ import {
   hashArgon2id,
   hashSessionId,
   safeEqual,
+  TEMPORARY_PASSWORD_ALPHABET,
   verifyPassword,
 } from '../../src/auth/crypto';
 import { CsrfGuard } from '../../src/auth/csrf.guard';
@@ -251,6 +254,21 @@ describe('temporary password generation', () => {
     expect(/\d/.test(password)).toBe(true);
     expect(/[^A-Za-z0-9]/.test(password)).toBe(true);
   });
+
+  it('keeps the contracted length and alphabet and uses CSPRNG without modulo bias', () => {
+    const source = readFileSync(resolve(import.meta.dirname, '../../src/auth/crypto.ts'), 'utf8');
+    expect(source).toMatch(/randomInt\(/);
+    expect(source).not.toMatch(/Math\.random/);
+    expect(source).not.toMatch(/% alphabet\.length/);
+    expect(source).not.toMatch(/% \(i \+ 1\)/);
+    for (let i = 0; i < 40; i += 1) {
+      const password = generateTemporaryPassword();
+      expect(password).toHaveLength(16);
+      for (const char of password) {
+        expect(TEMPORARY_PASSWORD_ALPHABET).toContain(char);
+      }
+    }
+  });
 });
 
 describe('expired session payload', () => {
@@ -260,7 +278,33 @@ describe('expired session payload', () => {
       sessionVersion: 1,
       csrfToken: 'csrf',
       createdAt: new Date(Date.now() - 1000).toISOString(),
-      expiresAt: new Date(Date.now() - 10).toISOString(),
+      lastActivityAt: new Date(Date.now() - 13 * 60 * 60 * 1000).toISOString(),
+      absoluteExpiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    };
+    const sessions = {
+      get: vi.fn().mockResolvedValue(expired),
+      delete: vi.fn().mockResolvedValue(undefined),
+    };
+    const prisma = { client: { user: { findUnique: vi.fn() }, auditLog: { create: vi.fn() } } };
+    const service = new AuthService(prisma as never, sessions as never, {} as never);
+    await expect(
+      service.resolveSession('opaque-session-id', {
+        headers: {},
+        ip: '127.0.0.1',
+        socket: {},
+      } as never),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(sessions.delete).toHaveBeenCalled();
+  });
+
+  it('rejects a session past absolute lifetime even with recent activity', async () => {
+    const expired: StoredSession = {
+      userId: 'user-1',
+      sessionVersion: 1,
+      csrfToken: 'csrf',
+      createdAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString(),
+      lastActivityAt: new Date().toISOString(),
+      absoluteExpiresAt: new Date(Date.now() - 1000).toISOString(),
     };
     const sessions = {
       get: vi.fn().mockResolvedValue(expired),

@@ -26,7 +26,8 @@ export class RedisSessionStore implements SessionStore {
       const pipeline = this.redis.pipeline();
       pipeline.set(sessionKey(prefix, sessionHash), JSON.stringify(session), 'EX', ttlSeconds);
       pipeline.sadd(userSessionsKey(prefix, userId), sessionHash);
-      pipeline.expire(userSessionsKey(prefix, userId), ttlSeconds);
+      const indexTtl = userSessionIndexTtlSeconds(session, ttlSeconds);
+      pipeline.expire(userSessionsKey(prefix, userId), indexTtl);
       const result = await pipeline.exec();
       if (!result) {
         throw new RedisUnavailableError();
@@ -141,4 +142,12 @@ export function nextLoginFailureState(
     ttlSeconds: windowSeconds,
     limited: count > limit,
   };
+}
+
+function userSessionIndexTtlSeconds(session: StoredSession, ttlSeconds: number): number {
+  const absoluteRemaining = Math.floor((Date.parse(session.absoluteExpiresAt) - Date.now()) / 1000);
+  if (!Number.isFinite(absoluteRemaining)) {
+    return ttlSeconds;
+  }
+  return Math.max(ttlSeconds, absoluteRemaining);
 }

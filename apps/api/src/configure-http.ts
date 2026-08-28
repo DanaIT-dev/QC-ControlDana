@@ -10,8 +10,19 @@ export async function configureHttpApp(
   config: AppConfig,
 ): Promise<void> {
   await app.register(helmet as never, {
-    contentSecurityPolicy: false,
+    contentSecurityPolicy: {
+      useDefaults: false,
+      directives: {
+        defaultSrc: ["'none'"],
+        baseUri: ["'none'"],
+        frameAncestors: ["'none'"],
+        formAction: ["'none'"],
+      },
+    },
     crossOriginEmbedderPolicy: false,
+    frameguard: { action: 'deny' },
+    hsts:
+      config.NODE_ENV === 'production' ? { maxAge: 15_552_000, includeSubDomains: true } : false,
   });
   await app.register(cookie as never);
   await app.register(multipart as never, {
@@ -30,7 +41,8 @@ export async function configureHttpApp(
   const fastify = app.getHttpAdapter().getInstance();
   fastify.addHook('onRequest', async (request, reply) => {
     const header = request.headers['x-request-id'];
-    const requestId = typeof header === 'string' && header.length > 0 ? header : randomUUID();
+    const requestId =
+      typeof header === 'string' && /^[A-Za-z0-9._-]{1,128}$/.test(header) ? header : randomUUID();
     Object.assign(request, { requestId });
     reply.header('x-request-id', requestId);
   });

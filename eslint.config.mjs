@@ -12,6 +12,7 @@ export default [
       'packages/database/src/generated/**',
       'packages/database/prisma/migrations/**',
       'apps/web/next-env.d.ts',
+      'scripts/**',
     ],
   },
   ...sgrRegistryConfig,

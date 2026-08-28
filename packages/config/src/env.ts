@@ -68,11 +68,16 @@ const envSchema = z
     ATTACHMENT_MAX_PIXELS: z.coerce.number().int().positive().default(40_000_000),
     ATTACHMENT_SCAN_MAX_ATTEMPTS: z.coerce.number().int().positive().default(3),
     TRUST_PROXY: booleanFalse,
-    SESSION_TTL_SECONDS: z.coerce
+    SESSION_IDLE_TIMEOUT_SECONDS: z.coerce
       .number()
       .int()
       .positive()
-      .default(60 * 60 * 24 * 30),
+      .default(12 * 60 * 60),
+    SESSION_ABSOLUTE_LIFETIME_SECONDS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(7 * 24 * 60 * 60),
     AUTH_LOGIN_MAX_FAILURES: z.coerce.number().int().positive().default(5),
     AUTH_LOGIN_WINDOW_SECONDS: z.coerce
       .number()
@@ -96,6 +101,36 @@ const envSchema = z
     WORKER_READY_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
   })
   .superRefine((value, ctx) => {
+    if (value.SESSION_IDLE_TIMEOUT_SECONDS > value.SESSION_ABSOLUTE_LIFETIME_SECONDS) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['SESSION_IDLE_TIMEOUT_SECONDS'],
+        message: 'SESSION_IDLE_TIMEOUT_SECONDS must not exceed SESSION_ABSOLUTE_LIFETIME_SECONDS',
+      });
+    }
+    if (value.NODE_ENV === 'production') {
+      if (value.SESSION_IDLE_TIMEOUT_SECONDS > 12 * 60 * 60) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['SESSION_IDLE_TIMEOUT_SECONDS'],
+          message: 'production idle timeout must not exceed 12 hours',
+        });
+      }
+      if (value.SESSION_ABSOLUTE_LIFETIME_SECONDS > 7 * 24 * 60 * 60) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['SESSION_ABSOLUTE_LIFETIME_SECONDS'],
+          message: 'production absolute session lifetime must not exceed 7 days',
+        });
+      }
+      if (!value.WEB_ORIGIN.startsWith('https://')) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['WEB_ORIGIN'],
+          message: 'WEB_ORIGIN must use HTTPS in production',
+        });
+      }
+    }
     if (value.NODE_ENV === 'production' && !value.PUBLIC_APP_URL.startsWith('https://')) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

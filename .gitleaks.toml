@@ -1,0 +1,22 @@
+title = "sgr-registry"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Documented local-only demo placeholders, never production credentials"
+paths = [
+  '''(.*)/node_modules/.*''',
+  '''(.*)/\.next/.*''',
+  '''(.*)/dist/.*''',
+  '''(.*)/test-results/.*''',
+  '''(.*)/\.env\.example$''',
+  '''(.*)/infra/docker/compose\.yaml$''',
+  '''(.*)/docs/security/.*''',
+  '''(.*)/\.gitleaks\.toml$''',
+]
+regexes = [
+  '''Dana-SGR-Demo-2026!''',
+  '''sgr_registry_dev_password''',
+  '''sgr_minio_dev_password''',
+]

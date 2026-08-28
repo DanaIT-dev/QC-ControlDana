@@ -5,7 +5,7 @@ import { useState, type ReactNode } from 'react';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 
-export function Providers({ children }: { children: ReactNode }) {
+export function Providers({ children, nonce: _nonce }: { children: ReactNode; nonce?: string }) {
   const [client] = useState(
     () =>
       new QueryClient({

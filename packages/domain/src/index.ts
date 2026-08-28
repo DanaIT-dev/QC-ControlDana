@@ -11,6 +11,7 @@ export * from './capabilities';
 export * from './email';
 export * from './password-policy';
 export * from './auth-constants';
+export * from './session-lifetime';
 export * from './deadline';
 export * from './deadline-commands';
 export * from './registry-access';

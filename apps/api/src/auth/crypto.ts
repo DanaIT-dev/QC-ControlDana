@@ -1,4 +1,4 @@
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import argon2 from 'argon2';
 import { PASSWORD_MAX_LENGTH, assertPasswordPolicy } from '@sgr-registry/domain';
 
@@ -42,10 +42,10 @@ const TEMP_PASSWORD_LOWER = 'abcdefghijkmnopqrstuvwxyz';
 const TEMP_PASSWORD_DIGITS = '23456789';
 const TEMP_PASSWORD_SPECIAL = '!@#$%^&*-_=+';
 const TEMP_PASSWORD_ALL = `${TEMP_PASSWORD_UPPER}${TEMP_PASSWORD_LOWER}${TEMP_PASSWORD_DIGITS}${TEMP_PASSWORD_SPECIAL}`;
+export const TEMPORARY_PASSWORD_ALPHABET = TEMP_PASSWORD_ALL;
 
 function pickChar(alphabet: string): string {
-  const index = randomBytes(1)[0]! % alphabet.length;
-  return alphabet[index]!;
+  return alphabet[randomInt(0, alphabet.length)]!;
 }
 
 export function generateTemporaryPassword(length = 16): string {
@@ -58,7 +58,7 @@ export function generateTemporaryPassword(length = 16): string {
     ...Array.from({ length: size - 4 }, () => pickChar(TEMP_PASSWORD_ALL)),
   ];
   for (let i = chars.length - 1; i > 0; i -= 1) {
-    const j = randomBytes(1)[0]! % (i + 1);
+    const j = randomInt(0, i + 1);
     const current = chars[i]!;
     chars[i] = chars[j]!;
     chars[j] = current;

@@ -5,9 +5,17 @@ import type { AuthenticatedUser } from './authenticated-user';
 import { AuthService, toSafeProfile } from './auth.service';
 import { AuthenticationGuard } from './authentication.guard';
 import { BrowserOriginGuard } from './browser-origin.guard';
-import { clearSessionCookie, setSessionCookie } from './cookie';
+import { clearSessionCookie, sessionCookieSecure, setSessionCookie } from './cookie';
 import { CsrfGuard } from './csrf.guard';
 import { CurrentUser } from './current-user.decorator';
+
+function writeSessionCookie(reply: FastifyReply, sessionId: string): void {
+  const config = loadConfig();
+  setSessionCookie(reply, sessionId, {
+    secure: sessionCookieSecure(config.NODE_ENV),
+    maxAgeSeconds: config.SESSION_ABSOLUTE_LIFETIME_SECONDS,
+  });
+}
 
 @Controller('auth')
 export class AuthController {
@@ -21,8 +29,7 @@ export class AuthController {
     @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<ReturnType<typeof toSafeProfile>> {
     const { profile, sessionId } = await this.authService.login(request.body, request);
-    const config = loadConfig();
-    setSessionCookie(reply, sessionId, config.NODE_ENV === 'production');
+    writeSessionCookie(reply, sessionId);
     return profile;
   }
 
@@ -51,8 +58,7 @@ export class AuthController {
       request.body,
       request,
     );
-    const config = loadConfig();
-    setSessionCookie(reply, sessionId, config.NODE_ENV === 'production');
+    writeSessionCookie(reply, sessionId);
     return profile;
   }
 
@@ -65,8 +71,7 @@ export class AuthController {
     @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<{ ok: true }> {
     await this.authService.logout(user, request);
-    const config = loadConfig();
-    clearSessionCookie(reply, config.NODE_ENV === 'production');
+    clearSessionCookie(reply, sessionCookieSecure(loadConfig().NODE_ENV));
     return { ok: true };
   }
 
@@ -79,8 +84,7 @@ export class AuthController {
     @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<{ ok: true }> {
     await this.authService.logoutAll(user, request);
-    const config = loadConfig();
-    clearSessionCookie(reply, config.NODE_ENV === 'production');
+    clearSessionCookie(reply, sessionCookieSecure(loadConfig().NODE_ENV));
     return { ok: true };
   }
 }

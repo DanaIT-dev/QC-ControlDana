@@ -66,6 +66,7 @@ pnpm dev
 
 - [Уведомления и контроль сроков](docs/requirements/NOTIFICATIONS_AND_SLA_CONTRACT.md)
 - [Безопасность](docs/requirements/SECURITY.md)
+- [Аудит SAST/DAST 2026-08-28](docs/security/SECURITY_AUDIT_2026-08-28.md)
 - [UI-система](docs/design/UI_DESIGN_SYSTEM.md)
 - [Операционный контур](docs/requirements/OPERATIONS_CONTRACT.md)
 - [Матрица прав](docs/requirements/PERMISSIONS_MATRIX.md)

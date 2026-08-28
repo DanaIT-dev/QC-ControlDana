@@ -22,6 +22,9 @@ import {
   roleLabel,
   type AuthAuditAction,
   assertPasswordPolicy,
+  isSessionExpired,
+  redisSessionTtlSeconds,
+  sessionAbsoluteExpiresAt,
 } from '@sgr-registry/domain';
 import type { FastifyRequest } from 'fastify';
 import type { AuthenticatedUser } from './authenticated-user';
@@ -130,14 +133,16 @@ export class AuthService {
     const sessionHash = hashSessionId(sessionId);
     const csrfToken = generateOpaqueToken(32);
     const now = new Date();
-    const ttlSeconds = config.SESSION_TTL_SECONDS;
-    const session: StoredSession = {
+    const { session, ttlSeconds } = buildStoredSession({
       userId: user.id,
       sessionVersion: user.sessionVersion,
       csrfToken,
-      createdAt: now.toISOString(),
-      expiresAt: new Date(now.getTime() + ttlSeconds * 1000).toISOString(),
-    };
+      now,
+      createdAt: now,
+      lastActivityAt: now,
+      idleTimeoutSeconds: config.SESSION_IDLE_TIMEOUT_SECONDS,
+      absoluteLifetimeSeconds: config.SESSION_ABSOLUTE_LIFETIME_SECONDS,
+    });
 
     try {
       await this.sessions.save(sessionHash, user.id, session, ttlSeconds);
@@ -182,7 +187,9 @@ export class AuthService {
       throw new UnauthorizedException('Требуется авторизация');
     }
 
-    if (Date.parse(stored.expiresAt) <= Date.now()) {
+    const config = loadConfig();
+    const now = new Date();
+    if (!hasSessionLifetimeFields(stored) || isStoredSessionExpired(stored, now, config)) {
       try {
         await this.sessions.delete(sessionHash, stored.userId);
       } catch {
@@ -192,7 +199,6 @@ export class AuthService {
     }
 
     const user = await this.prisma.client.user.findUnique({ where: { id: stored.userId } });
-    const config = loadConfig();
     const ip = clientIp(request, config.TRUST_PROXY);
     const requestId = requestIdOf(request);
 
@@ -237,6 +243,16 @@ export class AuthService {
         // ignore
       }
       throw new UnauthorizedException('Требуется авторизация');
+    }
+
+    const touched = touchStoredSession(stored, now, config);
+    try {
+      await this.sessions.save(sessionHash, user.id, touched.session, touched.ttlSeconds);
+    } catch (error) {
+      if (error instanceof RedisUnavailableError) {
+        throw new UnauthorizedException('Требуется авторизация');
+      }
+      throw error;
     }
 
     return {
@@ -306,20 +322,18 @@ export class AuthService {
     const csrfToken = generateOpaqueToken(32);
     const now = new Date();
     const config = loadConfig();
-    const ttlSeconds = config.SESSION_TTL_SECONDS;
+    const { session, ttlSeconds } = buildStoredSession({
+      userId: user.id,
+      sessionVersion: updated.sessionVersion,
+      csrfToken,
+      now,
+      createdAt: now,
+      lastActivityAt: now,
+      idleTimeoutSeconds: config.SESSION_IDLE_TIMEOUT_SECONDS,
+      absoluteLifetimeSeconds: config.SESSION_ABSOLUTE_LIFETIME_SECONDS,
+    });
     try {
-      await this.sessions.save(
-        sessionHash,
-        user.id,
-        {
-          userId: user.id,
-          sessionVersion: updated.sessionVersion,
-          csrfToken,
-          createdAt: now.toISOString(),
-          expiresAt: new Date(now.getTime() + ttlSeconds * 1000).toISOString(),
-        },
-        ttlSeconds,
-      );
+      await this.sessions.save(sessionHash, user.id, session, ttlSeconds);
     } catch (error) {
       throw unavailableOrRethrow(error);
     }
@@ -480,4 +494,105 @@ function unavailableOrRethrow(error: unknown): never {
     throw new HttpException('Сервис временно недоступен', HttpStatus.SERVICE_UNAVAILABLE);
   }
   throw error;
+}
+
+function hasSessionLifetimeFields(
+  session: StoredSession,
+): session is StoredSession & { lastActivityAt: string; absoluteExpiresAt: string } {
+  return (
+    typeof session.lastActivityAt === 'string' &&
+    session.lastActivityAt.length > 0 &&
+    typeof session.absoluteExpiresAt === 'string' &&
+    session.absoluteExpiresAt.length > 0 &&
+    typeof session.createdAt === 'string' &&
+    session.createdAt.length > 0
+  );
+}
+
+function lifetimeFromConfig(config: {
+  SESSION_IDLE_TIMEOUT_SECONDS: number;
+  SESSION_ABSOLUTE_LIFETIME_SECONDS: number;
+}): Pick<
+  Parameters<typeof redisSessionTtlSeconds>[0],
+  'idleTimeoutSeconds' | 'absoluteLifetimeSeconds'
+> {
+  return {
+    idleTimeoutSeconds: config.SESSION_IDLE_TIMEOUT_SECONDS,
+    absoluteLifetimeSeconds: config.SESSION_ABSOLUTE_LIFETIME_SECONDS,
+  };
+}
+
+function isStoredSessionExpired(
+  session: StoredSession,
+  now: Date,
+  config: {
+    SESSION_IDLE_TIMEOUT_SECONDS: number;
+    SESSION_ABSOLUTE_LIFETIME_SECONDS: number;
+  },
+): boolean {
+  const createdAtMs = Date.parse(session.createdAt);
+  const lastActivityAtMs = Date.parse(session.lastActivityAt);
+  if (!Number.isFinite(createdAtMs) || !Number.isFinite(lastActivityAtMs)) {
+    return true;
+  }
+  return isSessionExpired({
+    createdAtMs,
+    lastActivityAtMs,
+    nowMs: now.getTime(),
+    ...lifetimeFromConfig(config),
+  });
+}
+
+function buildStoredSession(input: {
+  userId: string;
+  sessionVersion: number;
+  csrfToken: string;
+  now: Date;
+  createdAt: Date;
+  lastActivityAt: Date;
+  idleTimeoutSeconds: number;
+  absoluteLifetimeSeconds: number;
+}): { session: StoredSession; ttlSeconds: number } {
+  const ttlSeconds = redisSessionTtlSeconds({
+    createdAtMs: input.createdAt.getTime(),
+    lastActivityAtMs: input.lastActivityAt.getTime(),
+    nowMs: input.now.getTime(),
+    idleTimeoutSeconds: input.idleTimeoutSeconds,
+    absoluteLifetimeSeconds: input.absoluteLifetimeSeconds,
+  });
+  return {
+    ttlSeconds,
+    session: {
+      userId: input.userId,
+      sessionVersion: input.sessionVersion,
+      csrfToken: input.csrfToken,
+      createdAt: input.createdAt.toISOString(),
+      lastActivityAt: input.lastActivityAt.toISOString(),
+      absoluteExpiresAt: sessionAbsoluteExpiresAt(
+        input.createdAt,
+        input.absoluteLifetimeSeconds,
+      ).toISOString(),
+    },
+  };
+}
+
+function touchStoredSession(
+  session: StoredSession,
+  now: Date,
+  config: {
+    SESSION_IDLE_TIMEOUT_SECONDS: number;
+    SESSION_ABSOLUTE_LIFETIME_SECONDS: number;
+  },
+): { session: StoredSession; ttlSeconds: number } {
+  const createdAt = new Date(session.createdAt);
+  return buildStoredSession({
+    userId: session.userId,
+    sessionVersion: session.sessionVersion,
+    csrfToken: session.csrfToken,
+    now,
+    createdAt,
+    lastActivityAt: now,
+    idleTimeoutSeconds: config.SESSION_IDLE_TIMEOUT_SECONDS,
+    absoluteLifetimeSeconds: config.SESSION_ABSOLUTE_LIFETIME_SECONDS,
+  });
 }

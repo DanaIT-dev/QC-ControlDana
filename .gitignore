@@ -19,7 +19,7 @@ coverage/
 # Prisma generated client (when custom output is used)
 packages/database/src/generated/
 
-# Test artifacts
+# Test artifacts (Playwright, plus gitignored SAST/DAST reports under test-results/security/)
 playwright-report/
 test-results/
 blob-report/

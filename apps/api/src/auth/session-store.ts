@@ -3,7 +3,8 @@ export interface StoredSession {
   sessionVersion: number;
   csrfToken: string;
   createdAt: string;
-  expiresAt: string;
+  lastActivityAt: string;
+  absoluteExpiresAt: string;
 }
 
 export interface LoginRateLimitState {

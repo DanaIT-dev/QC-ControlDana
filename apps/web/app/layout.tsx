@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
+import { headers } from 'next/headers';
 import { Inter } from 'next/font/google';
 import { Providers } from './providers';
 import './globals.css';
@@ -15,11 +16,12 @@ export const metadata: Metadata = {
   description: 'Реестр дефектных актов Службы гарантийного ремонта Dana Holding',
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  const nonce = (await headers()).get('x-nonce') ?? undefined;
   return (
     <html lang="ru" className={inter.variable}>
       <body className="font-sans">
-        <Providers>{children}</Providers>
+        <Providers nonce={nonce}>{children}</Providers>
       </body>
     </html>
   );

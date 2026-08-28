@@ -138,62 +138,63 @@ describe('registry integration', () => {
     engineerB = await createUser('RESPONSIBLE_ENGINEER');
     engineerC = await createUser('RESPONSIBLE_ENGINEER');
 
+    const suffix = `${Date.now()}`;
     objectA = await prisma.propertyObject.create({
-      data: { name: 'Объект Альфа-тест', address: 'ул. Тестовая, 1' },
+      data: { name: `Объект Альфа-тест ${suffix}`, address: 'ул. Тестовая, 1' },
     });
     objectB = await prisma.propertyObject.create({
-      data: { name: 'Объект Бета-секрет', address: 'ул. Скрытая, 9' },
+      data: { name: `Объект Бета-секрет ${suffix}`, address: 'ул. Скрытая, 9' },
     });
     customerA = await prisma.organization.create({
       data: {
-        officialName: 'Заказчик Альфа',
+        officialName: `Заказчик Альфа ${suffix}`,
         postalAddress: 'а',
-        email: 'ca@example.sgr.local',
+        email: `ca.${suffix}@example.sgr.local`,
         phone: '1',
         contactPerson: 'А',
       },
     });
     customerB = await prisma.organization.create({
       data: {
-        officialName: 'Заказчик Бета-секрет',
+        officialName: `Заказчик Бета-секрет ${suffix}`,
         postalAddress: 'б',
-        email: 'cb@example.sgr.local',
+        email: `cb.${suffix}@example.sgr.local`,
         phone: '2',
         contactPerson: 'Б',
       },
     });
     liableA = await prisma.organization.create({
       data: {
-        officialName: 'Виновный Альфа',
+        officialName: `Виновный Альфа ${suffix}`,
         postalAddress: 'в',
-        email: 'la@example.sgr.local',
+        email: `la.${suffix}@example.sgr.local`,
         phone: '3',
         contactPerson: 'В',
       },
     });
     liableB = await prisma.organization.create({
       data: {
-        officialName: 'Виновный Бета-секрет',
+        officialName: `Виновный Бета-секрет ${suffix}`,
         postalAddress: 'г',
-        email: 'lb@example.sgr.local',
+        email: `lb.${suffix}@example.sgr.local`,
         phone: '4',
         contactPerson: 'Г',
       },
     });
     altA = await prisma.organization.create({
       data: {
-        officialName: 'Альтернатива тест А',
+        officialName: `Альтернатива тест А ${suffix}`,
         postalAddress: 'д',
-        email: 'aa@example.sgr.local',
+        email: `aa.${suffix}@example.sgr.local`,
         phone: '5',
         contactPerson: 'Д',
       },
     });
     altB = await prisma.organization.create({
       data: {
-        officialName: 'Альтернатива тест Б',
+        officialName: `Альтернатива тест Б ${suffix}`,
         postalAddress: 'е',
-        email: 'ab@example.sgr.local',
+        email: `ab.${suffix}@example.sgr.local`,
         phone: '6',
         contactPerson: 'Е',
       },

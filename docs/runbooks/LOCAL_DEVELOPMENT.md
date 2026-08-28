@@ -24,7 +24,7 @@ docker compose -f infra/docker/compose.yaml --env-file .env up -d --force-recrea
 
 Подставьте полученный `sha256:…` в `image:` Compose (формат `clamav/clamav-debian:1.4@sha256:…`) и пересоздайте сервис командой выше.
 
-Образ Mailpit закреплён по immutable digest (`axllent/mailpit:v1.27.10@sha256:…`). UI/SMTP только на localhost. Обновление digest:
+Образ Mailpit закреплён по immutable digest (`axllent/mailpit:v1.27.10@sha256:…`). UI/SMTP только на localhost (`127.0.0.1`). Обновление digest:
 
 ```bash
 docker pull axllent/mailpit:v1.27.10
@@ -38,6 +38,22 @@ pnpm db:migrate
 # также примените миграции к TEST_DATABASE_URL
 pnpm db:seed
 ```
+
+Порты PostgreSQL, Redis, MinIO, Mailpit и ClamAV публикуются только на `127.0.0.1`. Проверка:
+
+```bash
+node scripts/security/check-docker-exposure.mjs
+```
+
+Инструментальный SAST/DAST (Semgrep, Gitleaks, pnpm audit, Trivy, OWASP ZAP) описан в [SECURITY_AUDIT_2026-08-28.md](../security/SECURITY_AUDIT_2026-08-28.md). Команды:
+
+```bash
+bash scripts/security/run-sast.sh
+# при запущенных web/api/worker на localhost:
+bash scripts/security/run-dast.sh
+```
+
+Отчёты пишутся в gitignored `test-results/security/`. Не коммитить scanner cache и сырые отчёты.
 
 Остановка:
 
