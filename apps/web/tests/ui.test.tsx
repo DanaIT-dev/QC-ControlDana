@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
@@ -76,6 +78,34 @@ describe('Badge status variants', () => {
     expect(screen.getByText('Просрочено')).toHaveAttribute('data-variant', 'error');
     rerender(<Badge variant="info">В работе</Badge>);
     expect(screen.getByText('В работе')).toHaveAttribute('data-variant', 'info');
+  });
+});
+
+describe('RegistryFilters toolbar layout', () => {
+  it('aligns desktop controls with a named grid and visible labels', () => {
+    const source = readFileSync(
+      resolve(import.meta.dirname, '../app/registry/registry-filters.tsx'),
+      'utf8',
+    );
+    const toolbar = source.slice(
+      source.indexOf('data-slot="registry-toolbar"'),
+      source.indexOf('<FilterChips'),
+    );
+    expect(toolbar).toContain('md:items-end');
+    expect(toolbar).toContain('[grid-area:search]');
+    expect(toolbar).toContain('[grid-area:status]');
+    expect(toolbar).toContain('[grid-area:object]');
+    expect(toolbar).toContain('[grid-area:deadline]');
+    expect(toolbar).toContain('[grid-area:actions]');
+    expect(toolbar).toContain('md:self-end');
+    expect(toolbar).toContain('flex h-11 shrink-0 items-center');
+    expect(toolbar).toContain('label="Статус"');
+    expect(toolbar).toContain('label="Объект"');
+    expect(toolbar).toContain('label="Состояние срока"');
+    expect(toolbar).not.toContain('hideLabel');
+    expect(toolbar).not.toContain('absolute');
+    expect(toolbar).not.toMatch(/-mt-| -top-|top-\[/);
+    expect(toolbar).not.toContain('placeholder="Статус"');
   });
 });
 

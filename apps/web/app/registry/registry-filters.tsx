@@ -48,8 +48,11 @@ export function RegistryFilters({
 
   return (
     <div className="grid gap-3">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-        <div className="w-full lg:w-[360px] xl:w-[400px]">
+      <div
+        data-slot="registry-toolbar"
+        className="flex flex-col gap-3 md:grid md:grid-cols-6 md:items-end md:gap-2 md:[grid-template-areas:'search_search_search_search_actions_actions'_'status_status_object_object_deadline_deadline'] xl:grid-cols-[minmax(16rem,1.4fr)_repeat(3,minmax(10.5rem,1fr))_auto] xl:[grid-template-areas:'search_status_object_deadline_actions']"
+      >
+        <div className="flex min-w-0 items-end [grid-area:search]">
           <Input
             value={searchDraft}
             onChange={(event) => onSearchDraft(event.target.value)}
@@ -63,29 +66,27 @@ export function RegistryFilters({
             aria-label="Поиск"
           />
         </div>
-        <div className="hidden min-w-0 flex-1 grid-cols-3 items-center gap-2 md:grid">
+        <div className="hidden min-w-0 [grid-area:status] md:block">
           <MultiSelect
             label="Статус"
-            placeholder="Статус"
-            hideLabel
             options={options?.statuses ?? []}
             values={query.statuses}
             onChange={(statuses) =>
               onChange({ ...query, page: 1, statuses: statuses as RegistryListQuery['statuses'] })
             }
           />
+        </div>
+        <div className="hidden min-w-0 [grid-area:object] md:block">
           <MultiSelect
             label="Объект"
-            placeholder="Объект"
-            hideLabel
             options={options?.objects ?? []}
             values={query.objectIds}
             onChange={(objectIds) => onChange({ ...query, page: 1, objectIds })}
           />
+        </div>
+        <div className="hidden min-w-0 [grid-area:deadline] md:block">
           <MultiSelect
             label="Состояние срока"
-            placeholder="Состояние срока"
-            hideLabel
             options={DEADLINE_OPTIONS}
             values={query.deadlineState}
             onChange={(deadlineState) =>
@@ -97,8 +98,13 @@ export function RegistryFilters({
             }
           />
         </div>
-        <div className="flex flex-wrap items-center gap-2 lg:ml-auto">
-          <Button type="button" variant="outline" onClick={() => onSheetOpenChange(true)}>
+        <div className="flex shrink-0 items-end gap-2 md:self-end [grid-area:actions]">
+          <Button
+            type="button"
+            variant="outline"
+            className="h-11 shrink-0"
+            onClick={() => onSheetOpenChange(true)}
+          >
             <SlidersHorizontal data-icon="inline-start" />
             Фильтры
             {active > 0 ? (
@@ -108,12 +114,14 @@ export function RegistryFilters({
             ) : null}
           </Button>
           {active > 0 ? (
-            <Button type="button" variant="ghost" onClick={onReset}>
+            <Button type="button" variant="ghost" className="h-11 shrink-0" onClick={onReset}>
               Сбросить
             </Button>
           ) : null}
           {typeof resultCount === 'number' ? (
-            <p className="text-sm text-muted-foreground">Найдено: {resultCount}</p>
+            <p className="flex h-11 shrink-0 items-center whitespace-nowrap text-sm text-muted-foreground">
+              Найдено: {resultCount}
+            </p>
           ) : null}
         </div>
       </div>
