@@ -1,3 +1,4 @@
+import { InjectQueue } from '@nestjs/bullmq';
 import { Inject, Injectable } from '@nestjs/common';
 import { loadConfig } from '@sgr-registry/config';
 import type {
@@ -6,14 +7,19 @@ import type {
   ReadyResponse,
   SystemStatusResponse,
 } from '@sgr-registry/contracts';
-import { getPrismaClient } from '@sgr-registry/database';
+import { getPrismaClient, type PrismaClient } from '@sgr-registry/database';
+import { collectNotificationOps, NOTIFICATION_QUEUE } from '@sgr-registry/jobs';
+import type { Queue } from 'bullmq';
 import Redis from 'ioredis';
-import { NotificationDispatcher } from '../notifications/dispatcher';
+import { PRISMA_CLIENT } from '../auth/prisma.tokens';
+import { REDIS_CLIENT } from '../auth/redis.constants';
 
 @Injectable()
 export class HealthService {
   constructor(
-    @Inject(NotificationDispatcher) private readonly dispatcher: NotificationDispatcher,
+    @Inject(PRISMA_CLIENT) private readonly prisma: PrismaClient,
+    @Inject(REDIS_CLIENT) private readonly redis: Redis,
+    @InjectQueue(NOTIFICATION_QUEUE) private readonly queue: Queue,
   ) {}
 
   getHealth(): HealthResponse {
@@ -49,8 +55,15 @@ export class HealthService {
 
   async getSystemStatus(): Promise<SystemStatusResponse> {
     const ready = await this.getReadiness();
-    const notifications = await this.dispatcher.stats();
-    const degraded = notifications.smtp.status === 'down' || notifications.outboxPending > 0;
+    const notifications = await collectNotificationOps({
+      prisma: this.prisma,
+      queue: this.queue,
+      redis: this.redis,
+    });
+    const degraded =
+      notifications.smtp.status === 'down' ||
+      notifications.outboxPending > 0 ||
+      notifications.worker.status === 'down';
     return {
       ...ready,
       status: ready.status === 'not_ready' ? 'not_ready' : degraded ? 'degraded' : 'ready',
@@ -68,12 +81,7 @@ export class HealthService {
         lastSlaRunAt: notifications.lastSlaRunAt,
         nextSlaRunAt: notifications.nextSlaRunAt,
         smtp: notifications.smtp,
-        worker: {
-          waiting: notifications.queue.waiting ?? 0,
-          active: notifications.queue.active ?? 0,
-          failed: notifications.queue.failed ?? 0,
-          delayed: notifications.queue.delayed ?? 0,
-        },
+        worker: notifications.worker,
       },
     };
   }

@@ -76,7 +76,7 @@ COMPLETED завершает текущий GENERAL clock: новые WARNING/э
 
 Гарантия: **at-least-once** транспорт + идемпотентная проекция (`occurrenceKey`, unique recipient, unique email delivery). Exactly-once не обещается.
 
-Dispatcher берёт событие через `UPDATE ... RETURNING` (claim). BullMQ `jobId` детерминирован и **не содержит `:`** (`outbox-{id}`, `email-{id}`, `sla-{businessDate}`): custom id BullMQ 5 запрещает двоеточие. Retry с exponential backoff, после лимита — `DEAD`. Повторный запуск worker поднимает PENDING/FAILED. HTTP mutation не падает, если постановка в очередь отложена: событие остаётся PENDING и будет подхвачено recover.
+Dispatcher (только worker) берёт событие через `UPDATE ... RETURNING` (claim). BullMQ `jobId` детерминирован и **не содержит `:`** (`outbox-{id}`, `email-{id}`, `sla-{businessDate}`): custom id BullMQ 5 запрещает двоеточие. Retry с exponential backoff, после лимита — `DEAD`. Повторный запуск worker поднимает PENDING/FAILED. HTTP mutation не падает, если постановка в очередь отложена: событие остаётся PENDING и будет подхвачено recover. API не регистрирует processors и не claim outbox.
 
 Stale SLA job (cycle/deadline уже другие или COMPLETED) помечается PROCESSED и не шлёт письмо.
 
@@ -112,9 +112,9 @@ pnpm test:e2e
 pnpm test:sla:performance
 ```
 
-Ручной evaluator: при старте API/worker выполняется catch-up, если за текущий businessDate расчёт не записан. Daily job: `0 8 * * *` Europe/Minsk (или из settings).
+Ручной evaluator: при старте worker выполняется catch-up, если за текущий businessDate расчёт не записан. Daily job: `0 8 * * *` Europe/Minsk (или из settings). Параллельные worker не дублируют evaluation: Redis lock на бизнес-дату.
 
-После outage worker: поднять процесс; `outbox.recover` и catch-up SLA подхватят PENDING/FAILED.
+После outage worker: поднять процесс; в логе должно появиться `Notification worker started`; `outbox.recover` и catch-up SLA подхватят PENDING/FAILED. Heartbeat пишется в Redis с TTL (отдельный ключ для test); System Status показывает `up`/`down`. `/api/ready` не зависит от worker.
 
 Обновление Mailpit digest:
 

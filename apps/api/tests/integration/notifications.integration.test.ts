@@ -18,8 +18,9 @@ import Redis from 'ioredis';
 import { AppModule } from '../../src/app.module';
 import { configureHttpApp } from '../../src/configure-http';
 import { hashArgon2id } from '../../src/auth/crypto';
-import { NotificationDispatcher } from '../../src/notifications/dispatcher';
+import { NotificationDispatcher, NOTIFICATION_QUEUE } from '@sgr-registry/jobs';
 import type { UserRole } from '@sgr-registry/contracts';
+import { Queue } from 'bullmq';
 
 const DEMO_PASSWORD = 'Dana-SGR-Demo-2026!';
 
@@ -27,6 +28,7 @@ let app: NestFastifyApplication;
 let prisma: PrismaClient;
 let redis: Redis;
 let dispatcher: NotificationDispatcher;
+let notificationQueue: Queue;
 const createdUserIds: string[] = [];
 const createdActIds: string[] = [];
 
@@ -267,7 +269,10 @@ describe('notifications and SLA integration', () => {
     await configureHttpApp(app, config);
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
-    dispatcher = app.get(NotificationDispatcher);
+    notificationQueue = new Queue(NOTIFICATION_QUEUE, {
+      connection: { url: config.REDIS_URL, maxRetriesPerRequest: null },
+    });
+    dispatcher = new NotificationDispatcher(prisma, notificationQueue);
     await prisma.systemSettings.upsert({
       where: { id: 'default' },
       update: {},
@@ -307,6 +312,7 @@ describe('notifications and SLA integration', () => {
         .catch(() => undefined);
     }
     await app.close();
+    await notificationQueue.close();
     await redis.quit();
     await disconnectPrismaClient();
   });

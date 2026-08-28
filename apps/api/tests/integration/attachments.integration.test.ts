@@ -20,12 +20,14 @@ import { configureHttpApp } from '../../src/configure-http';
 import { hashArgon2id } from '../../src/auth/crypto';
 import { ClamdClient } from '../../src/attachments/clamd.client';
 import type { UserRole } from '@sgr-registry/contracts';
+import { startWorkerRuntime, type WorkerRuntime } from '../../../worker/src/runtime';
 
 const DEMO_PASSWORD = 'Dana-SGR-Demo-2026!';
 
 let app: NestFastifyApplication;
 let prisma: PrismaClient;
 let redis: Redis;
+let worker: WorkerRuntime;
 const createdUserIds: string[] = [];
 const createdActIds: string[] = [];
 
@@ -183,6 +185,7 @@ describe('attachments integration', () => {
     await configureHttpApp(app, config);
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
+    worker = await startWorkerRuntime({ listenHealth: false, scheduleOnStart: false });
 
     admin = await createUser('ADMIN');
     contractor = await createUser('CONTRACTOR_ENGINEER');
@@ -288,6 +291,7 @@ describe('attachments integration', () => {
   });
 
   afterAll(async () => {
+    await worker?.stop();
     await app?.close();
     await redis?.quit();
     await prisma?.$disconnect();

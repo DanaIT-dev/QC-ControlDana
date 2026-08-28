@@ -1,7 +1,5 @@
-import 'reflect-metadata';
-import { NestFactory } from '@nestjs/core';
 import { loadConfig, MissingConfigurationError } from '@sgr-registry/config';
-import { WorkerModule } from './worker.module';
+import { startWorkerRuntime } from './runtime';
 
 async function bootstrap(): Promise<void> {
   try {
@@ -15,10 +13,7 @@ async function bootstrap(): Promise<void> {
     throw error;
   }
 
-  const app = await NestFactory.createApplicationContext(WorkerModule, {
-    logger: ['error', 'warn', 'log'],
-  });
-  app.enableShutdownHooks();
+  await startWorkerRuntime({ listenHealth: true, installSignals: true });
 }
 
 bootstrap().catch((error: unknown) => {

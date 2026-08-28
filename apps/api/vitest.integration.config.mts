@@ -18,6 +18,7 @@ export default defineConfig({
         '../../packages/contracts/src/index.ts',
       ),
       '@sgr-registry/config': resolve(import.meta.dirname, '../../packages/config/src/index.ts'),
+      '@sgr-registry/jobs': resolve(import.meta.dirname, '../../packages/jobs/src/index.ts'),
     },
   },
 });

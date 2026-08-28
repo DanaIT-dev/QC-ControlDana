@@ -18,6 +18,12 @@ export default defineConfig({
       timeout: 120_000,
     },
     {
+      command: 'export PATH="$HOME/.local/bin:$PATH" && pnpm --filter @sgr-registry/worker dev',
+      url: 'http://127.0.0.1:3002/health',
+      reuseExistingServer: true,
+      timeout: 120_000,
+    },
+    {
       command: 'export PATH="$HOME/.local/bin:$PATH" && pnpm --filter @sgr-registry/web dev',
       url: 'http://localhost:3000/login',
       reuseExistingServer: true,

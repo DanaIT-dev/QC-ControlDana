@@ -32,6 +32,7 @@ pnpm dev
 - Вход: http://localhost:3000/login
 - API health: http://localhost:3001/api/health
 - API ready: http://localhost:3001/api/ready
+- Worker liveness: http://127.0.0.1:3002/health
 
 Если команда `pnpm` недоступна в `PATH`, используйте `corepack pnpm` или `~/.local/bin/pnpm`. Не устанавливайте второй экземпляр pnpm и не меняйте глобальные shell-файлы ради этого проекта.
 

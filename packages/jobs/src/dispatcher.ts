@@ -1,10 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { InjectQueue } from '@nestjs/bullmq';
-import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Logger } from '@nestjs/common';
 import type { Job, Queue } from 'bullmq';
 import { loadConfig, type AppConfig } from '@sgr-registry/config';
-import { getPrismaClient, Prisma, type PrismaClient } from '@sgr-registry/database';
+import type { PrismaClient } from '@sgr-registry/database';
+import { Prisma } from '@sgr-registry/database';
 import {
   EMAIL_DELIVER_JOB,
   EMAIL_MAX_ATTEMPTS,
@@ -25,6 +24,7 @@ import {
   reachedEscalationThresholds,
   recipientsForDeadlineAlert,
   renderNotificationEmail,
+  resolveSlaEvaluationLockKey,
   slaCatchUpJobId,
   suppressActorRecipients,
   nextDailyEvaluationAt,
@@ -32,8 +32,8 @@ import {
   type SlaClockKind,
 } from '@sgr-registry/domain';
 import nodemailer from 'nodemailer';
+import Redis from 'ioredis';
 import { writeAuditLog, toJsonValue } from './audit-writer';
-import { NOTIFICATION_QUEUE } from './outbox.writer';
 
 type OutboxPayload = {
   type: NotificationType;
@@ -52,14 +52,13 @@ type OutboxPayload = {
   extraRecipientIds?: string[];
 };
 
-@Injectable()
 export class NotificationDispatcher {
-  constructor(@InjectQueue(NOTIFICATION_QUEUE) private readonly queue: Queue) {
-    this.prisma = getPrismaClient(loadConfig().DATABASE_URL);
-  }
-
-  private readonly prisma: PrismaClient;
   private readonly logger = new Logger(NotificationDispatcher.name);
+
+  constructor(
+    private readonly prisma: PrismaClient,
+    private readonly queue: Queue,
+  ) {}
 
   async dispatch(outboxId: string): Promise<void> {
     const claimed = await this.claim(outboxId);
@@ -276,6 +275,24 @@ export class NotificationDispatcher {
 
   async evaluateDaily(): Promise<void> {
     const businessDate = calendarDateInTimeZone(new Date());
+    const lockKey = resolveSlaEvaluationLockKey(businessDate);
+    const lockRedis = new Redis(loadConfig().REDIS_URL, { maxRetriesPerRequest: 1 });
+    try {
+      const locked = await lockRedis.set(lockKey, String(process.pid), 'EX', 180, 'NX');
+      if (locked !== 'OK') {
+        return;
+      }
+      try {
+        await this.runDailyEvaluation(businessDate);
+      } finally {
+        await lockRedis.del(lockKey).catch(() => undefined);
+      }
+    } finally {
+      lockRedis.disconnect();
+    }
+  }
+
+  private async runDailyEvaluation(businessDate: string): Promise<void> {
     const settings = await this.prisma.systemSettings.findUnique({ where: { id: 'default' } });
     const warningDays = settings?.deadlineWarningDays ?? 3;
     const thresholds = settings?.escalationDays?.length ? settings.escalationDays : [0, 3, 7, 14];
@@ -659,84 +676,66 @@ async function sendMail(
   }
 }
 
-@Processor(NOTIFICATION_QUEUE)
-export class NotificationProcessor extends WorkerHost implements OnModuleInit {
-  private readonly logger = new Logger(NotificationProcessor.name);
-  private readonly prisma: PrismaClient;
-
-  constructor(
-    @Inject(NotificationDispatcher) private readonly dispatcher: NotificationDispatcher,
-    @InjectQueue(NOTIFICATION_QUEUE) private readonly queue: Queue,
-  ) {
-    super();
-    this.prisma = getPrismaClient(loadConfig().DATABASE_URL);
+export async function processNotificationJob(
+  dispatcher: NotificationDispatcher,
+  prisma: PrismaClient,
+  job: Job<{ outboxId?: string; deliveryId?: string }>,
+): Promise<{ ok: boolean }> {
+  if (job.name === OUTBOX_RECOVERY_JOB) {
+    await dispatcher.recover();
+    return { ok: true };
   }
-
-  async onModuleInit(): Promise<void> {
-    void this.scheduleJobs().catch((error) => {
-      this.logger.warn(
-        `Notification schedule deferred code=${error instanceof Error ? error.name : 'SCHEDULE_FAILED'}`,
-      );
-    });
-  }
-
-  private async scheduleJobs(): Promise<void> {
-    const settings = await this.prisma.systemSettings.findUnique({
-      where: { id: 'default' },
-    });
-    const minute = settings?.dailyEvaluationMinuteOfDay ?? 480;
-    const hour = Math.floor(minute / 60);
-    const mins = minute % 60;
-    await this.queue.add(
-      SLA_EVALUATE_JOB,
-      { reason: 'schedule' },
-      {
-        repeat: { pattern: `${mins} ${hour} * * *`, tz: 'Europe/Minsk' },
-        jobId: 'sla.evaluate-daily',
-      },
-    );
-    const existing = await this.queue.getJob('outbox.recover-startup');
-    const busy =
-      existing &&
-      ((await existing.isActive()) || (await existing.isWaiting()) || (await existing.isDelayed()));
-    if (!busy) {
-      await this.queue.add(
-        OUTBOX_RECOVERY_JOB,
-        { reason: 'startup' },
-        { jobId: 'outbox.recover-startup', removeOnComplete: true },
-      );
-    }
-  }
-
-  async process(job: Job<{ outboxId?: string; deliveryId?: string }>): Promise<{ ok: boolean }> {
-    if (job.name === OUTBOX_RECOVERY_JOB) {
-      await this.dispatcher.recover();
-      return { ok: true };
-    }
-    if (job.name === SLA_EVALUATE_JOB) {
-      try {
-        await this.dispatcher.evaluateDaily();
-      } catch (error) {
-        await writeAuditLog(this.prisma, {
-          actor: null,
-          action: 'SLA_EVALUATION_FAILED',
-          entityType: 'SLA_EVALUATION',
-          entityId: 'default',
-          newValue: toJsonValue({ error: 'EVALUATION_FAILED' }),
-          source: 'SYSTEM',
-        });
-        throw error;
-      }
-      return { ok: true };
-    }
-    if (job.name === OUTBOX_DISPATCH_JOB && job.data.outboxId) {
-      await this.dispatcher.dispatch(job.data.outboxId);
-      return { ok: true };
-    }
-    if (job.name === EMAIL_DELIVER_JOB && job.data.deliveryId) {
-      await this.dispatcher.deliver(job.data.deliveryId);
-      return { ok: true };
+  if (job.name === SLA_EVALUATE_JOB) {
+    try {
+      await dispatcher.evaluateDaily();
+    } catch (error) {
+      await writeAuditLog(prisma, {
+        actor: null,
+        action: 'SLA_EVALUATION_FAILED',
+        entityType: 'SLA_EVALUATION',
+        entityId: 'default',
+        newValue: toJsonValue({ error: 'EVALUATION_FAILED' }),
+        source: 'SYSTEM',
+      });
+      throw error;
     }
     return { ok: true };
+  }
+  if (job.name === OUTBOX_DISPATCH_JOB && job.data.outboxId) {
+    await dispatcher.dispatch(job.data.outboxId);
+    return { ok: true };
+  }
+  if (job.name === EMAIL_DELIVER_JOB && job.data.deliveryId) {
+    await dispatcher.deliver(job.data.deliveryId);
+    return { ok: true };
+  }
+  return { ok: true };
+}
+
+export async function scheduleNotificationJobs(prisma: PrismaClient, queue: Queue): Promise<void> {
+  const settings = await prisma.systemSettings.findUnique({
+    where: { id: 'default' },
+  });
+  const minute = settings?.dailyEvaluationMinuteOfDay ?? 480;
+  const hour = Math.floor(minute / 60);
+  const mins = minute % 60;
+  await queue.add(
+    SLA_EVALUATE_JOB,
+    { reason: 'schedule' },
+    {
+      repeat: { pattern: `${mins} ${hour} * * *`, tz: 'Europe/Minsk' },
+      jobId: 'sla.evaluate-daily',
+    },
+  );
+  const existing = await queue.getJob('outbox.recover-startup');
+  const busy =
+    existing &&
+    ((await existing.isActive()) || (await existing.isWaiting()) || (await existing.isDelayed()));
+  if (!busy) {
+    await queue.add(
+      OUTBOX_RECOVERY_JOB,
+      { reason: 'startup' },
+      { jobId: 'outbox.recover-startup', removeOnComplete: true },
+    );
   }
 }

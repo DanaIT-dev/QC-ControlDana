@@ -64,7 +64,14 @@ export interface NotificationOpsStatus {
   lastSlaRunAt: string | null;
   nextSlaRunAt: string | null;
   smtp: { status: 'up' | 'down' | 'disabled'; latencyMs?: number };
-  worker: { waiting: number; active: number; failed: number; delayed: number };
+  worker: {
+    status: 'up' | 'down';
+    heartbeatAgeMs: number | null;
+    waiting: number;
+    active: number;
+    failed: number;
+    delayed: number;
+  };
 }
 
 export interface SystemStatusResponse {

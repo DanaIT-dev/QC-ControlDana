@@ -82,12 +82,25 @@ export default async function SystemStatusPage() {
           badLabel="недоступен"
           icon={Wifi}
         />
+        <HealthCard
+          title="Notification worker"
+          ok={data?.notifications?.worker.status === 'up'}
+          okLabel="работает"
+          badLabel="остановлен"
+          icon={Server}
+        />
       </div>
       <Card className="mt-4 shadow-none">
         <CardHeader>
           <CardTitle className="text-sm">Уведомления и контроль сроков</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-2 text-sm">
+          <p>
+            Worker: {data?.notifications?.worker.status === 'up' ? 'работает' : 'остановлен'}
+            {data?.notifications?.worker.heartbeatAgeMs != null
+              ? ` (heartbeat ${Math.round(data.notifications.worker.heartbeatAgeMs / 1000)} с)`
+              : ''}
+          </p>
           <p>Очередь worker: waiting {data?.notifications?.worker.waiting ?? '—'}</p>
           <p>Outbox backlog: {data?.notifications?.outboxPending ?? '—'}</p>
           <p>

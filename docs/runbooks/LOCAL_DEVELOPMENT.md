@@ -56,6 +56,7 @@ pnpm dev
 ```bash
 curl -i http://localhost:3001/api/health
 curl -i http://localhost:3001/api/ready
+curl -i http://127.0.0.1:3002/health
 ```
 
 Главная страница web: http://localhost:3000  

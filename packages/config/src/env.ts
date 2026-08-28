@@ -92,6 +92,8 @@ const envSchema = z
     EMAIL_FROM: z.string().min(1).default('sgr-registry@localhost'),
     PUBLIC_APP_URL: z.string().url().default('http://localhost:3000'),
     MAILPIT_API_URL: z.string().url().default('http://127.0.0.1:8025'),
+    WORKER_HEALTH_PORT: z.coerce.number().int().min(0).max(65535).default(3002),
+    WORKER_READY_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
   })
   .superRefine((value, ctx) => {
     if (value.NODE_ENV === 'production' && !value.PUBLIC_APP_URL.startsWith('https://')) {

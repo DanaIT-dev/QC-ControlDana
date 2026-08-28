@@ -9,12 +9,12 @@
     "pnpm": ">=11.24.0"
   },
   "scripts": {
-    "dev": "pnpm --filter @sgr-registry/config --filter @sgr-registry/contracts --filter @sgr-registry/domain --filter @sgr-registry/database build && pnpm --parallel --filter @sgr-registry/web --filter @sgr-registry/api --filter @sgr-registry/worker dev",
-    "build": "pnpm --filter @sgr-registry/config build && pnpm --filter @sgr-registry/contracts build && pnpm --filter @sgr-registry/domain build && pnpm --filter @sgr-registry/database build && pnpm --filter @sgr-registry/api build && pnpm --filter @sgr-registry/worker build && pnpm --filter @sgr-registry/web build",
+    "dev": "pnpm --filter @sgr-registry/config --filter @sgr-registry/contracts --filter @sgr-registry/domain --filter @sgr-registry/database --filter @sgr-registry/jobs build && pnpm --parallel --filter @sgr-registry/web --filter @sgr-registry/api --filter @sgr-registry/worker dev",
+    "build": "pnpm --filter @sgr-registry/config build && pnpm --filter @sgr-registry/contracts build && pnpm --filter @sgr-registry/domain build && pnpm --filter @sgr-registry/database build && pnpm --filter @sgr-registry/jobs build && pnpm --filter @sgr-registry/api build && pnpm --filter @sgr-registry/worker build && pnpm --filter @sgr-registry/web build",
     "lint": "eslint .",
-    "typecheck": "pnpm --filter @sgr-registry/config build && pnpm --filter @sgr-registry/contracts build && pnpm --filter @sgr-registry/domain build && pnpm --filter @sgr-registry/database build && pnpm --filter @sgr-registry/api typecheck && pnpm --filter @sgr-registry/worker typecheck && pnpm --filter @sgr-registry/web typecheck",
+    "typecheck": "pnpm --filter @sgr-registry/config build && pnpm --filter @sgr-registry/contracts build && pnpm --filter @sgr-registry/domain build && pnpm --filter @sgr-registry/database build && pnpm --filter @sgr-registry/jobs build && pnpm --filter @sgr-registry/api typecheck && pnpm --filter @sgr-registry/worker typecheck && pnpm --filter @sgr-registry/web typecheck",
     "test": "pnpm --filter @sgr-registry/contracts build && pnpm --filter @sgr-registry/domain test && pnpm --filter @sgr-registry/database test && pnpm --filter @sgr-registry/api test && pnpm --filter @sgr-registry/web test",
-    "test:integration": "pnpm --filter @sgr-registry/domain build && pnpm --filter @sgr-registry/database build && pnpm --filter @sgr-registry/database test:integration && pnpm --filter @sgr-registry/api test:integration",
+    "test:integration": "pnpm --filter @sgr-registry/domain build && pnpm --filter @sgr-registry/database build && pnpm --filter @sgr-registry/jobs build && pnpm --filter @sgr-registry/database test:integration && pnpm --filter @sgr-registry/api test:integration",
     "test:e2e": "playwright test",
     "test:attachments:stream": "pnpm --filter @sgr-registry/api exec tsx scripts/attachment-stream-perf.ts",
     "test:registry:performance": "pnpm --filter @sgr-registry/database test:registry:performance",

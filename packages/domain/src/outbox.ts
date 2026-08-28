@@ -14,8 +14,16 @@ export function isTerminalAttempt(attempt: number, max = OUTBOX_MAX_ATTEMPTS): b
   return attempt >= max;
 }
 
+export function resolveMaintenanceQueueName(nodeEnv = process.env.NODE_ENV): string {
+  return nodeEnv === 'test' ? 'sgr-maintenance-test' : 'sgr-maintenance';
+}
+
 export function resolveNotificationQueueName(nodeEnv = process.env.NODE_ENV): string {
   return nodeEnv === 'test' ? 'sgr-notifications-test' : 'sgr-notifications';
+}
+
+export function resolveAttachmentQueueName(nodeEnv = process.env.NODE_ENV): string {
+  return nodeEnv === 'test' ? 'sgr-attachments-test' : 'sgr-attachments';
 }
 
 export const OUTBOX_DISPATCH_JOB = 'outbox.dispatch';

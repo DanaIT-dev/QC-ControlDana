@@ -77,6 +77,9 @@ importers:
       '@sgr-registry/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@sgr-registry/jobs':
+        specifier: workspace:*
+        version: link:../../packages/jobs
       argon2:
         specifier: ^0.44.0
         version: 0.44.0
@@ -92,9 +95,6 @@ importers:
       ioredis:
         specifier: ^5.8.2
         version: 5.11.1
-      nodemailer:
-        specifier: ^9.0.6
-        version: 9.0.6
       reflect-metadata:
         specifier: ^0.2.2
         version: 0.2.2
@@ -111,9 +111,6 @@ importers:
       '@types/node':
         specifier: ^24.3.0
         version: 24.13.3
-      '@types/nodemailer':
-        specifier: ^8.0.1
-        version: 8.0.1
       dotenv:
         specifier: ^17.4.2
         version: 17.4.2
@@ -235,15 +232,6 @@ importers:
       '@aws-sdk/lib-storage':
         specifier: ^3.1119.0
         version: 3.1119.0(@aws-sdk/client-s3@3.1119.0)
-      '@nestjs/bullmq':
-        specifier: ^11.0.4
-        version: 11.0.5(@nestjs/common@11.2.3(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.2.3(@nestjs/common@11.2.3(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(bullmq@5.81.3)
-      '@nestjs/common':
-        specifier: ^11.2.3
-        version: 11.2.3(reflect-metadata@0.2.2)(rxjs@7.8.2)
-      '@nestjs/core':
-        specifier: ^11.2.3
-        version: 11.2.3(@nestjs/common@11.2.3(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2)
       '@sgr-registry/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -253,21 +241,15 @@ importers:
       '@sgr-registry/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@sgr-registry/jobs':
+        specifier: workspace:*
+        version: link:../../packages/jobs
       bullmq:
         specifier: ^5.66.4
         version: 5.81.3
       ioredis:
         specifier: ^5.8.2
         version: 5.11.1
-      nodemailer:
-        specifier: ^9.0.6
-        version: 9.0.6
-      reflect-metadata:
-        specifier: ^0.2.2
-        version: 0.2.2
-      rxjs:
-        specifier: ^7.8.2
-        version: 7.8.2
     devDependencies:
       '@sgr-registry/typescript-config':
         specifier: workspace:*
@@ -275,9 +257,6 @@ importers:
       '@types/node':
         specifier: ^24.3.0
         version: 24.13.3
-      '@types/nodemailer':
-        specifier: ^8.0.1
-        version: 8.0.1
       tsx:
         specifier: ^4.23.12
         version: 4.23.12
@@ -380,6 +359,49 @@ importers:
         version: 4.1.11(@types/node@24.13.3)(jsdom@30.0.1)(vite@8.2.2(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.12))
 
   packages/eslint-config: {}
+
+  packages/jobs:
+    dependencies:
+      '@nestjs/bullmq':
+        specifier: ^11.0.5
+        version: 11.0.5(@nestjs/common@11.2.3(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.2.3(@nestjs/common@11.2.3(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(bullmq@5.81.3)
+      '@nestjs/common':
+        specifier: ^11.2.3
+        version: 11.2.3(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      '@sgr-registry/config':
+        specifier: workspace:*
+        version: link:../config
+      '@sgr-registry/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@sgr-registry/database':
+        specifier: workspace:*
+        version: link:../database
+      '@sgr-registry/domain':
+        specifier: workspace:*
+        version: link:../domain
+      bullmq:
+        specifier: ^5.81.3
+        version: 5.81.3
+      ioredis:
+        specifier: ^5.8.2
+        version: 5.11.1
+      nodemailer:
+        specifier: ^9.0.6
+        version: 9.0.6
+    devDependencies:
+      '@sgr-registry/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      '@types/node':
+        specifier: ^24.3.0
+        version: 24.13.3
+      '@types/nodemailer':
+        specifier: ^8.0.1
+        version: 8.0.1
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
 
   packages/typescript-config: {}
 
