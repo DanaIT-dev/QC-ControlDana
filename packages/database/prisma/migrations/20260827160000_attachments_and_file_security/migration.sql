@@ -22,10 +22,24 @@ CREATE TYPE "AttachmentCategory" AS ENUM (
 
 ALTER TYPE "AuditSource" ADD VALUE IF NOT EXISTS 'SYSTEM';
 
-ALTER TABLE "attachments" DROP CONSTRAINT "attachments_actId_fkey";
-ALTER TABLE "attachments" DROP CONSTRAINT "attachments_defectItemId_fkey";
-ALTER TABLE "attachments" DROP CONSTRAINT "attachments_uploadedById_fkey";
-DROP TABLE "attachments";
+-- Replace only the unused empty Attachment stub from init (`attachments`).
+-- Absent table → continue. Empty table → drop and recreate. Any row → abort before DROP.
+DO $$
+BEGIN
+  IF to_regclass('public.attachments') IS NULL THEN
+    RETURN;
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM "attachments") THEN
+    RAISE EXCEPTION
+      'Cannot replace table "attachments": the stub is not empty. This migration only replaces an unused empty stub and refuses to drop existing rows.';
+  END IF;
+
+  ALTER TABLE "attachments" DROP CONSTRAINT IF EXISTS "attachments_actId_fkey";
+  ALTER TABLE "attachments" DROP CONSTRAINT IF EXISTS "attachments_defectItemId_fkey";
+  ALTER TABLE "attachments" DROP CONSTRAINT IF EXISTS "attachments_uploadedById_fkey";
+  DROP TABLE "attachments";
+END $$;
 
 CREATE TABLE "attachments" (
     "id" UUID NOT NULL,

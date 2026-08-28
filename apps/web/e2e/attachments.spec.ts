@@ -32,12 +32,14 @@ test.describe('attachments', () => {
     await openFirstAct(page);
     await page.getByRole('button', { name: 'Загрузить' }).first().click();
     await expect(page.getByRole('heading', { name: 'Загрузка файла' })).toBeVisible();
+    const readyBadges = page.getByText('Готово');
+    const readyBefore = await readyBadges.count();
     await page.locator('#attachment-file').setInputFiles({
       name: 'act-scan.pdf',
       mimeType: 'application/pdf',
       buffer: pdfBuffer(`playwright-${Date.now()}`),
     });
-    await expect(page.getByText('Готово')).toBeVisible({ timeout: 90_000 });
+    await expect(readyBadges).toHaveCount(readyBefore + 1, { timeout: 90_000 });
     await page.screenshot({ path: 'apps/web/e2e/artifacts/attachments-ready.png' });
   });
 

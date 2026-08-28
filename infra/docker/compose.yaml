@@ -57,7 +57,9 @@ services:
     restart: unless-stopped
 
   clamav:
-    image: clamav/clamav-debian:1.4
+    # Immutable index digest of clamav/clamav-debian:1.4 (includes linux/arm64).
+    # Refresh: docker pull clamav/clamav-debian:1.4 && docker image inspect clamav/clamav-debian:1.4 --format '{{index .RepoDigests 0}}'
+    image: clamav/clamav-debian:1.4@sha256:f6da737f9399d6a1851c463b2f88d02021a67f969ec42dd6e1751fecf7c3de4f
     container_name: sgr-registry-clamav
     ports:
       - '127.0.0.1:${CLAMD_PORT:-3310}:3310'

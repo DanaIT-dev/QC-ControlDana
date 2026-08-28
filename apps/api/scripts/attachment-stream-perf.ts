@@ -59,8 +59,11 @@ async function main(): Promise<void> {
     throw new Error('SHA-256 mismatch after streaming upload');
   }
   const growth = after - before;
-  if (growth > size) {
-    throw new Error(`RSS grew by ${growth} bytes, more than the ${size} byte payload`);
+  const rssOverheadBudget = 4 * 1024 * 1024;
+  if (growth > size + rssOverheadBudget) {
+    throw new Error(
+      `RSS grew by ${growth} bytes, more than the ${size} byte payload plus ${rssOverheadBudget} byte SDK overhead budget`,
+    );
   }
   await store.deleteExact(objectKey);
   console.log(

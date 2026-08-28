@@ -36,6 +36,12 @@ PDF, JPEG, PNG, WebP. Максимум 20 МиБ и 50 активных влож
 
 Worker job `attachment.scan` стримит объект в clamd INSTREAM. CLEAN → READY. INFECTED → REJECTED, bytes удаляются, objectKey очищается. Ошибки: bounded retry, затем SCAN_FAILED. Production scan не отключается. Первый запуск ClamAV качает сигнатуры и может занять несколько минут.
 
+Локальный образ закреплён по digest (`clamav/clamav-debian:1.4@sha256:…`, index включает `linux/arm64`). Команда обновления digest — в [LOCAL_DEVELOPMENT.md](../runbooks/LOCAL_DEVELOPMENT.md).
+
+## Миграция stub-таблицы
+
+`20260827160000_attachments_and_file_security` заменяет только неиспользовавшийся пустой stub `attachments` из init. Если старой таблицы нет — миграция продолжается; если она пуста — DROP и новая схема; если есть хотя бы одна строка — миграция останавливается до DROP с ошибкой. Молчаливой потери данных нет.
+
 ## API
 
 - `GET/POST /api/acts/:actId/attachments`
