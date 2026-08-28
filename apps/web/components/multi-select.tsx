@@ -28,6 +28,7 @@ export function MultiSelect({
   onChange,
   disabled,
   emptyText = 'Нет значений',
+  hideLabel = false,
 }: {
   label: string;
   placeholder?: string;
@@ -36,6 +37,7 @@ export function MultiSelect({
   onChange: (next: string[]) => void;
   disabled?: boolean;
   emptyText?: string;
+  hideLabel?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const selected = useMemo(
@@ -60,8 +62,8 @@ export function MultiSelect({
     );
 
   return (
-    <div className="grid gap-1.5">
-      <span className="text-[13px] font-medium text-foreground">{label}</span>
+    <div className={hideLabel ? 'min-w-0' : 'grid gap-1.5'}>
+      {hideLabel ? null : <span className="text-[13px] font-medium text-foreground">{label}</span>}
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button

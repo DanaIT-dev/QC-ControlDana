@@ -2,9 +2,9 @@ import Link from 'next/link';
 import { cn } from '@/lib/utils';
 
 const SIZES = {
-  header: { className: 'h-8 w-[85px]', width: 85, height: 32 },
-  sheet: { className: 'h-7 w-[75px]', width: 75, height: 28 },
-  login: { className: 'h-10 w-[107px]', width: 107, height: 40 },
+  header: { className: 'h-8 w-[90px]', width: 90, height: 32 },
+  sheet: { className: 'h-7 w-[78px]', width: 78, height: 28 },
+  login: { className: 'h-10 w-[112px]', width: 112, height: 40 },
 } as const;
 
 function QcMark({
@@ -17,38 +17,14 @@ function QcMark({
   height: number;
 }) {
   return (
-    <svg
-      viewBox="0 0 96 36"
+    <img
+      src="/qc-logo.svg"
+      alt=""
       width={width}
       height={height}
-      className={cn('overflow-visible', className)}
+      className={cn('object-contain object-left', className)}
       aria-hidden="true"
-      focusable="false"
-    >
-      <rect x="0" y="0.5" width="16" height="16" rx="3.5" fill="var(--brand-c)" />
-      <rect x="19" y="0.5" width="16" height="16" rx="3.5" fill="var(--brand-q)" />
-      <rect x="0" y="19.5" width="16" height="16" rx="3.5" fill="var(--brand-q)" />
-      <rect x="19" y="19.5" width="16" height="16" rx="3.5" fill="var(--brand-c)" />
-      <g transform="translate(42 0) scale(0.6)">
-        <path
-          d="M71.31 14.24 A 20 20 0 1 1 71.31 45.76"
-          fill="none"
-          stroke="var(--brand-c)"
-          strokeWidth="10"
-          strokeLinecap="butt"
-        />
-        <circle cx="30" cy="30" r="20" fill="none" stroke="var(--brand-q)" strokeWidth="10" />
-        <line
-          x1="38.17"
-          y1="37.36"
-          x2="52.29"
-          y2="50.07"
-          stroke="var(--brand-c)"
-          strokeWidth="10"
-          strokeLinecap="round"
-        />
-      </g>
-    </svg>
+    />
   );
 }
 

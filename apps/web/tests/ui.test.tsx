@@ -40,18 +40,13 @@ afterEach(() => {
 });
 
 describe('QcLogo', () => {
-  it('renders an accessible SVG mark with brand tokens and no raster image', () => {
+  it('renders the brand SVG file without a raster PNG', () => {
     const { container } = render(<QcLogo href="/registry" />);
     expect(screen.getByRole('link', { name: 'QC.Dana' })).toHaveAttribute('href', '/registry');
-    const svg = container.querySelector('svg');
-    expect(svg).toBeTruthy();
-    expect(svg?.getAttribute('aria-hidden')).toBe('true');
-    expect(container.querySelector('img')).toBeNull();
-    expect(container.innerHTML).toContain('var(--brand-q)');
-    expect(container.innerHTML).toContain('var(--brand-c)');
+    const image = container.querySelector('img');
+    expect(image).toHaveAttribute('src', '/qc-logo.svg');
+    expect(image).toHaveAttribute('aria-hidden', 'true');
     expect(container.innerHTML).not.toContain('.png');
-    expect(container.querySelectorAll('rect')).toHaveLength(4);
-    expect(container.querySelector('circle')).toBeTruthy();
   });
 
   it('uses an img role and label when the mark is not a link', () => {
@@ -98,6 +93,22 @@ describe('MultiSelect', () => {
       'aria-expanded',
       'false',
     );
+    expect(screen.getByText('Статус')).toBeInTheDocument();
+  });
+
+  it('can hide the visible label for a single-line toolbar', () => {
+    const { container } = render(
+      <MultiSelect
+        label="Статус"
+        placeholder="Статус"
+        hideLabel
+        options={options}
+        values={[]}
+        onChange={() => undefined}
+      />,
+    );
+    expect(screen.getByRole('combobox', { name: 'Статус' })).toBeInTheDocument();
+    expect(container.querySelector('span.font-medium')).toBeNull();
   });
 
   it('shows selected state', async () => {

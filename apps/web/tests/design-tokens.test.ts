@@ -34,12 +34,12 @@ describe('design tokens', () => {
     expect(css).toContain('max-width: 1.125rem');
   });
 
-  it('keeps the favicon SVG vector-only and aligned with brand Q/C tokens', () => {
+  it('keeps the favicon SVG vector-only', () => {
     const icon = readFileSync(resolve(import.meta.dirname, '../app/icon.svg'), 'utf8');
-    expect(icon).toContain('viewBox="0 0 88 88"');
-    expect(icon).toContain('#e81820');
-    expect(icon).toContain('#009848');
-    expect(icon).toContain('<circle');
-    expect(icon).not.toMatch(/<rect|<image|data:image|javascript:|<script|fill="white"/i);
+    expect(icon).toContain('viewBox="139 146 179 179"');
+    expect(icon).toContain('#E1313C');
+    expect(icon).toContain('#236E45');
+    expect(icon).toContain('<path');
+    expect(icon).not.toMatch(/<image|data:image|javascript:|<script|fill="white"/i);
   });
 });

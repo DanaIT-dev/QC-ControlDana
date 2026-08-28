@@ -63,9 +63,11 @@ export function RegistryFilters({
             aria-label="Поиск"
           />
         </div>
-        <div className="hidden min-w-0 flex-1 grid-cols-3 gap-2 md:grid">
+        <div className="hidden min-w-0 flex-1 grid-cols-3 items-center gap-2 md:grid">
           <MultiSelect
             label="Статус"
+            placeholder="Статус"
+            hideLabel
             options={options?.statuses ?? []}
             values={query.statuses}
             onChange={(statuses) =>
@@ -74,12 +76,16 @@ export function RegistryFilters({
           />
           <MultiSelect
             label="Объект"
+            placeholder="Объект"
+            hideLabel
             options={options?.objects ?? []}
             values={query.objectIds}
             onChange={(objectIds) => onChange({ ...query, page: 1, objectIds })}
           />
           <MultiSelect
             label="Состояние срока"
+            placeholder="Состояние срока"
+            hideLabel
             options={DEADLINE_OPTIONS}
             values={query.deadlineState}
             onChange={(deadlineState) =>
