@@ -19,12 +19,14 @@
     "@sgr-registry/domain": "workspace:*",
     "bullmq": "^5.66.4",
     "ioredis": "^5.8.2",
+    "nodemailer": "^9.0.6",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2"
   },
   "devDependencies": {
     "@sgr-registry/typescript-config": "workspace:*",
     "@types/node": "^24.3.0",
+    "@types/nodemailer": "^8.0.1",
     "tsx": "^4.23.12",
     "typescript": "^5.9.3"
   }

@@ -19,6 +19,9 @@ export const SENSITIVE_AUDIT_KEYS = [
   'clamav',
   'rawScannerResponse',
   'scanTrace',
+  'smtpPassword',
+  'smtpPass',
+  'SMTP_PASSWORD',
 ] as const;
 
 const AUDIT_NON_SECRET_KEYS = new Set(['mustchangepassword', 'passwordchangedat']);

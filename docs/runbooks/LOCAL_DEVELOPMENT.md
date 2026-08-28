@@ -24,6 +24,14 @@ docker compose -f infra/docker/compose.yaml --env-file .env up -d --force-recrea
 
 Подставьте полученный `sha256:…` в `image:` Compose (формат `clamav/clamav-debian:1.4@sha256:…`) и пересоздайте сервис командой выше.
 
+Образ Mailpit закреплён по immutable digest (`axllent/mailpit:v1.27.10@sha256:…`). UI/SMTP только на localhost. Обновление digest:
+
+```bash
+docker pull axllent/mailpit:v1.27.10
+docker image inspect axllent/mailpit:v1.27.10 --format '{{index .RepoDigests 0}}'
+docker compose -f infra/docker/compose.yaml --env-file .env up -d --force-recreate mailpit
+```
+
 ```bash
 docker compose -f infra/docker/compose.yaml --env-file .env up -d
 pnpm db:migrate
@@ -63,6 +71,7 @@ pnpm test:integration
 pnpm test:e2e
 pnpm test:attachments:stream
 pnpm test:registry:performance
+pnpm test:sla:performance
 ```
 
 `pnpm test:registry:performance` создаёт ≥ 100 000 строк только в `sgr_registry_test`, снимает `EXPLAIN ANALYZE` типового list-запроса и удаляет performance-данные. Development-база не используется.

@@ -174,11 +174,12 @@ describe('role-aware navigation', () => {
     expect(admin).toEqual([
       'Реестр',
       'Создать акт',
+      'Контроль сроков',
       'Справочники',
       'Пользователи',
       'Состояние системы',
     ]);
-    expect(responsible).toEqual(['Реестр']);
+    expect(responsible).toEqual(['Реестр', 'Контроль сроков']);
   });
 });
 

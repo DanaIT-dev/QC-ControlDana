@@ -19,6 +19,8 @@ export function proxy(request: NextRequest) {
       pathname === '/users' ||
       pathname === '/reference-data' ||
       pathname === '/change-password' ||
+      pathname === '/notifications' ||
+      pathname === '/deadlines' ||
       pathname.startsWith('/acts/')) &&
     !hasSession
   ) {
@@ -41,6 +43,8 @@ export const config = {
     '/reference-data',
     '/reference-data/:path*',
     '/change-password',
+    '/notifications',
+    '/deadlines',
     '/acts/:path*',
   ],
 };

@@ -1,11 +1,21 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { loadConfig } from '@sgr-registry/config';
-import type { ComponentStatus, HealthResponse, ReadyResponse } from '@sgr-registry/contracts';
+import type {
+  ComponentStatus,
+  HealthResponse,
+  ReadyResponse,
+  SystemStatusResponse,
+} from '@sgr-registry/contracts';
 import { getPrismaClient } from '@sgr-registry/database';
 import Redis from 'ioredis';
+import { NotificationDispatcher } from '../notifications/dispatcher';
 
 @Injectable()
 export class HealthService {
+  constructor(
+    @Inject(NotificationDispatcher) private readonly dispatcher: NotificationDispatcher,
+  ) {}
+
   getHealth(): HealthResponse {
     return {
       status: 'ok',
@@ -34,6 +44,37 @@ export class HealthService {
       status,
       timestamp: new Date().toISOString(),
       components: { postgres, redis, minio, clamav },
+    };
+  }
+
+  async getSystemStatus(): Promise<SystemStatusResponse> {
+    const ready = await this.getReadiness();
+    const notifications = await this.dispatcher.stats();
+    const degraded = notifications.smtp.status === 'down' || notifications.outboxPending > 0;
+    return {
+      ...ready,
+      status: ready.status === 'not_ready' ? 'not_ready' : degraded ? 'degraded' : 'ready',
+      components: {
+        ...ready.components,
+        smtp: notifications.smtp,
+      },
+      notifications: {
+        outboxPending: notifications.outboxPending,
+        oldestPendingOutboxAgeMs: notifications.oldestPendingOutboxAgeMs,
+        emailQueued: notifications.emailQueued,
+        emailFailed: notifications.emailFailed,
+        emailDead: notifications.emailDead,
+        lastSlaBusinessDate: notifications.lastSlaBusinessDate,
+        lastSlaRunAt: notifications.lastSlaRunAt,
+        nextSlaRunAt: notifications.nextSlaRunAt,
+        smtp: notifications.smtp,
+        worker: {
+          waiting: notifications.queue.waiting ?? 0,
+          active: notifications.queue.active ?? 0,
+          failed: notifications.queue.failed ?? 0,
+          delayed: notifications.queue.delayed ?? 0,
+        },
+      },
     };
   }
 

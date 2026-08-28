@@ -23,6 +23,13 @@ export function navItemsForRole(role: UserRole): AppNavItem[] {
       match: (pathname) => pathname === '/acts/new',
     });
   }
+  if (hasCapability(role, 'VIEW_DEADLINE_CONTROL')) {
+    items.push({
+      href: '/deadlines',
+      label: 'Контроль сроков',
+      match: (pathname) => pathname.startsWith('/deadlines'),
+    });
+  }
   if (hasCapability(role, 'MANAGE_REFERENCE_DATA')) {
     items.push({
       href: '/reference-data',

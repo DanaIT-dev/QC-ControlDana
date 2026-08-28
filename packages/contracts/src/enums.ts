@@ -40,6 +40,40 @@ export const DEADLINE_STATES = [
 ] as const;
 export type DeadlineState = (typeof DEADLINE_STATES)[number];
 
+export const SLA_CLOCK_KINDS = ['GENERAL', 'THIRD_PARTY'] as const;
+export type SlaClockKind = (typeof SLA_CLOCK_KINDS)[number];
+
+export const SLA_CLOCK_STATES = [
+  'NO_DEADLINE',
+  'NORMAL',
+  'WARNING',
+  'DUE_TODAY',
+  'OVERDUE',
+  'COMPLETED',
+] as const;
+export type SlaClockState = (typeof SLA_CLOCK_STATES)[number];
+
+export const NOTIFICATION_TYPES = [
+  'RESPONSIBLE_ASSIGNED',
+  'EFFECTIVE_DEADLINE_CHANGED',
+  'THIRD_PARTY_DEADLINE_CHANGED',
+  'DEFECT_COMPLETED',
+  'DEFECT_REOPENED',
+  'ATTACHMENT_READY',
+  'ATTACHMENT_REJECTED',
+  'ATTACHMENT_SCAN_FAILED',
+  'SLA_WARNING',
+  'SLA_DUE_TODAY',
+  'SLA_OVERDUE',
+] as const;
+export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
+
+export const OUTBOX_STATUSES = ['PENDING', 'CLAIMED', 'PROCESSED', 'FAILED', 'DEAD'] as const;
+export type OutboxStatus = (typeof OUTBOX_STATUSES)[number];
+
+export const EMAIL_DELIVERY_STATUSES = ['QUEUED', 'SENDING', 'SENT', 'FAILED', 'DEAD'] as const;
+export type EmailDeliveryStatus = (typeof EMAIL_DELIVERY_STATUSES)[number];
+
 export const ACT_FORM_DISPLAY: Record<ActFormCode, { code: ActFormCode; officialLabel: string }> = {
   S1: { code: 'S1', officialLabel: 'С-1' },
   S23: { code: 'S23', officialLabel: 'С-23' },

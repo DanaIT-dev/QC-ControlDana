@@ -170,18 +170,27 @@ describe('operations integration', () => {
   });
 
   afterAll(async () => {
-    if (createdActIds.length > 0) {
+    const actIds = createdActIds.filter((id) => typeof id === 'string' && id.length > 0);
+    if (actIds.length > 0) {
+      await prisma.emailDelivery.deleteMany({
+        where: { recipient: { event: { actId: { in: actIds } } } },
+      });
+      await prisma.notificationRecipient.deleteMany({
+        where: { event: { actId: { in: actIds } } },
+      });
+      await prisma.notificationEvent.deleteMany({ where: { actId: { in: actIds } } });
+      await prisma.slaClock.deleteMany({ where: { defectItem: { actId: { in: actIds } } } });
       await prisma.proposal.deleteMany({
-        where: { defectItem: { actId: { in: createdActIds } } },
+        where: { defectItem: { actId: { in: actIds } } },
       });
       await prisma.defectItemEngineer.deleteMany({
-        where: { defectItem: { actId: { in: createdActIds } } },
+        where: { defectItem: { actId: { in: actIds } } },
       });
       await prisma.defectItemLiableOrganization.deleteMany({
-        where: { defectItem: { actId: { in: createdActIds } } },
+        where: { defectItem: { actId: { in: actIds } } },
       });
-      await prisma.defectItem.deleteMany({ where: { actId: { in: createdActIds } } });
-      await prisma.act.deleteMany({ where: { id: { in: createdActIds } } });
+      await prisma.defectItem.deleteMany({ where: { actId: { in: actIds } } });
+      await prisma.act.deleteMany({ where: { id: { in: actIds } } });
     }
     if (createdUserIds.length > 0) {
       await prisma.idempotencyRecord.deleteMany({ where: { actorUserId: { in: createdUserIds } } });

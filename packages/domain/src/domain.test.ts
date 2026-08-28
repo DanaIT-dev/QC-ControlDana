@@ -256,6 +256,9 @@ describe('capabilities', () => {
       'UPLOAD_PROPOSAL_ATTACHMENT',
       'ARCHIVE_ATTACHMENT',
       'DOWNLOAD_ATTACHMENT',
+      'VIEW_NOTIFICATIONS',
+      'VIEW_DEADLINE_CONTROL',
+      'MANAGE_NOTIFICATION_SETTINGS',
     ]);
     expect(capabilitiesForRole('SGR_MANAGER')).toContain('CREATE_ACT');
     expect(capabilitiesForRole('SGR_MANAGER')).not.toContain('MANAGE_USERS');
@@ -269,6 +272,8 @@ describe('capabilities', () => {
       'UPLOAD_DEFECT_ATTACHMENT',
       'ARCHIVE_ATTACHMENT',
       'DOWNLOAD_ATTACHMENT',
+      'VIEW_NOTIFICATIONS',
+      'VIEW_DEADLINE_CONTROL',
     ]);
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).toContain('EDIT_THIRD_PARTY_DEADLINE');
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('MANAGE_REFERENCE_DATA');

@@ -4,3 +4,5 @@ export * from './auth';
 export * from './registry';
 export * from './operations';
 export * from './attachments';
+export * from './notifications';
+export * from './sla';

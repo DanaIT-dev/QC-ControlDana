@@ -25,6 +25,9 @@ export const CAPABILITIES = [
   'UPLOAD_PROPOSAL_ATTACHMENT',
   'ARCHIVE_ATTACHMENT',
   'DOWNLOAD_ATTACHMENT',
+  'VIEW_NOTIFICATIONS',
+  'VIEW_DEADLINE_CONTROL',
+  'MANAGE_NOTIFICATION_SETTINGS',
 ] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];
@@ -54,6 +57,9 @@ const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
     'UPLOAD_PROPOSAL_ATTACHMENT',
     'ARCHIVE_ATTACHMENT',
     'DOWNLOAD_ATTACHMENT',
+    'VIEW_NOTIFICATIONS',
+    'VIEW_DEADLINE_CONTROL',
+    'MANAGE_NOTIFICATION_SETTINGS',
   ],
   SGR_MANAGER: [
     'MANAGE_REFERENCE_DATA',
@@ -77,6 +83,8 @@ const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
     'UPLOAD_PROPOSAL_ATTACHMENT',
     'ARCHIVE_ATTACHMENT',
     'DOWNLOAD_ATTACHMENT',
+    'VIEW_NOTIFICATIONS',
+    'VIEW_DEADLINE_CONTROL',
   ],
   CONTRACTOR_ENGINEER: [
     'VIEW_ALL_ACTS',
@@ -89,6 +97,8 @@ const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
     'UPLOAD_PROPOSAL_ATTACHMENT',
     'ARCHIVE_ATTACHMENT',
     'DOWNLOAD_ATTACHMENT',
+    'VIEW_NOTIFICATIONS',
+    'VIEW_DEADLINE_CONTROL',
   ],
   RESPONSIBLE_ENGINEER: [
     'VIEW_ASSIGNED_DEFECTS',
@@ -100,6 +110,8 @@ const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
     'UPLOAD_DEFECT_ATTACHMENT',
     'ARCHIVE_ATTACHMENT',
     'DOWNLOAD_ATTACHMENT',
+    'VIEW_NOTIFICATIONS',
+    'VIEW_DEADLINE_CONTROL',
   ],
 };
 
@@ -128,6 +140,9 @@ export const CAPABILITY_LABELS: Record<Capability, string> = {
   UPLOAD_PROPOSAL_ATTACHMENT: 'Загрузка документов предложения',
   ARCHIVE_ATTACHMENT: 'Архивирование вложений',
   DOWNLOAD_ATTACHMENT: 'Скачивание вложений',
+  VIEW_NOTIFICATIONS: 'Просмотр уведомлений',
+  VIEW_DEADLINE_CONTROL: 'Контроль сроков',
+  MANAGE_NOTIFICATION_SETTINGS: 'Настройки уведомлений',
 };
 
 export function capabilitiesForRole(role: UserRole): Capability[] {

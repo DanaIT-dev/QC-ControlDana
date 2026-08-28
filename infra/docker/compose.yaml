@@ -74,6 +74,24 @@ services:
       start_period: 180s
     restart: unless-stopped
 
+  mailpit:
+    # Immutable index digest of axllent/mailpit:v1.27.10 (includes linux/arm64).
+    # Refresh: docker pull axllent/mailpit:v1.27.10 && docker image inspect axllent/mailpit:v1.27.10 --format '{{index .RepoDigests 0}}'
+    image: axllent/mailpit:v1.27.10@sha256:b1f1be18af530d939a11ee8820b379e0c88eeec204d904bfad68862adced3a5a
+    container_name: sgr-registry-mailpit
+    ports:
+      - '127.0.0.1:${MAILPIT_SMTP_PORT:-1025}:1025'
+      - '127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025'
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 'true'
+      MP_SMTP_AUTH_ALLOW_INSECURE: 'true'
+    healthcheck:
+      test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://127.0.0.1:8025/livez']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
 volumes:
   sgr_registry_pgdata:
   sgr_registry_redis:

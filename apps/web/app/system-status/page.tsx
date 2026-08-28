@@ -1,4 +1,4 @@
-import type { ReadyResponse } from '@sgr-registry/contracts';
+import type { SystemStatusResponse } from '@sgr-registry/contracts';
 import { redirect } from 'next/navigation';
 import { CheckCircle2, Database, Server, Wifi } from 'lucide-react';
 import { AppShell } from '../app-shell';
@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { fetchCurrentUser, fetchSystemStatus } from '../../lib/server-auth';
+import { NotificationSettingsForm } from './notification-settings-form';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,10 +27,11 @@ export default async function SystemStatusPage() {
   }
 
   const status = await fetchSystemStatus();
-  const data = status.data as ReadyResponse | null;
+  const data = status.data as SystemStatusResponse | null;
   const postgresOk = data?.components.postgres.status === 'up';
   const redisOk = data?.components.redis.status === 'up';
-  const systemReady = status.status === 200 && data?.status === 'ready';
+  const systemReady =
+    status.status === 200 && (data?.status === 'ready' || data?.status === 'degraded');
 
   return (
     <AppShell user={user}>
@@ -73,7 +75,43 @@ export default async function SystemStatusPage() {
           badLabel="недоступен"
           icon={Database}
         />
+        <HealthCard
+          title="SMTP / Mailpit"
+          ok={data?.notifications?.smtp.status !== 'down'}
+          okLabel={data?.notifications?.smtp.status === 'disabled' ? 'выключен' : 'доступен'}
+          badLabel="недоступен"
+          icon={Wifi}
+        />
       </div>
+      <Card className="mt-4 shadow-none">
+        <CardHeader>
+          <CardTitle className="text-sm">Уведомления и контроль сроков</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-2 text-sm">
+          <p>Очередь worker: waiting {data?.notifications?.worker.waiting ?? '—'}</p>
+          <p>Outbox backlog: {data?.notifications?.outboxPending ?? '—'}</p>
+          <p>
+            Возраст oldest pending outbox:{' '}
+            {data?.notifications?.oldestPendingOutboxAgeMs != null
+              ? `${Math.round(data.notifications.oldestPendingOutboxAgeMs / 1000)} с`
+              : '—'}
+          </p>
+          <p>
+            Email: queued {data?.notifications?.emailQueued ?? '—'}, failed{' '}
+            {data?.notifications?.emailFailed ?? '—'}, dead {data?.notifications?.emailDead ?? '—'}
+          </p>
+          <p>Последняя оценка сроков: {data?.notifications?.lastSlaRunAt ?? '—'}</p>
+          <p>Следующая оценка: {data?.notifications?.nextSlaRunAt ?? '—'}</p>
+        </CardContent>
+      </Card>
+      <Card className="mt-4 shadow-none">
+        <CardHeader>
+          <CardTitle className="text-sm">Настройки уведомлений</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <NotificationSettingsForm csrfToken={user.csrfToken} />
+        </CardContent>
+      </Card>
       {data?.timestamp ? (
         <p className="mt-4 text-sm text-muted-foreground">
           Отметка времени готовности: {data.timestamp}

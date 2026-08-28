@@ -3,6 +3,8 @@ import { Module } from '@nestjs/common';
 import { loadConfig } from '@sgr-registry/config';
 import { AttachmentScanProcessor } from './attachment-scan.processor';
 import { MaintenanceProcessor } from './maintenance.processor';
+import { NotificationDispatcher, NotificationProcessor } from './notifications/dispatcher';
+import { resolveNotificationQueueName } from '@sgr-registry/domain';
 
 @Module({
   imports: [
@@ -14,7 +16,13 @@ import { MaintenanceProcessor } from './maintenance.processor';
     }),
     BullModule.registerQueue({ name: 'sgr-maintenance' }),
     BullModule.registerQueue({ name: 'sgr-attachments' }),
+    BullModule.registerQueue({ name: resolveNotificationQueueName() }),
   ],
-  providers: [MaintenanceProcessor, AttachmentScanProcessor],
+  providers: [
+    MaintenanceProcessor,
+    AttachmentScanProcessor,
+    NotificationDispatcher,
+    NotificationProcessor,
+  ],
 })
 export class WorkerModule {}

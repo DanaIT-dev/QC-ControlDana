@@ -44,6 +44,7 @@
 - даты хранятся однозначно в UTC (`timestamptz`); серверные timestamps авторитетны.
 - `effectiveDeadline` — вычисляемый срок строки: `claimDeadline`, если он заполнен, иначе `plannedDeadline`. Срок официальной претензии заменяет плановый срок для контроля просрочки.
 - календарные дедлайны имеют date-only семантику в `Europe/Minsk` (`BUSINESS_TIME_ZONE`). Строка `IN_PROGRESS` становится просроченной уже в календарный день срока.
+- контроль сроков (GENERAL/THIRD_PARTY), уведомления и эскалации описаны в [NOTIFICATIONS_AND_SLA_CONTRACT.md](./NOTIFICATIONS_AND_SLA_CONTRACT.md). Это серверный контроль установленных сроков, а не юридический SLA подрядчика.
 
 Рабочий реестр строится по `DefectItem`: одна строка таблицы = один дефект, поля акта повторяются. Подробности access scope, пагинации и видимости коммерческих полей — в [REGISTRY_CONTRACT.md](./REGISTRY_CONTRACT.md).
 
@@ -121,7 +122,7 @@
 
 - загрузка документов в S3/MinIO — см. [ATTACHMENTS_CONTRACT.md](./ATTACHMENTS_CONTRACT.md);
 - интеграция с 1С;
-- уведомления;
+- SMS, Telegram, мобильные push, WebSocket;
 - фактические расходы и взыскания;
 - электронная подпись;
 - production deployment;

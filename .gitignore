@@ -23,6 +23,7 @@ packages/database/src/generated/
 playwright-report/
 test-results/
 blob-report/
+apps/web/e2e/artifacts/
 
 # Logs
 *.log

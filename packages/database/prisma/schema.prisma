@@ -100,6 +100,7 @@ model User {
   archivedAttachments   Attachment[]             @relation("AttachmentArchivedBy")
   auditLogs             AuditLog[]
   idempotencyRecords    IdempotencyRecord[]
+  notificationRecipients NotificationRecipient[]
 
   @@index([role, status])
   @@index([status, createdAt])
@@ -245,6 +246,7 @@ model Act {
   cancelledBy    User?          @relation("ActCancelledBy", fields: [cancelledByUserId], references: [id], onDelete: Restrict)
   defectItems    DefectItem[]
   attachments    Attachment[]
+  notificationEvents NotificationEvent[]
 
   @@unique([formCode, year, sequence])
   @@index([objectId])
@@ -284,6 +286,8 @@ model DefectItem {
   liableOrganizations  DefectItemLiableOrganization[]
   proposals            Proposal[]
   attachments          Attachment[]
+  slaClocks            SlaClock[]
+  notificationEvents   NotificationEvent[]
 
   @@index([actId])
   @@index([status])
@@ -428,11 +432,156 @@ model IdempotencyRecord {
 }
 
 model SystemSettings {
-  id                      String   @id @default("default")
-  deadlineWarningDays     Int      @default(3)
-  maxAttachmentBytes      Int      @default(20971520)
-  maxAttachmentsPerOwner  Int      @default(50)
-  updatedAt               DateTime @updatedAt @db.Timestamptz(3)
+  id                         String   @id @default("default")
+  deadlineWarningDays        Int      @default(3)
+  maxAttachmentBytes         Int      @default(20971520)
+  maxAttachmentsPerOwner     Int      @default(50)
+  escalationDays             Int[]    @default([0, 3, 7, 14])
+  dailyEvaluationMinuteOfDay Int      @default(480)
+  emailEnabled               Boolean  @default(true)
+  version                    Int      @default(1)
+  updatedAt                  DateTime @updatedAt @db.Timestamptz(3)
 
   @@map("system_settings")
+}
+
+enum SlaClockKind {
+  GENERAL
+  THIRD_PARTY
+}
+
+enum SlaClockState {
+  NO_DEADLINE
+  NORMAL
+  WARNING
+  DUE_TODAY
+  OVERDUE
+  COMPLETED
+}
+
+enum OutboxStatus {
+  PENDING
+  CLAIMED
+  PROCESSED
+  FAILED
+  DEAD
+}
+
+enum EmailDeliveryStatus {
+  QUEUED
+  SENDING
+  SENT
+  FAILED
+  DEAD
+}
+
+model SlaClock {
+  id                        String        @id @default(uuid()) @db.Uuid
+  defectItemId              String        @db.Uuid
+  kind                      SlaClockKind
+  deadline                  DateTime?     @db.Timestamptz(3)
+  cycle                     Int           @default(1)
+  state                     SlaClockState
+  lastEvaluatedBusinessDate String?
+  satisfiedAt               DateTime?     @db.Timestamptz(3)
+  version                   Int           @default(1)
+  createdAt                 DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt                 DateTime      @updatedAt @db.Timestamptz(3)
+
+  defectItem DefectItem @relation(fields: [defectItemId], references: [id], onDelete: Restrict)
+
+  @@unique([defectItemId, kind])
+  @@index([kind, state, deadline])
+  @@index([lastEvaluatedBusinessDate])
+  @@map("sla_clocks")
+}
+
+model OutboxEvent {
+  id            String       @id @default(uuid()) @db.Uuid
+  type          String
+  payload       Json
+  status        OutboxStatus @default(PENDING)
+  availableAt   DateTime     @default(now()) @db.Timestamptz(3)
+  attempts      Int          @default(0)
+  claimedAt     DateTime?    @db.Timestamptz(3)
+  claimedBy     String?
+  processedAt   DateTime?    @db.Timestamptz(3)
+  lastErrorCode String?
+  createdAt     DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime     @updatedAt @db.Timestamptz(3)
+
+  @@index([status, availableAt])
+  @@map("outbox_events")
+}
+
+model NotificationEvent {
+  id             String   @id @default(uuid()) @db.Uuid
+  type           String
+  occurrenceKey  String   @unique
+  actorUserId    String?  @db.Uuid
+  actId          String?  @db.Uuid
+  defectItemId   String?  @db.Uuid
+  attachmentId   String?  @db.Uuid
+  payload        Json
+  occurredAt     DateTime @db.Timestamptz(3)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  recipients NotificationRecipient[]
+  defectItem DefectItem? @relation(fields: [defectItemId], references: [id], onDelete: Restrict)
+  act        Act?        @relation(fields: [actId], references: [id], onDelete: Restrict)
+
+  @@index([occurredAt])
+  @@index([actId, occurredAt])
+  @@index([defectItemId])
+  @@map("notification_events")
+}
+
+model NotificationRecipient {
+  id                   String    @id @default(uuid()) @db.Uuid
+  notificationEventId  String    @db.Uuid
+  userId               String    @db.Uuid
+  readAt               DateTime? @db.Timestamptz(3)
+  archivedAt           DateTime? @db.Timestamptz(3)
+  revokedAt            DateTime? @db.Timestamptz(3)
+  createdAt            DateTime  @default(now()) @db.Timestamptz(3)
+
+  event           NotificationEvent @relation(fields: [notificationEventId], references: [id], onDelete: Restrict)
+  user            User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  emailDeliveries EmailDelivery[]
+
+  @@unique([notificationEventId, userId])
+  @@index([userId, readAt, createdAt])
+  @@index([userId, revokedAt, createdAt])
+  @@map("notification_recipients")
+}
+
+model EmailDelivery {
+  id                       String              @id @default(uuid()) @db.Uuid
+  notificationRecipientId  String              @db.Uuid
+  status                   EmailDeliveryStatus @default(QUEUED)
+  attempts                 Int                 @default(0)
+  nextAttemptAt            DateTime            @default(now()) @db.Timestamptz(3)
+  sentAt                   DateTime?           @db.Timestamptz(3)
+  providerMessageId        String?
+  lastErrorCode            String?
+  createdAt                DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt                DateTime            @updatedAt @db.Timestamptz(3)
+
+  recipient NotificationRecipient @relation(fields: [notificationRecipientId], references: [id], onDelete: Restrict)
+
+  @@unique([notificationRecipientId])
+  @@index([status, nextAttemptAt])
+  @@map("email_deliveries")
+}
+
+model SlaEvaluationState {
+  id                         String    @id @default("default")
+  lastSuccessfulBusinessDate String?
+  lastRunAt                  DateTime? @db.Timestamptz(3)
+  lastStatus                 String?
+  lastErrorCode              String?
+  createdAt                  DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt                  DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@map("sla_evaluation_state")
 }

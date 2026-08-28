@@ -2,7 +2,7 @@
 
 Внутренний продукт Dana Holding. Модульный монолит: web, API, worker, PostgreSQL, Redis и S3-совместимое хранилище.
 
-Текущий этап — полный операционный контур, безопасные вложения через MinIO/ClamAV и единый UI на shadcn/ui. 1С, уведомления и PostgreSQL RLS не входят в эту версию.
+Текущий этап — уведомления, контроль сроков, Mailpit/SMTP и transactional outbox. 1С, SMS, Telegram, WebSocket, PostgreSQL RLS не входят в эту версию.
 
 ## UI
 
@@ -12,7 +12,7 @@
 
 - Node.js 24 LTS (`24` в `.nvmrc`)
 - pnpm 11.24.0 через Corepack
-- Docker и Docker Compose для PostgreSQL 18, Redis, MinIO и ClamAV
+- Docker и Docker Compose для PostgreSQL 18, Redis, MinIO, ClamAV и Mailpit
 
 ## Первый запуск
 
@@ -39,21 +39,21 @@ pnpm dev
 
 ## Корневые команды
 
-| Команда                          | Назначение                                                             |
-| -------------------------------- | ---------------------------------------------------------------------- |
-| `pnpm dev`                       | Web, API и worker                                                      |
-| `pnpm build`                     | Production-сборка пакетов и приложений                                 |
-| `pnpm lint`                      | ESLint                                                                 |
-| `pnpm typecheck`                 | TypeScript                                                             |
-| `pnpm test`                      | Unit-тесты                                                             |
-| `pnpm test:integration`          | Integration-тесты только против `*_test` базы                          |
-| `pnpm test:e2e`                  | Playwright (Chromium): вход, реестр, операции, вложения, визуальный QA |
-| `pnpm test:attachments:stream`   | Streaming/RSS против test bucket MinIO                                 |
-| `pnpm test:registry:performance` | 100k строк только в `*_test` базе                                      |
-| `pnpm format:check`              | Проверка Prettier                                                      |
-| `pnpm db:generate`               | Prisma Client                                                          |
-| `pnpm db:migrate`                | `prisma migrate deploy`                                                |
-| `pnpm db:seed`                   | Демонстрационные данные                                                |
+| Команда                        | Назначение                                                             |
+| ------------------------------ | ---------------------------------------------------------------------- |
+| `pnpm dev`                     | Web, API и worker                                                      |
+| `pnpm build`                   | Production-сборка пакетов и приложений                                 |
+| `pnpm lint`                    | ESLint                                                                 |
+| `pnpm typecheck`               | TypeScript                                                             |
+| `pnpm test`                    | Unit-тесты                                                             |
+| `pnpm test:integration`        | Integration-тесты только против `*_test` базы                          |
+| `pnpm test:e2e`                | Playwright (Chromium): вход, реестр, операции, вложения, визуальный QA |
+| `pnpm test:attachments:stream` | Streaming/RSS против test bucket MinIO                                 |
+| `pnpm test:sla:performance`    | 100k DefectItem, cursor evaluator, без массовой email-отправки         |
+| `pnpm format:check`            | Проверка Prettier                                                      |
+| `pnpm db:generate`             | Prisma Client                                                          |
+| `pnpm db:migrate`              | `prisma migrate deploy`                                                |
+| `pnpm db:seed`                 | Демонстрационные данные                                                |
 
 ## Переменные окружения
 
@@ -63,7 +63,8 @@ pnpm dev
 
 ## Документация
 
-- [Контракт вложений](docs/requirements/ATTACHMENTS_CONTRACT.md)
+- [Уведомления и контроль сроков](docs/requirements/NOTIFICATIONS_AND_SLA_CONTRACT.md)
+- [Безопасность](docs/requirements/SECURITY.md)
 - [UI-система](docs/design/UI_DESIGN_SYSTEM.md)
 - [Операционный контур](docs/requirements/OPERATIONS_CONTRACT.md)
 - [Матрица прав](docs/requirements/PERMISSIONS_MATRIX.md)

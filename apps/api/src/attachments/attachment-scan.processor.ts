@@ -1,12 +1,14 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Inject, Logger } from '@nestjs/common';
 import { loadConfig } from '@sgr-registry/config';
-import { type PrismaClient } from '@sgr-registry/database';
+import { Prisma, type PrismaClient } from '@sgr-registry/database';
 import { isScanTerminal, shouldFailScan } from '@sgr-registry/domain';
 import type { Job } from 'bullmq';
 import { Readable } from 'node:stream';
 import { PRISMA_CLIENT } from '../auth/prisma.tokens';
 import { writeAuditLog, toJsonValue } from '../common/audit-writer';
+import { notifyAttachmentScan } from '../notifications/defect-outbox';
+import { OutboxWriter } from '../notifications/outbox.writer';
 import {
   ATTACHMENT_QUEUE,
   ATTACHMENT_RECOVERY_JOB,
@@ -22,6 +24,7 @@ export class AttachmentScanProcessor extends WorkerHost {
   constructor(
     @Inject(PRISMA_CLIENT) private readonly prisma: PrismaClient,
     @Inject(ObjectStore) private readonly store: ObjectStore,
+    @Inject(OutboxWriter) private readonly outboxWriter: OutboxWriter,
   ) {
     super();
   }
@@ -70,8 +73,9 @@ export class AttachmentScanProcessor extends WorkerHost {
             );
       const result = await clamd.scanStream(stream);
       if (result.clean) {
-        await this.prisma.attachment.update({
-          where: { id: attachmentId },
+        await this.finishScan(attachment, {
+          type: 'ATTACHMENT_READY',
+          action: 'ATTACHMENT_SCAN_PASSED',
           data: {
             status: 'READY',
             scannedAt: new Date(),
@@ -79,19 +83,13 @@ export class AttachmentScanProcessor extends WorkerHost {
             scanSignature: null,
             failureCode: null,
           },
-        });
-        await writeAuditLog(this.prisma, {
-          actor: { id: attachment.uploadedById, fullName: 'system:clamav' },
-          action: 'ATTACHMENT_SCAN_PASSED',
-          entityType: 'ATTACHMENT',
-          entityId: attachmentId,
-          newValue: toJsonValue({ status: 'READY' }),
-          source: 'SYSTEM',
+          audit: { status: 'READY' },
         });
         return;
       }
-      await this.prisma.attachment.update({
-        where: { id: attachmentId },
+      await this.finishScan(attachment, {
+        type: 'ATTACHMENT_REJECTED',
+        action: 'ATTACHMENT_REJECTED',
         data: {
           status: 'REJECTED',
           scannedAt: new Date(),
@@ -100,30 +98,17 @@ export class AttachmentScanProcessor extends WorkerHost {
           rejectionReason: 'Обнаружена угроза',
           objectKey: null,
         },
-      });
-      await writeAuditLog(this.prisma, {
-        actor: { id: attachment.uploadedById, fullName: 'system:clamav' },
-        action: 'ATTACHMENT_REJECTED',
-        entityType: 'ATTACHMENT',
-        entityId: attachmentId,
-        newValue: toJsonValue({ status: 'REJECTED', scanSignature: result.signature }),
-        source: 'SYSTEM',
+        audit: { status: 'REJECTED', scanSignature: result.signature },
       });
       await this.store.deleteExact(attachment.objectKey);
     } catch (error) {
       this.logger.error(error instanceof Error ? error.message : 'scan failed');
       if (shouldFailScan(attempt)) {
-        await this.prisma.attachment.update({
-          where: { id: attachmentId },
-          data: { status: 'SCAN_FAILED', failureCode: 'SCANNER_UNAVAILABLE' },
-        });
-        await writeAuditLog(this.prisma, {
-          actor: { id: attachment.uploadedById, fullName: 'system:clamav' },
+        await this.finishScan(attachment, {
+          type: 'ATTACHMENT_SCAN_FAILED',
           action: 'ATTACHMENT_SCAN_FAILED',
-          entityType: 'ATTACHMENT',
-          entityId: attachmentId,
-          newValue: toJsonValue({ status: 'SCAN_FAILED' }),
-          source: 'SYSTEM',
+          data: { status: 'SCAN_FAILED', failureCode: 'SCANNER_UNAVAILABLE' },
+          audit: { status: 'SCAN_FAILED' },
         });
         return;
       }
@@ -133,5 +118,57 @@ export class AttachmentScanProcessor extends WorkerHost {
       });
       throw error;
     }
+  }
+
+  private async finishScan(
+    attachment: {
+      id: string;
+      actId: string | null;
+      defectItemId: string | null;
+      proposalId: string | null;
+      uploadedById: string;
+    },
+    input: {
+      type: 'ATTACHMENT_READY' | 'ATTACHMENT_REJECTED' | 'ATTACHMENT_SCAN_FAILED';
+      action: string;
+      data: Record<string, unknown>;
+      audit: Record<string, unknown>;
+    },
+  ): Promise<void> {
+    const outboxIds = await this.prisma.$transaction(async (tx) => {
+      await tx.attachment.update({
+        where: { id: attachment.id },
+        data: input.data as Prisma.AttachmentUpdateInput,
+      });
+      const uploader = await tx.user.findUnique({
+        where: { id: attachment.uploadedById },
+        select: { role: true },
+      });
+      const proposal = attachment.proposalId
+        ? await tx.proposal.findUnique({
+            where: { id: attachment.proposalId },
+            select: { slot: true },
+          })
+        : null;
+      const ids = await notifyAttachmentScan(this.outboxWriter, tx, {
+        type: input.type,
+        attachmentId: attachment.id,
+        actId: attachment.actId,
+        defectItemId: attachment.defectItemId,
+        uploadedById: attachment.uploadedById,
+        proposalSlot: proposal?.slot ?? null,
+        uploaderRole: uploader?.role,
+      });
+      await writeAuditLog(tx, {
+        actor: { id: attachment.uploadedById, fullName: 'system:clamav' },
+        action: input.action,
+        entityType: 'ATTACHMENT',
+        entityId: attachment.id,
+        newValue: toJsonValue(input.audit),
+        source: 'SYSTEM',
+      });
+      return ids;
+    });
+    await this.outboxWriter.enqueue(outboxIds);
   }
 }

@@ -59,12 +59,23 @@ import {
 } from '../common/history-cursor';
 import { actorContext, canonicalRequestHash, readIdempotencyKey } from '../common/request-context';
 import { RegistryAccessScope } from '../registry/registry-access-scope';
+import {
+  notifyDeadlineChanges,
+  notifyDefectStatus,
+  notifyResponsibleAssigned,
+  revokeRecipientsForUsers,
+  warningDaysOf,
+} from '../notifications/defect-outbox';
+import { OutboxWriter, syncSlaClocks } from '../notifications/outbox.writer';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 @Injectable()
 export class OperationsService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(OutboxWriter) private readonly outboxWriter: OutboxWriter,
+  ) {}
 
   async lookups(user: AuthenticatedUser) {
     const [objects, customers, liable, alternatives, defectTypes, engineers] = await Promise.all([
@@ -137,6 +148,7 @@ export class OperationsService {
     const ctx = actorContext(user, request);
     const issuedOn = parseActIssuedOn(input.issuedOn);
     const issuedAt = calendarDateToUtcNoon(issuedOn);
+    const outboxIds: string[] = [];
     try {
       const created = await this.prisma.client.$transaction(async (tx) => {
         await tx.idempotencyRecord.create({
@@ -166,7 +178,7 @@ export class OperationsService {
         });
         const defectIds: string[] = [];
         for (const item of input.defectItems) {
-          const defectId = await this.insertDefect(tx, act.id, item, user);
+          const defectId = await this.insertDefect(tx, act.id, item, user, outboxIds);
           defectIds.push(defectId);
         }
         const items = await tx.defectItem.findMany({ where: { actId: act.id } });
@@ -203,6 +215,7 @@ export class OperationsService {
         });
         return payload;
       });
+      await this.outboxWriter.enqueue(outboxIds);
       return created;
     } catch (error) {
       if (isPrismaUniqueConflict(error)) {
@@ -298,7 +311,8 @@ export class OperationsService {
     const input = parseCommandBody(addDefectRequestSchema, body);
     const ctx = actorContext(user, request);
     await this.requireVisibleAct(user, actId);
-    return this.prisma.client.$transaction(async (tx) => {
+    const outboxIds: string[] = [];
+    const result = await this.prisma.client.$transaction(async (tx) => {
       const act = await tx.act.findUnique({ where: { id: actId } });
       if (!act) {
         throw new NotFoundException('Запись не найдена');
@@ -309,7 +323,7 @@ export class OperationsService {
       if (act.version !== input.expectedActVersion) {
         throw new StaleWriteError();
       }
-      const defectId = await this.insertDefect(tx, actId, input, user);
+      const defectId = await this.insertDefect(tx, actId, input, user, outboxIds);
       const items = await tx.defectItem.findMany({ where: { actId } });
       await tx.act.update({
         where: { id: actId },
@@ -329,6 +343,8 @@ export class OperationsService {
       });
       return { id: defectId };
     });
+    await this.outboxWriter.enqueue(outboxIds);
+    return result;
   }
 
   async replaceAssignments(
@@ -348,57 +364,73 @@ export class OperationsService {
         'Подтвердите снятие последнего ответственного',
       );
     }
-    return this.prisma.client.$transaction(async (tx) => {
-      if (item.version !== input.expectedVersion) {
-        throw new StaleWriteError();
-      }
-      await this.assertEngineers(tx, engineerIds);
-      await this.assertOrganizations(tx, liableIds, true);
-      const previousEngineers = await tx.defectItemEngineer.findMany({
-        where: { defectItemId },
-        select: { userId: true },
-      });
-      const previousLiable = await tx.defectItemLiableOrganization.findMany({
-        where: { defectItemId },
-        select: { organizationId: true },
-      });
-      const updated = await tx.defectItem.updateMany({
-        where: { id: defectItemId, version: input.expectedVersion },
-        data: { version: { increment: 1 } },
-      });
-      if (updated.count !== 1) {
-        throw new StaleWriteError();
-      }
-      await tx.defectItemEngineer.deleteMany({ where: { defectItemId } });
-      if (engineerIds.length > 0) {
-        await tx.defectItemEngineer.createMany({
-          data: engineerIds.map((userId) => ({ defectItemId, userId })),
+    return this.prisma.client
+      .$transaction(async (tx) => {
+        if (item.version !== input.expectedVersion) {
+          throw new StaleWriteError();
+        }
+        await this.assertEngineers(tx, engineerIds);
+        await this.assertOrganizations(tx, liableIds, true);
+        const previousEngineers = await tx.defectItemEngineer.findMany({
+          where: { defectItemId },
+          select: { userId: true },
         });
-      }
-      await tx.defectItemLiableOrganization.deleteMany({ where: { defectItemId } });
-      if (liableIds.length > 0) {
-        await tx.defectItemLiableOrganization.createMany({
-          data: liableIds.map((organizationId) => ({ defectItemId, organizationId })),
+        const previousLiable = await tx.defectItemLiableOrganization.findMany({
+          where: { defectItemId },
+          select: { organizationId: true },
         });
-      }
-      await writeAuditLog(tx, {
-        ...ctx,
-        action: 'ASSIGNMENTS_REPLACED',
-        entityType: 'DEFECT_ITEM',
-        entityId: defectItemId,
-        parentEntityType: 'ACT',
-        parentEntityId: item.actId,
-        oldValue: toJsonValue({
-          responsibleEngineerIds: previousEngineers.map((row) => row.userId),
-          liableOrganizationIds: previousLiable.map((row) => row.organizationId),
-        }),
-        newValue: toJsonValue({
-          responsibleEngineerIds: engineerIds,
-          liableOrganizationIds: liableIds,
-        }),
+        const updated = await tx.defectItem.updateMany({
+          where: { id: defectItemId, version: input.expectedVersion },
+          data: { version: { increment: 1 } },
+        });
+        if (updated.count !== 1) {
+          throw new StaleWriteError();
+        }
+        await tx.defectItemEngineer.deleteMany({ where: { defectItemId } });
+        if (engineerIds.length > 0) {
+          await tx.defectItemEngineer.createMany({
+            data: engineerIds.map((userId) => ({ defectItemId, userId })),
+          });
+        }
+        await tx.defectItemLiableOrganization.deleteMany({ where: { defectItemId } });
+        if (liableIds.length > 0) {
+          await tx.defectItemLiableOrganization.createMany({
+            data: liableIds.map((organizationId) => ({ defectItemId, organizationId })),
+          });
+        }
+        const previousIds = previousEngineers.map((row) => row.userId);
+        const added = engineerIds.filter((id) => !previousIds.includes(id));
+        const removed = previousIds.filter((id) => !engineerIds.includes(id));
+        await revokeRecipientsForUsers(tx, defectItemId, removed);
+        const outboxIds = await notifyResponsibleAssigned(this.outboxWriter, tx, {
+          actId: item.actId,
+          defectItemId,
+          userIds: added,
+          actorUserId: user.id,
+          version: item.version + 1,
+        });
+        await writeAuditLog(tx, {
+          ...ctx,
+          action: 'ASSIGNMENTS_REPLACED',
+          entityType: 'DEFECT_ITEM',
+          entityId: defectItemId,
+          parentEntityType: 'ACT',
+          parentEntityId: item.actId,
+          oldValue: toJsonValue({
+            responsibleEngineerIds: previousIds,
+            liableOrganizationIds: previousLiable.map((row) => row.organizationId),
+          }),
+          newValue: toJsonValue({
+            responsibleEngineerIds: engineerIds,
+            liableOrganizationIds: liableIds,
+          }),
+        });
+        return { id: defectItemId, version: item.version + 1, outboxIds };
+      })
+      .then(async (result) => {
+        await this.outboxWriter.enqueue(result.outboxIds);
+        return { id: result.id, version: result.version };
       });
-      return { id: defectItemId, version: item.version + 1 };
-    });
   }
 
   async patchDeadlines(
@@ -458,7 +490,12 @@ export class OperationsService {
     }
     const reason =
       needsReason || input.confirmCompletedEdit ? normalizeRequiredReason(input.reason) : null;
-    return this.prisma.client.$transaction(async (tx) => {
+    const previousDeadlines = {
+      claimDeadline: item.claimDeadline,
+      plannedDeadline: item.plannedDeadline,
+      thirdPartyDeadline: item.thirdPartyDeadline,
+    };
+    const result = await this.prisma.client.$transaction(async (tx) => {
       if (item.version !== input.expectedVersion) {
         throw new StaleWriteError();
       }
@@ -474,6 +511,19 @@ export class OperationsService {
         throw new StaleWriteError();
       }
       const fresh = await tx.defectItem.findUniqueOrThrow({ where: { id: defectItemId } });
+      const outboxIds = await notifyDeadlineChanges(this.outboxWriter, tx, {
+        actId: item.actId,
+        defectItemId,
+        actorUserId: user.id,
+        previous: previousDeadlines,
+        next: {
+          id: fresh.id,
+          status: fresh.status,
+          claimDeadline: fresh.claimDeadline,
+          plannedDeadline: fresh.plannedDeadline,
+          thirdPartyDeadline: fresh.thirdPartyDeadline,
+        },
+      });
       await writeAuditLog(tx, {
         ...ctx,
         action: 'DEADLINE_UPDATED',
@@ -489,8 +539,10 @@ export class OperationsService {
           Object.fromEntries(changes.map((change) => [change.field, change.next])),
         ),
       });
-      return { id: fresh.id, version: fresh.version };
+      return { id: fresh.id, version: fresh.version, outboxIds };
     });
+    await this.outboxWriter.enqueue(result.outboxIds);
+    return { id: result.id, version: result.version };
   }
 
   async complete(
@@ -512,7 +564,7 @@ export class OperationsService {
       { id: item.id, actId: item.actId, status: item.status, readyAt: item.readyAt },
       { readyAt, now: new Date() },
     );
-    return this.prisma.client.$transaction(async (tx) => {
+    const result = await this.prisma.client.$transaction(async (tx) => {
       if (item.version !== input.expectedVersion) {
         throw new StaleWriteError();
       }
@@ -527,12 +579,30 @@ export class OperationsService {
       if (updated.count !== 1) {
         const latest = await tx.defectItem.findUnique({ where: { id: defectItemId } });
         if (latest?.status === 'COMPLETED') {
-          return { id: latest.id, version: latest.version, status: latest.status };
+          return {
+            id: latest.id,
+            version: latest.version,
+            status: latest.status,
+            outboxIds: [] as string[],
+          };
         }
         throw new StaleWriteError();
       }
       await this.syncActStatus(tx, item.actId);
       const fresh = await tx.defectItem.findUniqueOrThrow({ where: { id: defectItemId } });
+      const outboxIds = await notifyDefectStatus(this.outboxWriter, tx, {
+        type: 'DEFECT_COMPLETED',
+        actId: item.actId,
+        defectItemId,
+        actorUserId: user.id,
+        defect: {
+          id: fresh.id,
+          status: fresh.status,
+          claimDeadline: fresh.claimDeadline,
+          plannedDeadline: fresh.plannedDeadline,
+          thirdPartyDeadline: fresh.thirdPartyDeadline,
+        },
+      });
       await writeAuditLog(tx, {
         ...ctx,
         action: 'DEFECT_COMPLETED',
@@ -547,8 +617,10 @@ export class OperationsService {
           comment: normalizeNotes(input.comment),
         }),
       });
-      return { id: fresh.id, version: fresh.version, status: fresh.status };
+      return { id: fresh.id, version: fresh.version, status: fresh.status, outboxIds };
     });
+    await this.outboxWriter.enqueue(result.outboxIds);
+    return { id: result.id, version: result.version, status: result.status };
   }
 
   async reopen(
@@ -565,7 +637,7 @@ export class OperationsService {
       { id: item.id, actId: item.actId, status: item.status, readyAt: item.readyAt },
       { reason },
     );
-    return this.prisma.client.$transaction(async (tx) => {
+    const result = await this.prisma.client.$transaction(async (tx) => {
       if (item.version !== input.expectedVersion) {
         throw new StaleWriteError();
       }
@@ -582,6 +654,20 @@ export class OperationsService {
       }
       await this.syncActStatus(tx, item.actId);
       const fresh = await tx.defectItem.findUniqueOrThrow({ where: { id: defectItemId } });
+      const outboxIds = await notifyDefectStatus(this.outboxWriter, tx, {
+        type: 'DEFECT_REOPENED',
+        actId: item.actId,
+        defectItemId,
+        actorUserId: user.id,
+        reopen: true,
+        defect: {
+          id: fresh.id,
+          status: fresh.status,
+          claimDeadline: fresh.claimDeadline,
+          plannedDeadline: fresh.plannedDeadline,
+          thirdPartyDeadline: fresh.thirdPartyDeadline,
+        },
+      });
       await writeAuditLog(tx, {
         ...ctx,
         action: 'DEFECT_REOPENED',
@@ -596,8 +682,10 @@ export class OperationsService {
         }),
         newValue: toJsonValue({ status: 'IN_PROGRESS', readyAt: null }),
       });
-      return { id: fresh.id, version: fresh.version, status: fresh.status };
+      return { id: fresh.id, version: fresh.version, status: fresh.status, outboxIds };
     });
+    await this.outboxWriter.enqueue(result.outboxIds);
+    return { id: result.id, version: result.version, status: result.status };
   }
 
   async upsertProposal(
@@ -858,7 +946,8 @@ export class OperationsService {
       claimDeadline?: string | null;
       thirdPartyDeadline?: string | null;
     },
-    _user: AuthenticatedUser,
+    user: AuthenticatedUser,
+    outboxIds: string[],
   ): Promise<string> {
     const engineerIds = assertUniqueIds(input.responsibleEngineerIds, 'responsibleEngineerIds');
     const liableIds = assertUniqueIds(input.liableOrganizationIds, 'liableOrganizationIds');
@@ -891,6 +980,17 @@ export class OperationsService {
         },
       },
     });
+    const fresh = await tx.defectItem.findUniqueOrThrow({ where: { id: created.id } });
+    await syncSlaClocks(tx, fresh, await warningDaysOf(tx));
+    outboxIds.push(
+      ...(await notifyResponsibleAssigned(this.outboxWriter, tx, {
+        actId,
+        defectItemId: created.id,
+        userIds: engineerIds,
+        actorUserId: user.id,
+        version: 1,
+      })),
+    );
     return created.id;
   }
 

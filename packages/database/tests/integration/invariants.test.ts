@@ -11,6 +11,11 @@ assertSafeTestDatabaseUrl(databaseUrl);
 const prisma = createPrismaClient(databaseUrl);
 
 async function cleanup(): Promise<void> {
+  await prisma.emailDelivery.deleteMany();
+  await prisma.notificationRecipient.deleteMany();
+  await prisma.notificationEvent.deleteMany();
+  await prisma.outboxEvent.deleteMany();
+  await prisma.slaClock.deleteMany();
   await prisma.$executeRawUnsafe('TRUNCATE TABLE "audit_logs"');
   await prisma.idempotencyRecord.deleteMany();
   await prisma.attachment.deleteMany();
@@ -38,6 +43,11 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await cleanup();
+  await prisma.systemSettings.upsert({
+    where: { id: 'default' },
+    update: {},
+    create: { id: 'default', deadlineWarningDays: 3 },
+  });
   await prisma.$disconnect();
 });
 

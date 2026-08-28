@@ -5,6 +5,7 @@ import type { SafeUserProfile } from '@sgr-registry/contracts';
 import { MenuIcon } from 'lucide-react';
 import { useState } from 'react';
 import { AppNav } from './app-nav';
+import { NotificationBell } from '@/components/notification-bell';
 import { QcLogo } from '@/components/qc-logo';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -19,7 +20,8 @@ export function AppShell({ user, children }: { user: SafeUserProfile; children: 
         <div className="mx-auto flex h-16 max-w-[1600px] items-center gap-3 px-4 md:h-[64px] md:px-6 lg:px-8">
           <QcLogo href="/registry" />
           <AppNav role={user.role} className="hidden md:flex" />
-          <div className="ml-auto hidden md:block">
+          <div className="ml-auto hidden items-center gap-1 md:flex">
+            <NotificationBell csrfToken={user.csrfToken} />
             <UserMenu user={user} />
           </div>
           <Sheet open={open} onOpenChange={setOpen}>
@@ -42,6 +44,9 @@ export function AppShell({ user, children }: { user: SafeUserProfile; children: 
                 </SheetTitle>
               </SheetHeader>
               <div className="flex flex-1 flex-col gap-4 px-4 pb-6">
+                <div className="flex items-center justify-end">
+                  <NotificationBell csrfToken={user.csrfToken} />
+                </div>
                 <AppNav role={user.role} onNavigate={() => setOpen(false)} />
                 <Separator />
                 <MobileUserBlock user={user} />

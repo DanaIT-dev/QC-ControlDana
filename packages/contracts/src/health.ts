@@ -14,6 +14,12 @@ export const componentStatusSchema = z.object({
   message: z.string().optional(),
 });
 
+export const smtpStatusSchema = z.object({
+  status: z.enum(['up', 'down', 'disabled']),
+  latencyMs: z.number().optional(),
+  message: z.string().optional(),
+});
+
 export const readyResponseSchema = z.object({
   status: z.enum(['ready', 'not_ready']),
   timestamp: z.string(),
@@ -22,6 +28,7 @@ export const readyResponseSchema = z.object({
     redis: componentStatusSchema,
     minio: componentStatusSchema,
     clamav: componentStatusSchema,
+    smtp: smtpStatusSchema.optional(),
   }),
 });
 

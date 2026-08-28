@@ -65,13 +65,17 @@ test.describe('operational workflow', () => {
   });
 
   test('RESPONSIBLE_ENGINEER payload has no B/C', async ({ page }) => {
-    await login(page, 'dmitry.orlov@example.sgr.local');
     const payloads: string[] = [];
     page.on('response', async (response) => {
       if (response.url().includes('/api/registry/defects') && response.ok()) {
-        payloads.push(await response.text());
+        try {
+          payloads.push(await response.text());
+        } catch {
+          /* response body may close when the test finishes */
+        }
       }
     });
+    await login(page, 'dmitry.orlov@example.sgr.local');
     await page.goto('/registry');
     await expect(page.getByText('Реестр дефектных актов').first()).toBeVisible({
       timeout: 15_000,

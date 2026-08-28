@@ -24,3 +24,8 @@ export * from './user-commands';
 export * from './reference';
 export * from './act-commands';
 export * from './attachments';
+export * from './sla';
+export * from './notifications';
+export * from './email-content';
+export * from './outbox';
+export * from './notification-settings';

@@ -92,6 +92,14 @@ async function main(): Promise<void> {
 
 async function cleanup(prisma: ReturnType<typeof createPrismaClient>): Promise<void> {
   await prisma.$executeRawUnsafe(`
+    DELETE FROM sla_clocks
+    WHERE "defectItemId" IN (
+      SELECT id FROM defect_items
+      WHERE location LIKE '${MARKER} помещение%'
+         OR "actId" IN (SELECT id FROM acts WHERE "officialNumber" LIKE '${MARKER}-%')
+    )
+  `);
+  await prisma.$executeRawUnsafe(`
     DELETE FROM defect_items
     WHERE location LIKE '${MARKER} помещение%'
        OR "actId" IN (SELECT id FROM acts WHERE "officialNumber" LIKE '${MARKER}-%')

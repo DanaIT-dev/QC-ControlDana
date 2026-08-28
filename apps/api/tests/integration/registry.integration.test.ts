@@ -261,6 +261,14 @@ describe('registry integration', () => {
   });
 
   afterAll(async () => {
+    await prisma.emailDelivery.deleteMany({
+      where: { recipient: { event: { actId: { in: createdActIds } } } },
+    });
+    await prisma.notificationRecipient.deleteMany({
+      where: { event: { actId: { in: createdActIds } } },
+    });
+    await prisma.notificationEvent.deleteMany({ where: { actId: { in: createdActIds } } });
+    await prisma.slaClock.deleteMany({ where: { defectItem: { actId: { in: createdActIds } } } });
     await prisma.proposal.deleteMany({ where: { defectItem: { actId: { in: createdActIds } } } });
     await prisma.defectItemEngineer.deleteMany({
       where: { defectItem: { actId: { in: createdActIds } } },

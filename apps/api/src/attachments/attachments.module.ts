@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { loadConfig } from '@sgr-registry/config';
 import { AuthModule } from '../auth/auth.module';
 import { PrismaModule } from '../auth/prisma.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { ATTACHMENT_QUEUE } from './attachment.constants';
 import { AttachmentScanProcessor } from './attachment-scan.processor';
 import { AttachmentsController } from './attachments.controller';
@@ -13,6 +14,7 @@ import { createS3Client, ObjectStore, resolveAttachmentBucket } from './object-s
   imports: [
     PrismaModule,
     AuthModule,
+    NotificationsModule,
     BullModule.forRootAsync({
       useFactory: () => {
         const config = loadConfig();

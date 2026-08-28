@@ -10,6 +10,7 @@ import { UsersModule } from './users/users.module';
 import { ReferenceDataModule } from './reference-data/reference-data.module';
 import { OperationsModule } from './operations/operations.module';
 import { AttachmentsModule } from './attachments/attachments.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { AttachmentsModule } from './attachments/attachments.module';
     ReferenceDataModule,
     OperationsModule,
     AttachmentsModule,
+    NotificationsModule,
   ],
   providers: [
     {
