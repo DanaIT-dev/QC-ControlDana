@@ -588,7 +588,7 @@ export class NotificationDispatcher {
     },
     warningDays: number,
   ) {
-    const { syncSlaClocks } = await import('./outbox.writer');
+    const { syncSlaClocks } = await import('./outbox.writer.js');
     await this.prisma.$transaction(async (tx) => {
       await syncSlaClocks(tx, item, warningDays);
     });

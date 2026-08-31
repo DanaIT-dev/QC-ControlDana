@@ -1,5 +1,5 @@
 {
-  "extends": "@sgr-registry/typescript-config/nest.json",
+  "extends": "@sgr-registry/typescript-config/base.json",
   "compilerOptions": {
     "rootDir": "./src",
     "outDir": "./dist",

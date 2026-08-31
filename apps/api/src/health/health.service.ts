@@ -127,7 +127,7 @@ export class HealthService {
     const started = Date.now();
     try {
       const { createS3Client, ObjectStore, resolveAttachmentBucket } =
-        await import('../attachments/object-store');
+        await import('../attachments/object-store.js');
       const config = loadConfig();
       const store = new ObjectStore(createS3Client(config), resolveAttachmentBucket(config));
       await store.ensureBucket();
@@ -145,7 +145,7 @@ export class HealthService {
   private async checkClamav(): Promise<ComponentStatus> {
     const started = Date.now();
     try {
-      const { ClamdClient } = await import('../attachments/clamd.client');
+      const { ClamdClient } = await import('../attachments/clamd.client.js');
       const config = loadConfig();
       const client = new ClamdClient(config.CLAMD_HOST, config.CLAMD_PORT);
       await client.ping();
