@@ -36,8 +36,8 @@ import {
   createDefectItem,
   deadlineChangeRequiresReason,
   deadlineFieldsForRole,
-  hasCapability,
   historyVisibleToRole,
+  isObjectScopedRole,
   isProposalBcEvent,
   normalizeClaimDetails,
   normalizeDocumentRef,
@@ -83,10 +83,23 @@ export class OperationsService {
   ) {}
 
   async lookups(user: AuthenticatedUser) {
+    const scope = new RegistryAccessScope(user);
+    const objectWhere: Prisma.PropertyObjectWhereInput = {
+      active: true,
+      ...(scope.objectScoped ? { engineers: { some: scope.assignedObjectRelationWhere() } } : {}),
+    };
     const [objects, customers, liable, alternatives, defectTypes, engineers] = await Promise.all([
       this.prisma.client.propertyObject.findMany({
-        where: { active: true },
-        select: { id: true, name: true, address: true },
+        where: objectWhere,
+        select: {
+          id: true,
+          name: true,
+          address: true,
+          engineers: {
+            where: { unassignedAt: null },
+            select: { userId: true },
+          },
+        },
         orderBy: { name: 'asc' },
       }),
       this.prisma.client.organization.findMany({
@@ -111,12 +124,17 @@ export class OperationsService {
       }),
       this.prisma.client.user.findMany({
         where: { status: 'ACTIVE', role: ASSIGNABLE_ENGINEER_ROLE },
-        select: { id: true, fullName: true },
+        select: { id: true, fullName: true, email: true },
         orderBy: { fullName: 'asc' },
       }),
     ]);
     return {
-      propertyObjects: objects,
+      propertyObjects: objects.map((object) => ({
+        id: object.id,
+        name: object.name,
+        address: object.address,
+        responsibleEngineerIds: object.engineers.map((row) => row.userId),
+      })),
       customers,
       liableOrganizations: liable,
       alternativeContractors: alternatives,
@@ -166,6 +184,7 @@ export class OperationsService {
             responseBody: {},
           },
         });
+        await this.assertCreatableObject(tx, user, input.objectId);
         await this.assertActHeaderRefs(tx, input.objectId, input.customerOrganizationId);
         const number = await allocateActNumber(tx, input.formCode, issuedAt);
         const act = await tx.act.create({
@@ -254,13 +273,15 @@ export class OperationsService {
     const ctx = actorContext(user, request);
     await this.requireVisibleAct(user, actId);
     return this.prisma.client.$transaction(async (tx) => {
-      const current = await tx.act.findUnique({ where: { id: actId } });
-      if (!current || current.status === 'CANCELLED') {
+      const current = await this.requireVisibleActOn(tx, user, actId);
+      if (current.status === 'CANCELLED') {
         throw new NotFoundException('Запись не найдена');
       }
       if (current.version !== input.expectedVersion) {
         throw new StaleWriteError();
       }
+      const nextObjectId = input.objectId ?? current.objectId;
+      await this.assertCreatableObject(tx, user, nextObjectId);
       if (input.objectId) {
         await this.assertActHeaderRefs(
           tx,
@@ -318,10 +339,7 @@ export class OperationsService {
     await this.requireVisibleAct(user, actId);
     const outboxIds: string[] = [];
     const result = await this.prisma.client.$transaction(async (tx) => {
-      const act = await tx.act.findUnique({ where: { id: actId } });
-      if (!act) {
-        throw new NotFoundException('Запись не найдена');
-      }
+      const act = await this.requireVisibleActOn(tx, user, actId);
       if (act.status === 'CANCELLED') {
         throw new InvalidTransitionError('Нельзя добавить дефект в аннулированный акт');
       }
@@ -371,9 +389,11 @@ export class OperationsService {
     }
     return this.prisma.client
       .$transaction(async (tx) => {
-        if (item.version !== input.expectedVersion) {
+        const current = await this.requireVisibleDefectOn(tx, user, defectItemId);
+        if (current.version !== input.expectedVersion) {
           throw new StaleWriteError();
         }
+        await this.assertObjectEngineers(tx, current.act.objectId, engineerIds);
         await this.assertEngineers(tx, engineerIds);
         await this.assertOrganizations(tx, liableIds, true);
         const previousEngineers = await tx.defectItemEngineer.findMany({
@@ -479,10 +499,7 @@ export class OperationsService {
       normalizeRequiredReason(input.reason);
     }
     if (item.status === 'COMPLETED') {
-      if (
-        !hasCapability(user.role, 'REOPEN_DEFECT') &&
-        !hasCapability(user.role, 'EDIT_CLAIM_DEADLINE')
-      ) {
+      if (user.role !== 'ADMIN' && user.role !== 'SGR_MANAGER') {
         throw new InvalidTransitionError('Завершённый дефект нельзя изменить');
       }
       if (!input.confirmCompletedEdit) {
@@ -1033,6 +1050,11 @@ export class OperationsService {
     const liableIds = assertUniqueIds(input.liableOrganizationIds, 'liableOrganizationIds');
     assertAtLeastOneEngineer(engineerIds.length);
     await this.assertDefectType(tx, input.defectTypeId);
+    const act = await tx.act.findUnique({ where: { id: actId }, select: { objectId: true } });
+    if (!act) {
+      throw new NotFoundException('Запись не найдена');
+    }
+    await this.assertObjectEngineers(tx, act.objectId, engineerIds);
     await this.assertEngineers(tx, engineerIds);
     await this.assertOrganizations(tx, liableIds, true);
     const created = createDefectItem({ id: randomUUID(), actId });
@@ -1072,6 +1094,81 @@ export class OperationsService {
       })),
     );
     return created.id;
+  }
+
+  private async assertCreatableObject(
+    tx: Prisma.TransactionClient,
+    user: AuthenticatedUser,
+    objectId: string,
+  ) {
+    if (!isObjectScopedRole(user.role)) {
+      return;
+    }
+    const object = await tx.propertyObject.findFirst({
+      where: {
+        ...new RegistryAccessScope(user).objectVisibleWhere(objectId),
+        active: true,
+      },
+      select: { id: true },
+    });
+    if (!object) {
+      throw new NotFoundException('Запись не найдена');
+    }
+  }
+
+  private async assertObjectEngineers(
+    tx: Prisma.TransactionClient,
+    objectId: string,
+    ids: string[],
+  ) {
+    if (ids.length === 0) {
+      return;
+    }
+    const assigned = await tx.propertyObjectEngineer.findMany({
+      where: { propertyObjectId: objectId, userId: { in: ids }, unassignedAt: null },
+      select: { userId: true },
+    });
+    if (assigned.length !== ids.length) {
+      throw new ValidationError(
+        'responsibleEngineerIds',
+        'Назначить можно только инженера, закреплённого за объектом',
+      );
+    }
+  }
+
+  private async requireVisibleActOn(
+    client: Prisma.TransactionClient,
+    user: AuthenticatedUser,
+    actId: string,
+  ) {
+    if (!UUID_PATTERN.test(actId)) {
+      throw new NotFoundException('Запись не найдена');
+    }
+    const act = await client.act.findFirst({
+      where: new RegistryAccessScope(user).actVisibleWhere(actId),
+    });
+    if (!act) {
+      throw new NotFoundException('Запись не найдена');
+    }
+    return act;
+  }
+
+  private async requireVisibleDefectOn(
+    client: Prisma.TransactionClient,
+    user: AuthenticatedUser,
+    defectItemId: string,
+  ) {
+    if (!UUID_PATTERN.test(defectItemId)) {
+      throw new NotFoundException('Запись не найдена');
+    }
+    const item = await client.defectItem.findFirst({
+      where: { id: defectItemId, AND: [new RegistryAccessScope(user).defectItemWhere()] },
+      include: { act: { select: { objectId: true } } },
+    });
+    if (!item) {
+      throw new NotFoundException('Запись не найдена');
+    }
+    return item;
   }
 
   private async assertActHeaderRefs(

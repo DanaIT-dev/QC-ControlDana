@@ -22,7 +22,7 @@ ADMIN и SGR_MANAGER загружают Act/Defect/Proposal A/B/C, скачив�
 
 CONTRACTOR видит Act и доступные Defect/Proposal A/B/C; загружает `THIRD_PARTY_DOCUMENT` и `PROPOSAL_DOCUMENT`; не видит сумму Proposal A.
 
-RESPONSIBLE видит Act-документы доступного ему акта, вложения только назначенных DefectItem и Proposal A. B/C вложения и события отсутствуют. Direct ID вне scope → тот же 404, что несуществующая запись.
+RESPONSIBLE видит Act-документы акта закреплённого объекта, вложения всех DefectItem этого акта и Proposal A. B/C вложения и события отсутствуют. Direct ID вне scope → тот же 404, что несуществующая запись.
 
 ## MinIO
 

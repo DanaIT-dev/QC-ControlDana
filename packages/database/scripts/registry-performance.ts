@@ -84,6 +84,30 @@ async function main(): Promise<void> {
     if (!/Limit/.test(plan)) {
       throw new Error('Query plan did not use a Limit; pagination may be loading all rows');
     }
+
+    const objectScope = await prisma.$queryRawUnsafe<Array<{ 'QUERY PLAN': string }>>(
+      `
+      EXPLAIN (ANALYZE, BUFFERS)
+      SELECT di.id
+      FROM defect_items di
+      INNER JOIN acts a ON a.id = di."actId"
+      INNER JOIN property_objects po ON po.id = a."objectId"
+      INNER JOIN property_object_engineers poe
+        ON poe."propertyObjectId" = po.id
+       AND poe."unassignedAt" IS NULL
+      WHERE a.status <> 'CANCELLED'
+      ORDER BY di."effectiveDeadline" ASC NULLS LAST, a."officialNumber" ASC, di.id ASC
+      OFFSET 0 LIMIT 50
+      `,
+    );
+    const objectPlan = objectScope.map((row) => row['QUERY PLAN']).join('\n');
+    console.log('--- object-scope registry performance ---');
+    console.log(objectPlan);
+    if (!/Limit/.test(objectPlan)) {
+      throw new Error(
+        'Object-scope query plan did not use a Limit; pagination may be loading all rows',
+      );
+    }
   } finally {
     await cleanup(prisma);
     await prisma.$disconnect();
@@ -105,6 +129,12 @@ async function cleanup(prisma: ReturnType<typeof createPrismaClient>): Promise<v
        OR "actId" IN (SELECT id FROM acts WHERE "officialNumber" LIKE '${MARKER}-%')
   `);
   await prisma.$executeRawUnsafe(`DELETE FROM acts WHERE "officialNumber" LIKE '${MARKER}-%'`);
+  await prisma.$executeRawUnsafe(`
+    DELETE FROM property_object_engineers
+    WHERE "propertyObjectId" IN (
+      SELECT id FROM property_objects WHERE name = '${MARKER} объект'
+    )
+  `);
   await prisma.organization.deleteMany({ where: { officialName: `${MARKER} заказчик` } });
   await prisma.propertyObject.deleteMany({ where: { name: `${MARKER} объект` } });
   await prisma.defectType.deleteMany({ where: { code: 'PERF_LOAD' } });

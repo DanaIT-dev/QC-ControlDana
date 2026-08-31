@@ -222,7 +222,7 @@ describe('role-aware navigation', () => {
       'Пользователи',
       'Состояние системы',
     ]);
-    expect(responsible).toEqual(['Реестр', 'Контроль сроков', 'Справочники']);
+    expect(responsible).toEqual(['Реестр', 'Создать акт', 'Контроль сроков', 'Справочники']);
     expect(contractor).toEqual(['Реестр', 'Контроль сроков']);
     expect(contractor).not.toContain('Справочники');
     expect(contractor).not.toContain('Создать акт');

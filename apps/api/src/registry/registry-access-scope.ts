@@ -1,6 +1,8 @@
 import type { Prisma } from '@sgr-registry/database';
 import type { UserRole } from '@sgr-registry/contracts';
-import { registryAccessMode } from '@sgr-registry/domain';
+import { isObjectScopedRole, registryAccessMode } from '@sgr-registry/domain';
+
+const ACTIVE_OBJECT_ASSIGNMENT = { unassignedAt: null } as const;
 
 export class RegistryAccessScope {
   readonly userId: string;
@@ -11,13 +13,29 @@ export class RegistryAccessScope {
     this.role = user.role;
   }
 
+  get objectScoped(): boolean {
+    return isObjectScopedRole(this.role);
+  }
+
+  assignedObjectWhere(): Prisma.PropertyObjectWhereInput {
+    return {
+      engineers: {
+        some: { userId: this.userId, ...ACTIVE_OBJECT_ASSIGNMENT },
+      },
+    };
+  }
+
+  assignedObjectRelationWhere(): Prisma.PropertyObjectEngineerWhereInput {
+    return { userId: this.userId, ...ACTIVE_OBJECT_ASSIGNMENT };
+  }
+
   defectItemWhere(): Prisma.DefectItemWhereInput {
     const uncancelled: Prisma.DefectItemWhereInput = {
       act: { status: { not: 'CANCELLED' } },
     };
-    if (registryAccessMode(this.role) === 'assigned_only') {
+    if (registryAccessMode(this.role) === 'object_assigned') {
       return {
-        AND: [uncancelled, { responsibleEngineers: { some: { userId: this.userId } } }],
+        AND: [uncancelled, { act: { propertyObject: this.assignedObjectWhere() } }],
       };
     }
     return uncancelled;
@@ -25,8 +43,8 @@ export class RegistryAccessScope {
 
   actVisibleWhere(actId: string): Prisma.ActWhereInput {
     const assigned =
-      registryAccessMode(this.role) === 'assigned_only'
-        ? { defectItems: { some: { responsibleEngineers: { some: { userId: this.userId } } } } }
+      registryAccessMode(this.role) === 'object_assigned'
+        ? { propertyObject: this.assignedObjectWhere() }
         : {};
     return {
       id: actId,
@@ -34,11 +52,18 @@ export class RegistryAccessScope {
     };
   }
 
+  objectVisibleWhere(objectId: string): Prisma.PropertyObjectWhereInput {
+    if (registryAccessMode(this.role) === 'object_assigned') {
+      return { id: objectId, ...this.assignedObjectWhere() };
+    }
+    return { id: objectId };
+  }
+
   defectItemsOnActWhere(actId: string): Prisma.DefectItemWhereInput {
-    if (registryAccessMode(this.role) === 'assigned_only') {
+    if (registryAccessMode(this.role) === 'object_assigned') {
       return {
         actId,
-        responsibleEngineers: { some: { userId: this.userId } },
+        act: { propertyObject: this.assignedObjectWhere() },
       };
     }
     return { actId };

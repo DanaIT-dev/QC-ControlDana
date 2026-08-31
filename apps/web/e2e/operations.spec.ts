@@ -36,7 +36,8 @@ test.describe('operational workflow', () => {
     await expect(page.getByRole('cell', { name: `Е2Е объект ${stamp}` })).toBeVisible();
 
     await page.getByRole('link', { name: 'Создать акт' }).click();
-    await chooseFirst(page, 'Объект');
+    await page.getByRole('combobox', { name: 'Объект', exact: true }).click();
+    await page.getByRole('option', { name: /Северный парк/ }).click();
     await chooseFirst(page, 'Заказчик');
     await page.getByLabel('Помещение').fill('Квартира 101');
     await page.getByLabel('Описание').fill('Течь стояка');

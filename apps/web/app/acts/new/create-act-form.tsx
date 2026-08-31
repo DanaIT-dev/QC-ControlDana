@@ -25,11 +25,26 @@ import { ApiError, commandFetch } from '../../../lib/command-api';
 import { queryKeys } from '../../../lib/query-keys';
 
 interface Lookups {
-  propertyObjects: Array<{ id: string; name: string; address: string }>;
+  propertyObjects: Array<{
+    id: string;
+    name: string;
+    address: string;
+    responsibleEngineerIds: string[];
+  }>;
   customers: Array<{ id: string; officialName: string }>;
   defectTypes: Array<{ id: string; name: string }>;
-  responsibleEngineers: Array<{ id: string; fullName: string }>;
+  responsibleEngineers: Array<{ id: string; fullName: string; email?: string }>;
   liableOrganizations: Array<{ id: string; officialName: string }>;
+}
+
+function engineersForObject(lookups: Lookups | undefined, objectId: string) {
+  if (!lookups || !objectId) {
+    return [];
+  }
+  const allowed = new Set(
+    lookups.propertyObjects.find((object) => object.id === objectId)?.responsibleEngineerIds ?? [],
+  );
+  return lookups.responsibleEngineers.filter((engineer) => allowed.has(engineer.id));
 }
 
 export interface DraftDefect {
@@ -168,7 +183,21 @@ export function CreateActForm({ csrfToken }: { csrfToken: string }) {
           <LinkedObjectFields
             objects={data?.propertyObjects ?? []}
             objectId={objectId}
-            onObjectIdChange={setObjectId}
+            onObjectIdChange={(next) => {
+              setObjectId(next);
+              const allowed = new Set(
+                (data?.propertyObjects ?? []).find((object) => object.id === next)
+                  ?.responsibleEngineerIds ?? [],
+              );
+              setDefects((current) =>
+                current.map((item) => ({
+                  ...item,
+                  responsibleEngineerIds: item.responsibleEngineerIds.filter((id) =>
+                    allowed.has(id),
+                  ),
+                })),
+              );
+            }}
           />
           <div className="grid gap-1.5">
             <Label htmlFor="customer">Заказчик</Label>
@@ -210,6 +239,7 @@ export function CreateActForm({ csrfToken }: { csrfToken: string }) {
           item={item}
           index={index}
           lookups={data}
+          objectId={objectId}
           canRemove={defects.length > 1}
           onRemove={() =>
             setDefects((current) => current.filter((_, itemIndex) => itemIndex !== index))
@@ -243,6 +273,7 @@ function DraftDefectCard({
   item,
   index,
   lookups,
+  objectId,
   canRemove,
   onRemove,
   onChange,
@@ -250,6 +281,7 @@ function DraftDefectCard({
   item: DraftDefect;
   index: number;
   lookups: Lookups | undefined;
+  objectId: string;
   canRemove: boolean;
   onRemove: () => void;
   onChange: (patch: Partial<DraftDefect>) => void;
@@ -315,12 +347,15 @@ function DraftDefectCard({
             </div>
             <MultiSelect
               label="Ответственные инженеры"
-              options={(lookups?.responsibleEngineers ?? []).map((engineer) => ({
+              options={engineersForObject(lookups, objectId).map((engineer) => ({
                 id: engineer.id,
-                label: engineer.fullName,
+                label: engineer.email
+                  ? `${engineer.fullName} · ${engineer.email}`
+                  : engineer.fullName,
               }))}
               values={item.responsibleEngineerIds}
               onChange={(responsibleEngineerIds) => onChange({ responsibleEngineerIds })}
+              emptyText={objectId ? 'Нет инженеров на объекте' : 'Сначала выберите объект'}
             />
             <MultiSelect
               label="Виновные организации"

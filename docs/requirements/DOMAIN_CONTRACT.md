@@ -92,7 +92,7 @@
 
 Роли пользователя: `ADMIN`, `SGR_MANAGER`, `RESPONSIBLE_ENGINEER`, `CONTRACTOR_ENGINEER`.
 
-Объект недвижимости связан с ответственными инженерами many-to-many с историей назначений.
+Объект недвижимости связан с ответственными инженерами many-to-many (`PropertyObjectEngineer`) с историей назначений (`assignedAt` / `unassignedAt`). Эта связь — граница доступа `RESPONSIBLE_ENGINEER`: видны все акты и дефекты закреплённых объектов. Назначение инженера на `DefectItem` описывает операционную ответственность за строку и не является security scope.
 
 Организация может иметь роли `CUSTOMER`, `LIABLE_CONTRACTOR`, `ALTERNATIVE_CONTRACTOR` и несколько `WorkType`.
 
@@ -122,7 +122,7 @@
 ## Отложено на следующие этапы
 
 - загрузка документов в S3/MinIO — см. [ATTACHMENTS_CONTRACT.md](./ATTACHMENTS_CONTRACT.md);
-- интеграция с 1С — дополнительный будущий канал создания актов, ручной ввод ADMIN/SGR_MANAGER сохраняется;
+- интеграция с 1С — дополнительный будущий канал создания актов, ручной ввод сохраняется (ADMIN, SGR_MANAGER и RESPONSIBLE_ENGINEER на закреплённых объектах);
 - SMS, Telegram, мобильные push, WebSocket;
 - фактические расходы и взыскания;
 - электронная подпись;

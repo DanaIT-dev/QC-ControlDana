@@ -261,6 +261,12 @@ describe('attachments integration', () => {
     await prisma.defectItemEngineer.create({
       data: { defectItemId: foreign.id, userId: otherResponsible.id },
     });
+    await prisma.propertyObjectEngineer.createMany({
+      data: [
+        { propertyObjectId: object.id, userId: responsible.id },
+        { propertyObjectId: object.id, userId: otherResponsible.id },
+      ],
+    });
     const proposalA = await prisma.proposal.create({
       data: {
         defectItemId: assigned.id,
@@ -489,13 +495,13 @@ describe('attachments integration', () => {
       'application/pdf',
       'ACT_DOCUMENT',
     );
-    expect(responsibleAct.statusCode).toBe(403);
+    expect(responsibleAct.statusCode).toBe(202);
     const hiddenDefect = await inject({
       method: 'GET',
       url: `/api/defects/${foreignDefectId}/attachments`,
       cookies: { [SESSION_COOKIE_NAME]: responsibleSession.cookie },
     });
-    expect(hiddenDefect.statusCode).toBe(404);
+    expect(hiddenDefect.statusCode).toBe(200);
     const hiddenB = await inject({
       method: 'GET',
       url: `/api/proposals/${proposalBId}/attachments`,

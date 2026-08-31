@@ -3,7 +3,7 @@
 import { isPasswordPolicySatisfied, PASSWORD_MIN_LENGTH } from '@sgr-registry/domain';
 import { EyeIcon, EyeOffIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { type FormEvent, type ReactNode, useId, useState } from 'react';
+import { type ReactNode, type SyntheticEvent, useId, useState } from 'react';
 import { toast } from 'sonner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -25,7 +25,7 @@ export function ChangePasswordForm({ csrfToken }: { csrfToken: string }) {
   const [success, setSuccess] = useState(false);
   const policyOk = isPasswordPolicySatisfied(newPassword);
 
-  async function onSubmit(event: FormEvent) {
+  async function onSubmit(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
     if (pending) {
       return;

@@ -68,7 +68,7 @@ describe('attachment permission matrix', () => {
       true,
     );
     expect(canUploadCategory('CONTRACTOR_ENGINEER', 'ACT', 'ACT_DOCUMENT')).toBe(false);
-    expect(canUploadCategory('RESPONSIBLE_ENGINEER', 'ACT', 'ACT_DOCUMENT')).toBe(false);
+    expect(canUploadCategory('RESPONSIBLE_ENGINEER', 'ACT', 'ACT_DOCUMENT')).toBe(true);
     expect(canUploadCategory('RESPONSIBLE_ENGINEER', 'PROPOSAL', 'PROPOSAL_DOCUMENT')).toBe(false);
     expect(canUploadCategory('RESPONSIBLE_ENGINEER', 'DEFECT_ITEM', 'DEFECT_PHOTO')).toBe(true);
     expect(canUploadCategory('RESPONSIBLE_ENGINEER', 'DEFECT_ITEM', 'THIRD_PARTY_DOCUMENT')).toBe(

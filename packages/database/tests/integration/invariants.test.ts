@@ -343,4 +343,25 @@ describe('database invariants', () => {
     await expect(prisma.user.delete({ where: { id: actor.id } })).rejects.toBeTruthy();
     expect(await prisma.auditLog.findUnique({ where: { id: log.id } })).not.toBeNull();
   });
+
+  it('enforces a unique object–engineer pair', async () => {
+    const object = await prisma.propertyObject.create({
+      data: { name: `uniq-obj-${randomUUID()}`, address: 'addr' },
+    });
+    const engineer = await prisma.user.create({
+      data: {
+        fullName: 'Уникальный инженер',
+        email: `uniq-eng-${randomUUID()}@example.sgr.local`,
+        role: 'RESPONSIBLE_ENGINEER',
+      },
+    });
+    await prisma.propertyObjectEngineer.create({
+      data: { propertyObjectId: object.id, userId: engineer.id },
+    });
+    await expect(
+      prisma.propertyObjectEngineer.create({
+        data: { propertyObjectId: object.id, userId: engineer.id },
+      }),
+    ).rejects.toMatchObject({ code: 'P2002' });
+  });
 });

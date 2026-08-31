@@ -278,6 +278,17 @@ async function seed(): Promise<void> {
           });
         }
 
+        await tx.propertyObjectEngineer.updateMany({
+          where: {
+            unassignedAt: null,
+            OR: [
+              { propertyObjectId: northPark.id, userId: { not: engineerNorth.id } },
+              { propertyObjectId: riverQuarter.id, userId: { not: engineerRiver.id } },
+            ],
+          },
+          data: { unassignedAt: new Date() },
+        });
+
         const customer = await upsertOrganization(tx, {
           officialName: 'ОАО «Северная инвестиционная группа» (демо)',
           unp: '100000001',

@@ -93,8 +93,9 @@ model User {
   updatedAt           DateTime   @updatedAt @db.Timestamptz(3)
   archivedAt          DateTime?  @db.Timestamptz(3)
 
-  objectAssignments     PropertyObjectEngineer[]
-  defectItemAssignments DefectItemEngineer[]
+  objectAssignments              PropertyObjectEngineer[]
+  objectEngineerAssignmentsMade  PropertyObjectEngineer[] @relation("ObjectEngineerAssignedBy")
+  defectItemAssignments          DefectItemEngineer[]
   cancelledActs         Act[]                    @relation("ActCancelledBy")
   uploadedAttachments   Attachment[]             @relation("AttachmentUploadedBy")
   archivedAttachments   Attachment[]             @relation("AttachmentArchivedBy")
@@ -132,12 +133,14 @@ model PropertyObjectEngineer {
   userId           String    @db.Uuid
   assignedAt       DateTime  @default(now()) @db.Timestamptz(3)
   unassignedAt     DateTime? @db.Timestamptz(3)
+  assignedByUserId String?   @db.Uuid
 
   propertyObject PropertyObject @relation(fields: [propertyObjectId], references: [id], onDelete: Restrict)
   user           User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  assignedBy     User?          @relation("ObjectEngineerAssignedBy", fields: [assignedByUserId], references: [id], onDelete: Restrict)
 
-  @@index([propertyObjectId])
-  @@index([userId])
+  @@unique([propertyObjectId, userId])
+  @@index([userId, propertyObjectId])
   @@map("property_object_engineers")
 }
 

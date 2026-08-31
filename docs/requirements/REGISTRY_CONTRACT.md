@@ -22,10 +22,10 @@
 Правила:
 
 - `ADMIN`, `SGR_MANAGER`, `CONTRACTOR_ENGINEER` видят все активные неаннулированные `DefectItem`.
-- `RESPONSIBLE_ENGINEER` видит только строки, где его `User.id` есть в связи ответственных инженеров.
+- `RESPONSIBLE_ENGINEER` видит все строки актов, чей объект закреплён за ним через `PropertyObjectEngineer` (`unassignedAt IS NULL`). Назначение на `DefectItem` не ограничивает видимость.
 - Summary, `totalCount` и filter-options считаются только в этом scope.
 - Прямой запрос чужого `Act`/`DefectItem` даёт такой же безопасный 404, как отсутствие записи.
-- Назначение проверяется только по `User.id`, не по ФИО и не по email.
+- Назначение объекта проверяется только по `User.id`, не по ФИО и не по email.
 
 Аннулированные акты не входят в обычный реестр.
 
@@ -84,7 +84,7 @@ Endpoints (нужна сессия):
 
 ## Карточка акта
 
-`GET /api/acts/:actId` — полностью read-only. `RESPONSIBLE_ENGINEER` открывает акт, только если назначен хотя бы на одну строку, и получает только свои `DefectItem` без Proposal B/C.
+`GET /api/acts/:actId` — полностью read-only. `RESPONSIBLE_ENGINEER` открывает акт закреплённого объекта и получает все его `DefectItem` без Proposal B/C.
 
 ## Команды проверки
 

@@ -35,7 +35,7 @@ const envSchema = z
     API_HOST: z.string().min(1).default('0.0.0.0'),
     API_PORT: z.coerce.number().int().positive().default(3001),
     WEB_PORT: z.coerce.number().int().positive().default(3000),
-    WEB_ORIGIN: z.string().url().default('http://localhost:3000'),
+    WEB_ORIGIN: z.url().default('http://localhost:3000'),
     DATABASE_URL: z
       .string()
       .min(1, 'DATABASE_URL is required')
@@ -50,7 +50,7 @@ const envSchema = z
         (value) => value.startsWith('redis://') || value.startsWith('rediss://'),
         'REDIS_URL must be a Redis connection string',
       ),
-    S3_ENDPOINT: z.string().url('S3_ENDPOINT must be a URL'),
+    S3_ENDPOINT: z.url('S3_ENDPOINT must be a URL'),
     S3_REGION: z.string().min(1),
     S3_ACCESS_KEY: z.string().min(1, 'S3_ACCESS_KEY is required'),
     S3_SECRET_KEY: z.string().min(1, 'S3_SECRET_KEY is required'),
@@ -95,15 +95,15 @@ const envSchema = z
     SMTP_USER: z.string().default(''),
     SMTP_PASSWORD: z.string().default(''),
     EMAIL_FROM: z.string().min(1).default('sgr-registry@localhost'),
-    PUBLIC_APP_URL: z.string().url().default('http://localhost:3000'),
-    MAILPIT_API_URL: z.string().url().default('http://127.0.0.1:8025'),
+    PUBLIC_APP_URL: z.url().default('http://localhost:3000'),
+    MAILPIT_API_URL: z.url().default('http://127.0.0.1:8025'),
     WORKER_HEALTH_PORT: z.coerce.number().int().min(0).max(65535).default(3002),
     WORKER_READY_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
   })
   .superRefine((value, ctx) => {
     if (value.SESSION_IDLE_TIMEOUT_SECONDS > value.SESSION_ABSOLUTE_LIFETIME_SECONDS) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: 'custom',
         path: ['SESSION_IDLE_TIMEOUT_SECONDS'],
         message: 'SESSION_IDLE_TIMEOUT_SECONDS must not exceed SESSION_ABSOLUTE_LIFETIME_SECONDS',
       });
@@ -111,21 +111,21 @@ const envSchema = z
     if (value.NODE_ENV === 'production') {
       if (value.SESSION_IDLE_TIMEOUT_SECONDS > 12 * 60 * 60) {
         ctx.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: 'custom',
           path: ['SESSION_IDLE_TIMEOUT_SECONDS'],
           message: 'production idle timeout must not exceed 12 hours',
         });
       }
       if (value.SESSION_ABSOLUTE_LIFETIME_SECONDS > 7 * 24 * 60 * 60) {
         ctx.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: 'custom',
           path: ['SESSION_ABSOLUTE_LIFETIME_SECONDS'],
           message: 'production absolute session lifetime must not exceed 7 days',
         });
       }
       if (!value.WEB_ORIGIN.startsWith('https://')) {
         ctx.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: 'custom',
           path: ['WEB_ORIGIN'],
           message: 'WEB_ORIGIN must use HTTPS in production',
         });
@@ -133,7 +133,7 @@ const envSchema = z
     }
     if (value.NODE_ENV === 'production' && !value.PUBLIC_APP_URL.startsWith('https://')) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: 'custom',
         path: ['PUBLIC_APP_URL'],
         message: 'PUBLIC_APP_URL must use HTTPS in production',
       });
@@ -142,21 +142,21 @@ const envSchema = z
       const parsed = new URL(value.PUBLIC_APP_URL);
       if (parsed.username || parsed.password) {
         ctx.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: 'custom',
           path: ['PUBLIC_APP_URL'],
           message: 'PUBLIC_APP_URL must not contain credentials',
         });
       }
       if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
         ctx.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: 'custom',
           path: ['PUBLIC_APP_URL'],
           message: 'PUBLIC_APP_URL must be http or https',
         });
       }
     } catch {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: 'custom',
         path: ['PUBLIC_APP_URL'],
         message: 'PUBLIC_APP_URL is not a valid URL',
       });

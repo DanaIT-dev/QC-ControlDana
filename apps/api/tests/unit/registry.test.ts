@@ -5,14 +5,16 @@ import { shapeProposals, shapeSummary } from '@sgr-registry/domain';
 import { registryListSelect } from '../../src/registry/registry-serializer';
 
 describe('RegistryAccessScope', () => {
-  it('keeps assigned-only filtering inside the Prisma where for responsible engineers', () => {
+  it('keeps object-assigned filtering inside the Prisma where for responsible engineers', () => {
     const scope = new RegistryAccessScope({
       id: '11111111-1111-4111-8111-111111111111',
       role: 'RESPONSIBLE_ENGINEER',
     });
     const where = scope.defectItemWhere();
     expect(JSON.stringify(where)).toContain('11111111-1111-4111-8111-111111111111');
-    expect(JSON.stringify(where)).toContain('responsibleEngineers');
+    expect(JSON.stringify(where)).toContain('propertyObject');
+    expect(JSON.stringify(where)).toContain('engineers');
+    expect(JSON.stringify(where)).not.toContain('responsibleEngineers');
     expect(JSON.stringify(where)).toContain('CANCELLED');
   });
 
@@ -22,7 +24,7 @@ describe('RegistryAccessScope', () => {
         id: '11111111-1111-4111-8111-111111111111',
         role,
       }).defectItemWhere();
-      expect(JSON.stringify(where)).not.toContain('responsibleEngineers');
+      expect(JSON.stringify(where)).not.toContain('engineers');
     }
   });
 });

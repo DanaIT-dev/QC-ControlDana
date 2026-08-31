@@ -136,7 +136,12 @@ describe('create act draft ids', () => {
           ok: true,
           json: async () => ({
             propertyObjects: [
-              { id: 'obj-a', name: 'ЖК «Альфа»', address: 'г. Минск, ул. Первая, 1' },
+              {
+                id: 'obj-a',
+                name: 'ЖК «Альфа»',
+                address: 'г. Минск, ул. Первая, 1',
+                responsibleEngineerIds: ['eng-1'],
+              },
             ],
             customers: [{ id: 'cust-1', officialName: 'Заказчик' }],
             defectTypes: [{ id: 'type-1', name: 'Течь' }],

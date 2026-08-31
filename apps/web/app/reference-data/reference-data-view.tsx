@@ -28,6 +28,8 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { MultiSelect } from '@/components/multi-select';
+import { queryKeys } from '../../lib/query-keys';
 import {
   Select,
   SelectContent,
@@ -68,6 +70,13 @@ export function ReferenceDataView({
     version: number;
     title: string;
   } | null>(null);
+  const [editTarget, setEditTarget] = useState<{
+    id: string;
+    version: number;
+    name: string;
+    address: string;
+    engineerIds: string[];
+  } | null>(null);
   const listQuery = useQuery({
     queryKey: ['reference', tab, search, status],
     queryFn: async () => {
@@ -100,6 +109,23 @@ export function ReferenceDataView({
     }
   }
 
+  const lookups = useQuery({
+    queryKey: queryKeys.lookups,
+    enabled: canMutate,
+    queryFn: async () => {
+      const response = await fetch('/api/operations/lookups', { credentials: 'include' });
+      if (!response.ok) {
+        throw new Error('lookups');
+      }
+      return (await response.json()) as {
+        responsibleEngineers: Array<{ id: string; fullName: string; email?: string }>;
+      };
+    },
+  });
+  const engineerOptions = (lookups.data?.responsibleEngineers ?? []).map((engineer) => ({
+    id: engineer.id,
+    label: engineer.email ? `${engineer.fullName} · ${engineer.email}` : engineer.fullName,
+  }));
   const items = listQuery.data?.items ?? [];
   const showAddress = tab === 'property-objects' || tab === 'organizations';
 
@@ -168,6 +194,9 @@ export function ReferenceDataView({
             <tr className="border-b bg-background text-left text-[12px] font-medium text-muted-foreground">
               <th className="px-3 py-3">Название</th>
               {showAddress ? <th className="px-3 py-3">Адрес</th> : null}
+              {tab === 'property-objects' ? (
+                <th className="px-3 py-3">Ответственные инженеры</th>
+              ) : null}
               <th className="px-3 py-3">Статус</th>
               {canMutate ? <th className="px-3 py-3">Действия</th> : null}
             </tr>
@@ -187,6 +216,11 @@ export function ReferenceDataView({
                       {address || '—'}
                     </td>
                   ) : null}
+                  {tab === 'property-objects' ? (
+                    <td className="max-w-[22rem] truncate px-3 py-3 text-muted-foreground">
+                      {engineerNames(item)}
+                    </td>
+                  ) : null}
                   <td className="px-3 py-3">
                     <Badge variant={active ? 'success' : 'outline'}>
                       {active ? 'Активно' : 'Архив'}
@@ -194,29 +228,49 @@ export function ReferenceDataView({
                   </td>
                   {canMutate ? (
                     <td className="px-3 py-3">
-                      {active ? (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setArchiveTarget({ id, version, title })}
-                        >
-                          Архивировать
-                        </Button>
-                      ) : (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() =>
-                            void mutate(`/api/reference-data/${tab}/${id}/restore`, 'POST', {
-                              expectedVersion: version,
-                            })
-                          }
-                        >
-                          Восстановить
-                        </Button>
-                      )}
+                      <div className="flex flex-wrap gap-2">
+                        {tab === 'property-objects' ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              setEditTarget({
+                                id,
+                                version,
+                                name: title,
+                                address,
+                                engineerIds: engineerIdsOf(item),
+                              })
+                            }
+                          >
+                            Изменить
+                          </Button>
+                        ) : null}
+                        {active ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setArchiveTarget({ id, version, title })}
+                          >
+                            Архивировать
+                          </Button>
+                        ) : (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              void mutate(`/api/reference-data/${tab}/${id}/restore`, 'POST', {
+                                expectedVersion: version,
+                              })
+                            }
+                          >
+                            Восстановить
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   ) : null}
                 </tr>
@@ -241,31 +295,55 @@ export function ReferenceDataView({
                 {showAddress && address ? (
                   <p className="text-sm break-words text-muted-foreground">{address}</p>
                 ) : null}
+                {tab === 'property-objects' ? (
+                  <p className="text-sm break-words text-muted-foreground">
+                    Ответственные инженеры: {engineerNames(item)}
+                  </p>
+                ) : null}
                 <Badge variant={active ? 'success' : 'outline'} className="w-fit">
                   {active ? 'Активно' : 'Архив'}
                 </Badge>
                 {canMutate ? (
-                  active ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => setArchiveTarget({ id, version, title })}
-                    >
-                      Архивировать
-                    </Button>
-                  ) : (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() =>
-                        void mutate(`/api/reference-data/${tab}/${id}/restore`, 'POST', {
-                          expectedVersion: version,
-                        })
-                      }
-                    >
-                      Восстановить
-                    </Button>
-                  )
+                  <>
+                    {tab === 'property-objects' ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() =>
+                          setEditTarget({
+                            id,
+                            version,
+                            name: title,
+                            address,
+                            engineerIds: engineerIdsOf(item),
+                          })
+                        }
+                      >
+                        Изменить
+                      </Button>
+                    ) : null}
+                    {active ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setArchiveTarget({ id, version, title })}
+                      >
+                        Архивировать
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() =>
+                          void mutate(`/api/reference-data/${tab}/${id}/restore`, 'POST', {
+                            expectedVersion: version,
+                          })
+                        }
+                      >
+                        Восстановить
+                      </Button>
+                    )}
+                  </>
                 ) : null}
               </CardContent>
             </Card>
@@ -275,10 +353,22 @@ export function ReferenceDataView({
       {canMutate && createOpen ? (
         <CreateReferenceDialog
           tab={tab}
+          engineerOptions={engineerOptions}
           onClose={() => setCreateOpen(false)}
           onCreate={(body) => {
             void mutate(`/api/reference-data/${tab}`, 'POST', body);
             setCreateOpen(false);
+          }}
+        />
+      ) : null}
+      {editTarget ? (
+        <EditObjectDialog
+          target={editTarget}
+          engineerOptions={engineerOptions}
+          onClose={() => setEditTarget(null)}
+          onSave={(body) => {
+            void mutate(`/api/reference-data/property-objects/${editTarget.id}`, 'PATCH', body);
+            setEditTarget(null);
           }}
         />
       ) : null}
@@ -325,13 +415,16 @@ export function ReferenceDataView({
 
 function CreateReferenceDialog({
   tab,
+  engineerOptions,
   onClose,
   onCreate,
 }: {
   tab: TabId;
+  engineerOptions: Array<{ id: string; label: string }>;
   onClose: () => void;
   onCreate: (body: unknown) => void;
 }) {
+  const [engineerIds, setEngineerIds] = useState<string[]>([]);
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
@@ -341,7 +434,11 @@ function CreateReferenceDialog({
             event.preventDefault();
             const form = new FormData(event.currentTarget);
             if (tab === 'property-objects') {
-              onCreate({ name: form.get('name'), address: form.get('address') });
+              onCreate({
+                name: form.get('name'),
+                address: form.get('address'),
+                responsibleEngineerIds: engineerIds,
+              });
             } else if (tab === 'organizations') {
               onCreate({
                 officialName: form.get('officialName'),
@@ -369,6 +466,13 @@ function CreateReferenceDialog({
                 <Label htmlFor="ref-address">Адрес объекта</Label>
                 <Input id="ref-address" name="address" required />
               </div>
+              <MultiSelect
+                label="Ответственные инженеры"
+                options={engineerOptions}
+                values={engineerIds}
+                onChange={setEngineerIds}
+                emptyText="Нет активных ответственных инженеров"
+              />
             </>
           ) : null}
           {tab === 'organizations' ? (
@@ -417,4 +521,94 @@ function CreateReferenceDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+function EditObjectDialog({
+  target,
+  engineerOptions,
+  onClose,
+  onSave,
+}: {
+  target: { id: string; version: number; name: string; address: string; engineerIds: string[] };
+  engineerOptions: Array<{ id: string; label: string }>;
+  onClose: () => void;
+  onSave: (body: unknown) => void;
+}) {
+  const [name, setName] = useState(target.name);
+  const [address, setAddress] = useState(target.address);
+  const [engineerIds, setEngineerIds] = useState(target.engineerIds);
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <form
+          className="grid gap-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSave({
+              expectedVersion: target.version,
+              name,
+              address,
+              responsibleEngineerIds: engineerIds,
+            });
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Объект</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-1.5">
+            <Label htmlFor="edit-object-name">Название объекта</Label>
+            <Input
+              id="edit-object-name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              required
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="edit-object-address">Адрес объекта</Label>
+            <Input
+              id="edit-object-address"
+              value={address}
+              onChange={(event) => setAddress(event.target.value)}
+              required
+            />
+          </div>
+          <MultiSelect
+            label="Ответственные инженеры"
+            options={engineerOptions}
+            values={engineerIds}
+            onChange={setEngineerIds}
+            emptyText="Нет активных ответственных инженеров"
+          />
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Отмена
+            </Button>
+            <Button type="submit">Сохранить</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function engineerNames(item: Record<string, unknown>): string {
+  const rows = item.responsibleEngineers;
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return '—';
+  }
+  const names = rows
+    .map((row) => (row && typeof row === 'object' && 'fullName' in row ? String(row.fullName) : ''))
+    .filter(Boolean);
+  return names.length > 0 ? names.join(', ') : '—';
+}
+
+function engineerIdsOf(item: Record<string, unknown>): string[] {
+  const rows = item.responsibleEngineers;
+  if (!Array.isArray(rows)) {
+    return [];
+  }
+  return rows
+    .map((row) => (row && typeof row === 'object' && 'id' in row ? String(row.id) : ''))
+    .filter(Boolean);
 }

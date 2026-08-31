@@ -45,6 +45,7 @@ import {
   serializeDecimal,
   formatProposalMoney,
   registryAccessMode,
+  isObjectScopedRole,
   visibleProposalSlots,
   canViewProposalASum,
   canViewProposalGroupBC,
@@ -277,11 +278,19 @@ describe('capabilities', () => {
     expect(capabilitiesForRole('RESPONSIBLE_ENGINEER')).toEqual([
       'VIEW_REFERENCE_DATA',
       'VIEW_ASSIGNED_DEFECTS',
+      'CREATE_ACT',
+      'EDIT_ACT_HEADER',
+      'ADD_DEFECT',
+      'EDIT_ASSIGNMENTS',
       'EDIT_PLANNED_DEADLINE',
+      'EDIT_CLAIM_DEADLINE',
+      'EDIT_THIRD_PARTY_DEADLINE',
       'COMPLETE_DEFECT',
+      'REOPEN_DEFECT',
       'VIEW_PROPOSAL_A',
       'VIEW_ASSIGNED_HISTORY',
       'VIEW_ATTACHMENTS',
+      'UPLOAD_ACT_ATTACHMENT',
       'UPLOAD_DEFECT_ATTACHMENT',
       'ARCHIVE_ATTACHMENT',
       'DOWNLOAD_ATTACHMENT',
@@ -294,6 +303,9 @@ describe('capabilities', () => {
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('VIEW_HISTORY');
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('VIEW_ASSIGNED_HISTORY');
     expect(hasCapability('RESPONSIBLE_ENGINEER', 'VIEW_REFERENCE_DATA')).toBe(true);
+    expect(hasCapability('RESPONSIBLE_ENGINEER', 'MANAGE_REFERENCE_DATA')).toBe(false);
+    expect(hasCapability('RESPONSIBLE_ENGINEER', 'CREATE_ACT')).toBe(true);
+    expect(hasCapability('RESPONSIBLE_ENGINEER', 'MANAGE_PROPOSALS')).toBe(false);
     expect(hasCapability('RESPONSIBLE_ENGINEER', 'MANAGE_REFERENCE_DATA')).toBe(false);
     expect(hasCapability('RESPONSIBLE_ENGINEER', 'VIEW_ALL_ACTS')).toBe(false);
     expect(hasCapability('RESPONSIBLE_ENGINEER', 'VIEW_HISTORY')).toBe(false);
@@ -344,11 +356,13 @@ describe('registry query parsing', () => {
 });
 
 describe('registry access and proposal shaping', () => {
-  it('scopes responsible engineers to assigned rows and hides B/C', () => {
+  it('scopes responsible engineers to assigned objects and hides B/C', () => {
     expect(registryAccessMode('ADMIN')).toBe('all_uncancelled');
     expect(registryAccessMode('SGR_MANAGER')).toBe('all_uncancelled');
     expect(registryAccessMode('CONTRACTOR_ENGINEER')).toBe('all_uncancelled');
-    expect(registryAccessMode('RESPONSIBLE_ENGINEER')).toBe('assigned_only');
+    expect(registryAccessMode('RESPONSIBLE_ENGINEER')).toBe('object_assigned');
+    expect(isObjectScopedRole('RESPONSIBLE_ENGINEER')).toBe(true);
+    expect(isObjectScopedRole('ADMIN')).toBe(false);
     expect(visibleProposalSlots('RESPONSIBLE_ENGINEER')).toEqual(['A']);
     expect(visibleProposalSlots('ADMIN')).toEqual(['A', 'B', 'C']);
     expect(canViewProposalASum('ADMIN')).toBe(true);

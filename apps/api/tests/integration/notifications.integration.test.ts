@@ -149,6 +149,10 @@ async function createActWithDefect(
   refs: Awaited<ReturnType<typeof catalogs>>,
   responsibleId: string,
 ) {
+  await prisma.propertyObjectEngineer.createMany({
+    data: [{ propertyObjectId: refs.object.id, userId: responsibleId }],
+    skipDuplicates: true,
+  });
   const response = await mutate(admin, {
     method: 'POST',
     url: '/api/acts',
@@ -303,6 +307,9 @@ describe('notifications and SLA integration', () => {
       await prisma.act.deleteMany({ where: { id: { in: createdActIds } } });
     }
     if (createdUserIds.length > 0) {
+      await prisma.propertyObjectEngineer.deleteMany({
+        where: { userId: { in: createdUserIds } },
+      });
       await prisma.notificationRecipient.deleteMany({ where: { userId: { in: createdUserIds } } });
       await prisma.auditLog
         .deleteMany({ where: { actorUserId: { in: createdUserIds } } })
@@ -396,6 +403,10 @@ describe('notifications and SLA integration', () => {
     const admin = await login(adminUser.email);
     const refs = await catalogs();
     const created = await createActWithDefect(admin, refs, responsible.id);
+    await prisma.propertyObjectEngineer.createMany({
+      data: [{ propertyObjectId: refs.object.id, userId: other.id }],
+      skipDuplicates: true,
+    });
     await drain();
     const session = await login(responsible.email);
     const list = await inject({

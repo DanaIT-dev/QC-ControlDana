@@ -202,13 +202,7 @@ export class NotificationsService {
             defectItemId: null,
             act: {
               status: { not: 'CANCELLED' as const },
-              ...(user.role === 'RESPONSIBLE_ENGINEER'
-                ? {
-                    defectItems: {
-                      some: { responsibleEngineers: { some: { userId: user.id } } },
-                    },
-                  }
-                : {}),
+              ...(scope.objectScoped ? { propertyObject: scope.assignedObjectWhere() } : {}),
             },
           },
         ],

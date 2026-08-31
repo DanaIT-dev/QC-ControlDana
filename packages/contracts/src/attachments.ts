@@ -9,16 +9,16 @@ export const attachmentLimitsSchema = z.object({
 });
 
 export const attachmentItemSchema = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   ownerType: z.enum(ATTACHMENT_OWNER_TYPES),
-  ownerId: z.string().uuid(),
+  ownerId: z.uuid(),
   category: z.enum(ATTACHMENT_CATEGORIES),
   safeDisplayName: z.string(),
   sizeBytes: z.string(),
   detectedMimeType: z.string().nullable(),
   status: z.enum(ATTACHMENT_STATUSES),
   uploadedBy: z.object({
-    id: z.string().uuid(),
+    id: z.uuid(),
     fullName: z.string(),
   }),
   createdAt: z.string(),

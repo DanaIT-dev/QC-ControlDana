@@ -145,6 +145,13 @@ describe('registry integration', () => {
     objectB = await prisma.propertyObject.create({
       data: { name: `Объект Бета-секрет ${suffix}`, address: 'ул. Скрытая, 9' },
     });
+    await prisma.propertyObjectEngineer.createMany({
+      data: [
+        { propertyObjectId: objectA.id, userId: engineerA.id },
+        { propertyObjectId: objectA.id, userId: engineerB.id },
+        { propertyObjectId: objectB.id, userId: engineerC.id },
+      ],
+    });
     customerA = await prisma.organization.create({
       data: {
         officialName: `Заказчик Альфа ${suffix}`,
@@ -277,6 +284,9 @@ describe('registry integration', () => {
     await prisma.defectItemLiableOrganization.deleteMany({
       where: { defectItem: { actId: { in: createdActIds } } },
     });
+    await prisma.propertyObjectEngineer.deleteMany({
+      where: { propertyObjectId: { in: [objectA.id, objectB.id] } },
+    });
     await prisma.defectItem.deleteMany({ where: { actId: { in: createdActIds } } });
     await prisma.act.deleteMany({ where: { id: { in: createdActIds } } });
     await app?.close();
@@ -310,7 +320,7 @@ describe('registry integration', () => {
     const rowIds = body.items.map((item) => item.rowId);
     expect(rowIds).toContain(assignedItemId);
     expect(rowIds).toContain(sharedItemId);
-    expect(rowIds).not.toContain(foreignItemId);
+    expect(rowIds).toContain(foreignItemId);
     expect(body.items.some((item) => item.actId === foreignActId)).toBe(false);
     expect(body.totalCount).toBe(body.items.length);
     expect(JSON.stringify(body)).not.toMatch(/"slot":"B"/);
@@ -322,9 +332,17 @@ describe('registry integration', () => {
       contractorName: expect.stringContaining('Альтернатива тест А'),
     });
     expect(Object.prototype.hasOwnProperty.call(assigned ?? {}, 'proposalsBC')).toBe(false);
+    const cookieB = await login(engineerB.email);
+    const listB = await authedGet(cookieB, '/api/registry/defects?pageSize=200');
+    const idsB = (listB.json() as { items: Array<{ rowId: string; actId: string }> }).items.map(
+      (item) => item.rowId,
+    );
+    expect(idsB).toContain(assignedItemId);
+    expect(idsB).toContain(sharedItemId);
+    expect(idsB).toContain(foreignItemId);
   });
 
-  it('returns a safe 404 for a foreign act id and hides the unassigned item on a split act', async () => {
+  it('returns a safe 404 for a foreign act id and shows every defect on an assigned object', async () => {
     const cookie = await login(engineerA.email);
     const missing = await authedGet(cookie, `/api/acts/${foreignActId}`);
     expect(missing.statusCode).toBe(404);
@@ -332,7 +350,9 @@ describe('registry integration', () => {
     const split = await authedGet(cookie, `/api/acts/${splitActId}`);
     expect(split.statusCode).toBe(200);
     const body = split.json() as { defectItems: Array<{ id: string }> };
-    expect(body.defectItems.map((item) => item.id)).toEqual([assignedItemId]);
+    expect(body.defectItems.map((item) => item.id).sort()).toEqual(
+      [assignedItemId, foreignItemId].sort(),
+    );
   });
 
   it('returns A/B/C to permitted roles and exact proposal decimals', async () => {
@@ -382,7 +402,7 @@ describe('registry integration', () => {
     const combinedBody = combined.json() as { items: Array<{ formCode: string; rowId: string }> };
     expect(combinedBody.items.every((item) => item.formCode === 'S23')).toBe(true);
     expect(combinedBody.items.map((item) => item.rowId)).toContain(assignedItemId);
-    expect(combinedBody.items.map((item) => item.rowId)).not.toContain(foreignItemId);
+    expect(combinedBody.items.map((item) => item.rowId)).toContain(foreignItemId);
 
     const dates = await authedGet(
       cookie,

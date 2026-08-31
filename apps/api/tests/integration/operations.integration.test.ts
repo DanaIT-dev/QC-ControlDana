@@ -153,6 +153,16 @@ async function catalogs() {
   return { object, customer, liable, alt, defectType };
 }
 
+async function assignObjectEngineers(objectId: string, userIds: string[]) {
+  if (userIds.length === 0) {
+    return;
+  }
+  await prisma.propertyObjectEngineer.createMany({
+    data: userIds.map((userId) => ({ propertyObjectId: objectId, userId })),
+    skipDuplicates: true,
+  });
+}
+
 describe('operations integration', () => {
   beforeAll(async () => {
     process.env.NODE_ENV = 'test';
@@ -201,6 +211,9 @@ describe('operations integration', () => {
       await prisma.act.deleteMany({ where: { id: { in: actIds } } });
     }
     if (createdUserIds.length > 0) {
+      await prisma.propertyObjectEngineer.deleteMany({
+        where: { userId: { in: createdUserIds } },
+      });
       await prisma.idempotencyRecord.deleteMany({ where: { actorUserId: { in: createdUserIds } } });
       await prisma.auditLog
         .deleteMany({ where: { actorUserId: { in: createdUserIds } } })
@@ -470,6 +483,7 @@ describe('operations integration', () => {
     const contractorSession = await login(contractor.email);
     const responsibleSession = await login(responsible.email);
     const { object, customer, liable, alt, defectType } = await catalogs();
+    await assignObjectEngineers(object.id, [responsible.id]);
     const key = `idem-${Date.now()}`;
     const payload = {
       formCode: 'S1',
@@ -638,7 +652,7 @@ describe('operations integration', () => {
       url: `/api/defects/${defectId}/deadlines`,
       payload: { expectedVersion: 2, claimDeadline: '2026-10-01', reason: 'нельзя' },
     });
-    expect([403, 409]).toContain(claimAttempt.statusCode);
+    expect(claimAttempt.statusCode).toBe(409);
 
     const thirdParty = await mutate(contractorSession, {
       method: 'PATCH',
@@ -693,11 +707,12 @@ describe('operations integration', () => {
     expect(stale.statusCode).toBe(409);
   });
 
-  it('grants and revokes responsible access through assignments', async () => {
+  it('keeps access after defect unassign and revokes it after object unassign', async () => {
     const admin = await createUser('ADMIN');
     const responsible = await createUser('RESPONSIBLE_ENGINEER');
     const adminSession = await login(admin.email);
     const { object, customer, liable, defectType } = await catalogs();
+    await assignObjectEngineers(object.id, [responsible.id]);
     const created = await mutate(adminSession, {
       method: 'POST',
       url: '/api/acts',
@@ -740,6 +755,24 @@ describe('operations integration', () => {
       },
     });
     expect(removed.statusCode).toBe(200);
+    const stillVisible = await inject({
+      method: 'GET',
+      url: `/api/acts/${actId}`,
+      cookies: { [SESSION_COOKIE_NAME]: responsibleSession.cookie },
+    });
+    expect(stillVisible.statusCode).toBe(200);
+    const objectRow = await prisma.propertyObject.findUniqueOrThrow({ where: { id: object.id } });
+    const revoked = await mutate(adminSession, {
+      method: 'PATCH',
+      url: `/api/reference-data/property-objects/${object.id}`,
+      payload: {
+        expectedVersion: objectRow.version,
+        name: object.name,
+        address: object.address,
+        responsibleEngineerIds: [],
+      },
+    });
+    expect(revoked.statusCode).toBe(200);
     const after = await inject({
       method: 'GET',
       url: `/api/acts/${actId}`,
@@ -753,6 +786,7 @@ describe('operations integration', () => {
     const responsible = await createUser('RESPONSIBLE_ENGINEER');
     const adminSession = await login(admin.email);
     const { object, customer, liable, alt, defectType } = await catalogs();
+    await assignObjectEngineers(object.id, [responsible.id]);
     const archivedAlt = await prisma.organization.create({
       data: {
         officialName: `Архив альт ${Date.now()}`,
@@ -884,6 +918,7 @@ describe('operations integration', () => {
     const responsibleSession = await login(responsible.email);
     const foreignSession = await login(foreign.email);
     const { object, customer, liable, alt, defectType } = await catalogs();
+    await assignObjectEngineers(object.id, [responsible.id]);
     const created = await mutate(adminSession, {
       method: 'POST',
       url: '/api/acts',
@@ -964,5 +999,67 @@ describe('operations integration', () => {
     expect(defectHistory.statusCode).toBe(200);
     const proposalHistory = await read(adminSession, `/api/proposals/${proposalId}/history`);
     expect(proposalHistory.statusCode).toBe(200);
+  });
+
+  it('lets a responsible engineer create an act on an assigned object and rejects a foreign objectId', async () => {
+    const engineer = await createUser('RESPONSIBLE_ENGINEER');
+    const engineerSession = await login(engineer.email);
+    const own = await catalogs();
+    const foreign = await catalogs();
+    await assignObjectEngineers(own.object.id, [engineer.id]);
+    const created = await mutate(engineerSession, {
+      method: 'POST',
+      url: '/api/acts',
+      payload: {
+        formCode: 'S1',
+        objectId: own.object.id,
+        customerOrganizationId: own.customer.id,
+        issuedOn: '2026-08-20',
+        defectItems: [
+          {
+            location: 'Кв. инженера',
+            defectTypeId: own.defectType.id,
+            claimDetails: 'Описание',
+            responsibleEngineerIds: [engineer.id],
+            liableOrganizationIds: [own.liable.id],
+          },
+        ],
+      },
+      headers: { 'idempotency-key': `eng-create-${Date.now()}` },
+    });
+    expect(created.statusCode).toBe(201);
+    const actId = (created.json() as { id: string }).id;
+    createdActIds.push(actId);
+    const list = await read(engineerSession, '/api/registry/defects?pageSize=200');
+    expect(list.statusCode).toBe(200);
+    expect(JSON.stringify(list.json())).toContain(actId);
+    const lookups = await read(engineerSession, '/api/operations/lookups');
+    const lookupIds = (
+      lookups.json() as { propertyObjects: Array<{ id: string }> }
+    ).propertyObjects.map((item) => item.id);
+    expect(lookupIds).toContain(own.object.id);
+    expect(lookupIds).not.toContain(foreign.object.id);
+    const rejected = await mutate(engineerSession, {
+      method: 'POST',
+      url: '/api/acts',
+      payload: {
+        formCode: 'S1',
+        objectId: foreign.object.id,
+        customerOrganizationId: own.customer.id,
+        issuedOn: '2026-08-20',
+        defectItems: [
+          {
+            location: 'Чужой',
+            defectTypeId: own.defectType.id,
+            claimDetails: 'Нет',
+            responsibleEngineerIds: [engineer.id],
+            liableOrganizationIds: [own.liable.id],
+          },
+        ],
+      },
+      headers: { 'idempotency-key': `eng-foreign-${Date.now()}` },
+    });
+    expect(rejected.statusCode).toBe(404);
+    expect(JSON.stringify(rejected.json())).not.toContain(foreign.object.id);
   });
 });

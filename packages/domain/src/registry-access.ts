@@ -1,10 +1,14 @@
 import type { UserRole } from '@sgr-registry/contracts';
 import type { ProposalSlot } from '@sgr-registry/contracts';
 
-export type RegistryAccessMode = 'all_uncancelled' | 'assigned_only';
+export type RegistryAccessMode = 'all_uncancelled' | 'object_assigned';
 
 export function registryAccessMode(role: UserRole): RegistryAccessMode {
-  return role === 'RESPONSIBLE_ENGINEER' ? 'assigned_only' : 'all_uncancelled';
+  return role === 'RESPONSIBLE_ENGINEER' ? 'object_assigned' : 'all_uncancelled';
+}
+
+export function isObjectScopedRole(role: UserRole): boolean {
+  return registryAccessMode(role) === 'object_assigned';
 }
 
 export function visibleProposalSlots(role: UserRole): ProposalSlot[] {

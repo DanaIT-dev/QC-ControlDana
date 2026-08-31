@@ -58,6 +58,7 @@ export const propertyObjectWriteSchema = z
     address: z.string(),
     commissionedAt: z.union([calendarDate, z.null()]).optional(),
     warrantyEndsAt: z.union([calendarDate, z.null()]).optional(),
+    responsibleEngineerIds: z.array(uuid).optional(),
   })
   .strict();
 

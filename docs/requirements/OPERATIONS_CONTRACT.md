@@ -32,11 +32,13 @@
 
 `VIEW_REFERENCE_DATA` даёт `RESPONSIBLE_ENGINEER` read-only доступ к объектам и организациям (`GET /api/reference-data/property-objects`, `GET /api/reference-data/organizations`). Мутации справочников (`POST`/`PATCH`/archive/restore) и прочие виды справочников требуют `MANAGE_REFERENCE_DATA` и для этой роли возвращают `403`. `CONTRACTOR_ENGINEER` справочники не получает.
 
+ADMIN и SGR_MANAGER назначают ответственных инженеров объекта через `responsibleEngineerIds` при создании и правке `PropertyObject` (MultiSelect). Архивный объект не принимает новых инженеров; повторное назначение восстанавливает ту же пару (`unassignedAt = null`). Состав пишется в AuditLog как `OBJECT_ENGINEERS_REPLACED`. Инженеры на DefectItem должны входить в активный состав объекта.
+
 ## Создание акта
 
 Атомарная операция: шапка, минимум один DefectItem, назначения, сроки, AuditLog, номер из `allocateActNumber`.
 
-Вручную акты создают роли с `CREATE_ACT`: `ADMIN` и `SGR_MANAGER`. Автоматическое поступление актов из 1С будет отдельным будущим этапом и дополнит ручной способ, а не заменит его. Поле источника акта и интеграция с 1С в этой версии не реализуются.
+Вручную акты создают роли с `CREATE_ACT`: `ADMIN`, `SGR_MANAGER` и `RESPONSIBLE_ENGINEER`. Инженер создаёт акт только на активном объекте, за которым он закреплён; чужой или архивный `objectId` → тот же безопасный `404`. Автоматическое поступление актов из 1С будет отдельным будущим этапом и дополнит ручной способ, а не заменит его. Поле источника акта и интеграция с 1С в этой версии не реализуются.
 
 Каноническая связь с объектом — только `objectId`. Клиент не передаёт наименование и адрес как доверенные поля: схема `createActRequestSchema` их отклоняет. Сервер проверяет, что объект существует и активен. В форме создания акта наименование и адрес — связанные combobox к одному `objectId`.
 
@@ -52,15 +54,15 @@
 
 - ADMIN / SGR_MANAGER: planned, claim, thirdParty.
 - CONTRACTOR_ENGINEER: только thirdParty.
-- RESPONSIBLE_ENGINEER: только planned назначенной строки.
+- RESPONSIBLE_ENGINEER: planned, claim и thirdParty строк закреплённого объекта.
 
 `effectiveDeadline = claimDeadline ?? plannedDeadline`. `deadlineState` считает сервер. Календарные даты — date-only, `Europe/Minsk`. Первое назначение пустого срока без причины; изменение, очистка и перенос требуют причину. Completed строка не редактируется RESPONSIBLE; ADMIN/SGR_MANAGER — только с подтверждением и причиной.
 
 ## Статус DefectItem
 
-`IN_PROGRESS → COMPLETED`: ADMIN, SGR_MANAGER, назначенный RESPONSIBLE. Нужен `readyAt` не в будущем относительно Europe/Minsk.
+`IN_PROGRESS → COMPLETED`: ADMIN, SGR_MANAGER, RESPONSIBLE на дефекте закреплённого объекта. Нужен `readyAt` не в будущем относительно Europe/Minsk.
 
-`COMPLETED → IN_PROGRESS`: только ADMIN и SGR_MANAGER, обязательная причина. `readyAt` очищается; прежние значения остаются в AuditLog.
+`COMPLETED → IN_PROGRESS`: ADMIN, SGR_MANAGER и RESPONSIBLE на закреплённом объекте, обязательная причина. `readyAt` очищается; прежние значения остаются в AuditLog.
 
 Неверный переход → `409 INVALID_TRANSITION`. Повтор complete на уже COMPLETED не создаёт новую историю.
 
@@ -74,7 +76,7 @@ RESPONSIBLE не мутирует Proposal, получает только A (о�
 
 ## История
 
-`GET /api/acts/:actId/history` требует `VIEW_HISTORY` или `VIEW_ASSIGNED_HISTORY` до выборки журнала. `CONTRACTOR_ENGINEER` получает `403` на историю акта, дефекта, предложения, пользователей и `/api/audit-log`; тело ошибки не содержит события, авторов и `totalCount`. Действия подрядчика продолжают записываться в AuditLog и доступны ADMIN и SGR_MANAGER. RESPONSIBLE видит только историю назначенных дефектов; чужой акт → тот же безопасный `404`, B/C в истории нет.
+`GET /api/acts/:actId/history` требует `VIEW_HISTORY` или `VIEW_ASSIGNED_HISTORY` до выборки журнала. `CONTRACTOR_ENGINEER` получает `403` на историю акта, дефекта, предложения, пользователей и `/api/audit-log`; тело ошибки не содержит события, авторов и `totalCount`. Действия подрядчика продолжают записываться в AuditLog и доступны ADMIN и SGR_MANAGER. RESPONSIBLE видит историю всех дефектов актов закреплённых объектов; чужой объект → тот же безопасный `404`, B/C в истории нет.
 
 ## Optimistic concurrency
 

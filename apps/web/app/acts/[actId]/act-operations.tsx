@@ -41,6 +41,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { ApiError, commandFetch } from '../../../lib/command-api';
 import { historyKey, queryKeys } from '../../../lib/query-keys';
+import { MultiSelect } from '@/components/multi-select';
 
 export function ActOperations({
   act,
@@ -108,19 +109,11 @@ export function ActOperations({
   return (
     <div className="action-row flex flex-wrap gap-2">
       {hasCapability(user.role, 'EDIT_ASSIGNMENTS') ? (
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() =>
-            void run(`/api/defects/${item.id}/assignments`, 'PUT', {
-              expectedVersion: item.version,
-              responsibleEngineerIds: item.responsibleEngineers.map((entry) => entry.id),
-              liableOrganizationIds: item.liableOrganizations.map((entry) => entry.id),
-            })
-          }
-        >
-          Изменить ответственных
-        </Button>
+        <AssignmentEditor
+          act={act}
+          item={item}
+          onSave={(body) => run(`/api/defects/${item.id}/assignments`, 'PUT', body)}
+        />
       ) : null}
       <DeadlineEditor
         item={item}
@@ -157,6 +150,45 @@ export function ActOperations({
       <ConflictDialog open={conflict} onRefresh={() => void refresh()} onOpenChange={setConflict} />
     </div>
   );
+}
+
+function useOperationLookups() {
+  return useQuery({
+    queryKey: queryKeys.lookups,
+    queryFn: async () => {
+      const response = await fetch('/api/operations/lookups', { credentials: 'include' });
+      if (!response.ok) {
+        throw new Error('lookups');
+      }
+      return (await response.json()) as {
+        propertyObjects: Array<{ id: string; responsibleEngineerIds: string[] }>;
+        defectTypes: Array<{ id: string; name: string }>;
+        responsibleEngineers: Array<{ id: string; fullName: string; email?: string }>;
+        liableOrganizations: Array<{ id: string; officialName: string }>;
+        alternativeContractors: Array<{ id: string; officialName: string }>;
+      };
+    },
+  });
+}
+
+function objectEngineerOptions(
+  lookups:
+    | {
+        propertyObjects: Array<{ id: string; responsibleEngineerIds: string[] }>;
+        responsibleEngineers: Array<{ id: string; fullName: string; email?: string }>;
+      }
+    | undefined,
+  objectId: string,
+) {
+  const allowed = new Set(
+    lookups?.propertyObjects.find((object) => object.id === objectId)?.responsibleEngineerIds ?? [],
+  );
+  return (lookups?.responsibleEngineers ?? [])
+    .filter((engineer) => allowed.has(engineer.id))
+    .map((engineer) => ({
+      id: engineer.id,
+      label: engineer.email ? `${engineer.fullName} · ${engineer.email}` : engineer.fullName,
+    }));
 }
 
 function HeaderEditor({
@@ -227,26 +259,25 @@ function AddDefectButton({
   act: ActDetailResponse;
   onSave: (body: unknown) => void;
 }) {
-  const lookups = useQuery({
-    queryKey: queryKeys.lookups,
-    queryFn: async () => {
-      const response = await fetch('/api/operations/lookups', { credentials: 'include' });
-      return (await response.json()) as {
-        defectTypes: Array<{ id: string; name: string }>;
-        responsibleEngineers: Array<{ id: string; fullName: string }>;
-        liableOrganizations: Array<{ id: string; officialName: string }>;
-      };
-    },
-  });
+  const lookups = useOperationLookups();
   const [open, setOpen] = useState(false);
+  const [engineerIds, setEngineerIds] = useState<string[]>([]);
   const firstType = lookups.data?.defectTypes[0]?.id ?? '';
-  const firstEngineer = lookups.data?.responsibleEngineers[0]?.id ?? '';
+  const engineerOptions = objectEngineerOptions(lookups.data, act.objectId);
   return (
     <>
       <Button type="button" variant="outline" onClick={() => setOpen(true)}>
         Добавить дефект
       </Button>
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next);
+          if (next) {
+            setEngineerIds(engineerOptions[0] ? [engineerOptions[0].id] : []);
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Новый дефект</DialogTitle>
@@ -261,7 +292,7 @@ function AddDefectButton({
                 location: form.get('location'),
                 defectTypeId: form.get('defectTypeId') || firstType,
                 claimDetails: form.get('claimDetails'),
-                responsibleEngineerIds: firstEngineer ? [firstEngineer] : [],
+                responsibleEngineerIds: engineerIds,
                 liableOrganizationIds: [],
               });
               setOpen(false);
@@ -290,8 +321,87 @@ function AddDefectButton({
                 ))}
               </select>
             </div>
+            <MultiSelect
+              label="Ответственные инженеры"
+              options={engineerOptions}
+              values={engineerIds}
+              onChange={setEngineerIds}
+              emptyText="Нет инженеров на объекте"
+            />
             <DialogFooter>
               <Button type="submit">Добавить</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+function AssignmentEditor({
+  act,
+  item,
+  onSave,
+}: {
+  act: ActDetailResponse;
+  item: ActDetailDefectItem;
+  onSave: (body: unknown) => void;
+}) {
+  const lookups = useOperationLookups();
+  const [open, setOpen] = useState(false);
+  const [engineerIds, setEngineerIds] = useState(
+    item.responsibleEngineers.map((entry) => entry.id),
+  );
+  const [liableIds, setLiableIds] = useState(item.liableOrganizations.map((entry) => entry.id));
+  return (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        onClick={() => {
+          setEngineerIds(item.responsibleEngineers.map((entry) => entry.id));
+          setLiableIds(item.liableOrganizations.map((entry) => entry.id));
+          setOpen(true);
+        }}
+      >
+        Изменить ответственных
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Ответственные</DialogTitle>
+          </DialogHeader>
+          <form
+            className="grid gap-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              onSave({
+                expectedVersion: item.version,
+                responsibleEngineerIds: engineerIds,
+                liableOrganizationIds: liableIds,
+                confirmRemoveLastEngineer: engineerIds.length === 0,
+              });
+              setOpen(false);
+            }}
+          >
+            <MultiSelect
+              label="Ответственные инженеры"
+              options={objectEngineerOptions(lookups.data, act.objectId)}
+              values={engineerIds}
+              onChange={setEngineerIds}
+              emptyText="Нет инженеров на объекте"
+            />
+            <MultiSelect
+              label="Виновные организации"
+              options={(lookups.data?.liableOrganizations ?? []).map((org) => ({
+                id: org.id,
+                label: org.officialName,
+              }))}
+              values={liableIds}
+              onChange={setLiableIds}
+            />
+            <DialogFooter>
+              <Button type="submit">Сохранить</Button>
             </DialogFooter>
           </form>
         </DialogContent>

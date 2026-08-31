@@ -11,7 +11,7 @@ export default async function NewActPage() {
   if (!hasCapability(user.role, 'CREATE_ACT')) {
     return (
       <AppShell user={user}>
-        <ForbiddenState description="Создание актов доступно администратору и руководителю СГР." />
+        <ForbiddenState description="Недостаточно прав для создания акта." />
       </AppShell>
     );
   }

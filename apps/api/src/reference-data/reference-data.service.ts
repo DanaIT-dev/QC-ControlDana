@@ -35,6 +35,7 @@ import {
   encodeHistoryCursor,
   historyWhereAfter,
 } from '../common/history-cursor';
+import { syncObjectEngineers } from './sync-object-engineers';
 
 export type ReferenceKind = 'property-objects' | 'organizations' | 'work-types' | 'defect-types';
 
@@ -176,6 +177,12 @@ export class ReferenceDataService {
     const totalCount = await this.prisma.client.propertyObject.count({ where });
     const items = await this.prisma.client.propertyObject.findMany({
       where,
+      include: {
+        engineers: {
+          where: { unassignedAt: null },
+          include: { user: { select: { id: true, fullName: true, email: true, status: true } } },
+        },
+      },
       orderBy: [{ name: 'asc' }, { id: 'asc' }],
       skip: (input.page - 1) * input.pageSize,
       take: input.pageSize,
@@ -194,6 +201,11 @@ export class ReferenceDataService {
         active: item.active,
         version: item.version,
         archivedAt: item.archivedAt?.toISOString() ?? null,
+        responsibleEngineers: item.engineers.map((row) => ({
+          id: row.user.id,
+          fullName: row.user.fullName,
+          email: row.user.email,
+        })),
       })),
       ...pageMeta(input, totalCount),
     };
@@ -302,6 +314,14 @@ export class ReferenceDataService {
           entityId: created.id,
           newValue: toJsonValue({ name, address }),
         });
+        if (input.responsibleEngineerIds) {
+          await syncObjectEngineers(tx, {
+            objectId: created.id,
+            objectActive: true,
+            engineerIds: input.responsibleEngineerIds,
+            ctx,
+          });
+        }
         return created;
       });
     } catch (error) {
@@ -332,16 +352,45 @@ export class ReferenceDataService {
       name,
       others.map((item) => item.name),
     );
-    return this.mutateVersioned('propertyObject', id, input.expectedVersion, actor, request, {
-      data: {
-        name,
-        address,
-        commissionedAt: optionalDate(input.commissionedAt, 'commissionedAt'),
-        warrantyEndsAt: optionalDate(input.warrantyEndsAt, 'warrantyEndsAt'),
-      },
-      entityType: 'PROPERTY_OBJECT',
-      snapshot: (row) => ({ name: row.name, address: row.address }),
-      nextSnapshot: { name, address },
+    return this.prisma.client.$transaction(async (tx) => {
+      const current = await tx.propertyObject.findUnique({ where: { id } });
+      if (!current) {
+        throw new NotFoundException('Запись не найдена');
+      }
+      if (current.version !== input.expectedVersion) {
+        throw new StaleWriteError();
+      }
+      const ctx = actorContext(actor, request);
+      const updated = await tx.propertyObject.updateMany({
+        where: { id, version: input.expectedVersion },
+        data: {
+          name,
+          address,
+          commissionedAt: optionalDate(input.commissionedAt, 'commissionedAt'),
+          warrantyEndsAt: optionalDate(input.warrantyEndsAt, 'warrantyEndsAt'),
+          version: { increment: 1 },
+        },
+      });
+      if (updated.count !== 1) {
+        throw new StaleWriteError();
+      }
+      await writeAuditLog(tx, {
+        ...ctx,
+        action: 'REFERENCE_UPDATED',
+        entityType: 'PROPERTY_OBJECT',
+        entityId: id,
+        oldValue: toJsonValue({ name: current.name, address: current.address }),
+        newValue: toJsonValue({ name, address }),
+      });
+      if (input.responsibleEngineerIds) {
+        await syncObjectEngineers(tx, {
+          objectId: id,
+          objectActive: current.active,
+          engineerIds: input.responsibleEngineerIds,
+          ctx,
+        });
+      }
+      return tx.propertyObject.findUniqueOrThrow({ where: { id } });
     });
   }
 

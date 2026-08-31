@@ -6,6 +6,8 @@
 
 Не записываются: password, passwordHash, временный пароль, cookie, session id / hash, CSRF, authorization, сырые заголовки, Redis keys, stack traces, MinIO credentials, `objectKey`, `bucket`, raw scanner response.
 
+События справочника объектов: `REFERENCE_CREATED`, `REFERENCE_UPDATED`, `REFERENCE_ARCHIVED`, `REFERENCE_RESTORED`, `OBJECT_ENGINEERS_REPLACED` (смена состава `PropertyObjectEngineer`).
+
 События вложений: `ATTACHMENT_UPLOADED`, `ATTACHMENT_SCAN_PASSED`, `ATTACHMENT_REJECTED`, `ATTACHMENT_SCAN_FAILED`, `ATTACHMENT_ARCHIVED`. RESPONSIBLE не видит B/C.
 
 Каждая успешная business mutation создаёт запись в той же DB transaction. Stale write и откат не оставляют audit без бизнес-изменения и наоборот.
@@ -15,7 +17,7 @@
 Чтение журнала:
 
 - `ADMIN` и `SGR_MANAGER` — полная история доступного акта (`VIEW_HISTORY`);
-- `RESPONSIBLE_ENGINEER` — только события назначенных DefectItem и безопасный объём шапки Act (`VIEW_ASSIGNED_HISTORY`). События B/C исключаются полностью; totalCount их не считает. Значения не маскируются `null`. Чужой акт/дефект → тот же безопасный `404`;
+- `RESPONSIBLE_ENGINEER` — события всех DefectItem актов закреплённых объектов и безопасный объём шапки Act (`VIEW_ASSIGNED_HISTORY`). События B/C исключаются полностью; totalCount их не считает. Значения не маскируются `null`. Чужой акт/дефект → тот же безопасный `404`;
 - `CONTRACTOR_ENGINEER` — чтения нет (`403`), включая прямой запрос. Запись его действий в AuditLog не прекращается.
 
 Пользовательских update/delete endpoints нет.

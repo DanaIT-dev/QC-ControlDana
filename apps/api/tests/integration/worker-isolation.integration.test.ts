@@ -147,6 +147,10 @@ async function createActWithDefect(
   refs: Awaited<ReturnType<typeof catalogs>>,
   responsibleId: string,
 ) {
+  await prisma.propertyObjectEngineer.createMany({
+    data: [{ propertyObjectId: refs.object.id, userId: responsibleId }],
+    skipDuplicates: true,
+  });
   const response = await mutate(admin, {
     method: 'POST',
     url: '/api/acts',
@@ -254,6 +258,9 @@ describe('notification worker isolation', () => {
       await prisma.act.deleteMany({ where: { id: { in: createdActIds } } });
     }
     if (createdUserIds.length > 0) {
+      await prisma.propertyObjectEngineer.deleteMany({
+        where: { userId: { in: createdUserIds } },
+      });
       await prisma.notificationRecipient.deleteMany({ where: { userId: { in: createdUserIds } } });
       await prisma.user
         .deleteMany({ where: { id: { in: createdUserIds } } })

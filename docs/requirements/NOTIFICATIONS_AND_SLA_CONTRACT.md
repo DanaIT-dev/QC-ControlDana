@@ -54,7 +54,7 @@ COMPLETED завершает текущий GENERAL clock: новые WARNING/э
 
 ## Получатели
 
-- RESPONSIBLE_ENGINEER: назначение, изменение effectiveDeadline своих строк, WARNING/DUE/OVERDUE GENERAL, complete/reopen своих строк, READY/REJECTED/SCAN_FAILED своих разрешённых вложений. Никогда B/C.
+- RESPONSIBLE_ENGINEER: inbox и контроль сроков в object scope (все дефекты закреплённых объектов). События назначения строки (`RESPONSIBLE_ASSIGNED`) по-прежнему адресуются инженерам `DefectItem`. WARNING/DUE/OVERDUE GENERAL, complete/reopen, READY/REJECTED/SCAN_FAILED разрешённых вложений. Никогда B/C.
 - CONTRACTOR_ENGINEER: thirdPartyDeadline, THIRD_PARTY WARNING/DUE/OVERDUE, свои вложения, разрешённые Proposal A/B/C. Без суммы Proposal A и без создания актов.
 - SGR_MANAGER: GENERAL и THIRD_PARTY warning/due/overdue, эскалации 0/3/7/14, критические ошибки сканирования, изменения статусов и сроков в полном scope.
 - ADMIN: весь контур, эскалации и системные ошибки, без повторных писем на одно событие.

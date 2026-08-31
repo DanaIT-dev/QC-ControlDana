@@ -184,4 +184,92 @@ test.describe('reference access and linked object selection', () => {
     expect(errors.filter((message) => /hydrat/i.test(message))).toEqual([]);
     expect(applicationErrors(errors)).toEqual([]);
   });
+
+  test('ADMIN assigns object engineers from the catalog MultiSelect', async ({ page }) => {
+    const errors = attachConsole(page);
+    await login(page, ACCOUNTS.admin);
+    await page.getByRole('link', { name: 'Справочники' }).click();
+    await expect(page.getByText('Дмитрий Орлов').first()).toBeVisible();
+    const stamp = Date.now();
+    await page.getByRole('button', { name: 'Создать' }).click();
+    await page.getByLabel('Название объекта').fill(`Е2Е объект инженеры ${stamp}`);
+    await page.getByLabel('Адрес объекта').fill('Минск, инженеры');
+    await page.getByRole('combobox', { name: 'Ответственные инженеры' }).click();
+    await page.getByRole('option', { name: /Дмитрий Орлов/ }).click();
+    await page.keyboard.press('Escape');
+    await page.getByRole('dialog').getByRole('button', { name: 'Создать' }).click();
+    await expect(page.getByRole('cell', { name: `Е2Е объект инженеры ${stamp}` })).toBeVisible();
+    await expect(page.getByText('Дмитрий Орлов').first()).toBeVisible();
+    expect(applicationErrors(errors)).toEqual([]);
+  });
+
+  test('RESPONSIBLE_ENGINEER creates an act only on an assigned object', async ({ page }) => {
+    const errors = attachConsole(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await login(page, ACCOUNTS.responsible);
+    await expect(page.getByRole('main').getByRole('link', { name: 'Создать акт' })).toBeVisible();
+    await page.getByRole('main').getByRole('link', { name: 'Создать акт' }).click();
+    await expect(page.getByRole('heading', { name: 'Создание акта' })).toBeVisible();
+    await objectCombobox(page).click();
+    await expect(page.getByRole('option', { name: /Северный парк/ })).toBeVisible();
+    await expect(page.getByRole('option', { name: /Речной квартал/ })).toHaveCount(0);
+    await page.getByRole('option', { name: /Северный парк/ }).click();
+    await chooseFirst(page, 'Заказчик');
+    await page.getByLabel('Помещение').fill('Квартира инженера');
+    await page.getByLabel('Описание').fill('Создание с объекта');
+    await chooseFirst(page, 'Вид дефекта');
+    await page.getByRole('combobox', { name: 'Ответственные инженеры' }).click();
+    await expect(page.getByRole('option', { name: /Дмитрий Орлов/ })).toBeVisible();
+    await expect(page.getByRole('option', { name: /Елена Крылова/ })).toHaveCount(0);
+    await page.getByRole('option', { name: /Дмитрий Орлов/ }).click();
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Создать акт' }).click();
+    await expect(page).toHaveURL(/\/acts\//);
+    await expect(page.getByText('ЖК «Северный парк» (демо)').first()).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'История изменений' })).toBeVisible();
+    await expect(page.getByText(/Предложение B|proposalsBC|"slot":"B"/)).toHaveCount(0);
+
+    const me = await page.request.get('http://localhost:3001/api/auth/me');
+    expect(me.ok()).toBe(true);
+    const csrfToken = ((await me.json()) as { csrfToken: string }).csrfToken;
+    const lookupsResponse = await page.request.get('http://localhost:3001/api/operations/lookups');
+    expect(lookupsResponse.ok()).toBe(true);
+    const lookups = (await lookupsResponse.json()) as {
+      customers: Array<{ id: string }>;
+      defectTypes: Array<{ id: string }>;
+      responsibleEngineers: Array<{ id: string; fullName: string }>;
+      propertyObjects: Array<{ id: string; name: string }>;
+    };
+    expect(lookups.propertyObjects.some((item) => /Северный парк/.test(item.name))).toBe(true);
+    expect(lookups.propertyObjects.some((item) => /Речной квартал/.test(item.name))).toBe(false);
+    const spoofed = await page.request.post('http://localhost:3001/api/acts', {
+      headers: {
+        origin: 'http://localhost:3000',
+        'x-csrf-token': csrfToken,
+        'idempotency-key': `e2e-foreign-${Date.now()}`,
+        'content-type': 'application/json',
+      },
+      data: {
+        formCode: 'S1',
+        objectId: '22222222-2222-4222-8222-222222222222',
+        customerOrganizationId: lookups.customers[0]?.id,
+        issuedOn: '2026-08-20',
+        defectItems: [
+          {
+            location: 'Чужой',
+            defectTypeId: lookups.defectTypes[0]?.id,
+            claimDetails: 'Нет',
+            responsibleEngineerIds: lookups.responsibleEngineers
+              .filter((item) => item.fullName.includes('Орлов'))
+              .map((item) => item.id),
+            liableOrganizationIds: [],
+          },
+        ],
+      },
+    });
+    expect(spoofed.status()).toBe(404);
+    expect(await spoofed.text()).not.toContain('22222222-2222-4222-8222-222222222222');
+    expect(errors.filter((message) => /hydrat/i.test(message))).toEqual([]);
+    expect(applicationErrors(errors)).toEqual([]);
+  });
 });

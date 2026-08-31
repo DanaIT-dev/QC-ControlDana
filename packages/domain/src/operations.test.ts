@@ -13,7 +13,6 @@ import {
   assertUniqueIds,
   calendarDateToUtcNoon,
   canAddProposalSlot,
-  capabilitiesForRole,
   completeDefectItem,
   containsSensitiveAuditKey,
   deadlineChangeRequiresReason,
@@ -43,7 +42,9 @@ describe('permission matrix', () => {
   it('does not take capabilities from the client payload', () => {
     expect(hasCapability('ADMIN', 'MANAGE_USERS')).toBe(true);
     expect(hasCapability('SGR_MANAGER', 'MANAGE_USERS')).toBe(false);
-    expect(capabilitiesForRole('RESPONSIBLE_ENGINEER')).not.toContain('MANAGE_PROPOSALS');
+    expect(hasCapability('RESPONSIBLE_ENGINEER', 'CREATE_ACT')).toBe(true);
+    expect(hasCapability('RESPONSIBLE_ENGINEER', 'EDIT_ACT_HEADER')).toBe(true);
+    expect(hasCapability('RESPONSIBLE_ENGINEER', 'MANAGE_PROPOSALS')).toBe(false);
     expect(hasCapability('RESPONSIBLE_ENGINEER', 'VIEW_REFERENCE_DATA')).toBe(true);
     expect(hasCapability('RESPONSIBLE_ENGINEER', 'MANAGE_REFERENCE_DATA')).toBe(false);
     expect(hasCapability('CONTRACTOR_ENGINEER', 'COMPLETE_DEFECT')).toBe(false);
@@ -148,7 +149,11 @@ describe('act create validation', () => {
 
 describe('deadlines', () => {
   it('computes field rights and requires a reason on change', () => {
-    expect(deadlineFieldsForRole('RESPONSIBLE_ENGINEER')).toEqual(['plannedDeadline']);
+    expect(deadlineFieldsForRole('RESPONSIBLE_ENGINEER')).toEqual([
+      'plannedDeadline',
+      'claimDeadline',
+      'thirdPartyDeadline',
+    ]);
     expect(deadlineFieldsForRole('CONTRACTOR_ENGINEER')).toEqual(['thirdPartyDeadline']);
     expect(deadlineChangeRequiresReason({ previous: null, next: '2026-08-10' })).toBe(false);
     expect(deadlineChangeRequiresReason({ previous: '2026-08-10', next: '2026-08-20' })).toBe(true);

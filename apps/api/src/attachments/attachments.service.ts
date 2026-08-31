@@ -591,14 +591,12 @@ export class AttachmentsService {
     if (user.role !== 'RESPONSIBLE_ENGINEER') {
       return new Set();
     }
-    const rows = await this.prisma.defectItemEngineer.findMany({
-      where: {
-        userId: user.id,
-        ...(actId ? { defectItem: { actId } } : {}),
-      },
-      select: { defectItemId: true },
+    const scope = new RegistryAccessScope(user);
+    const rows = await this.prisma.defectItem.findMany({
+      where: actId ? scope.defectItemsOnActWhere(actId) : scope.defectItemWhere(),
+      select: { id: true },
     });
-    return new Set(rows.map((row) => row.defectItemId));
+    return new Set(rows.map((row) => row.id));
   }
 
   private async limits() {
