@@ -47,8 +47,17 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]['id'];
 
-export function ReferenceDataView({ csrfToken }: { csrfToken: string }) {
+export function ReferenceDataView({
+  csrfToken,
+  canMutate,
+}: {
+  csrfToken: string;
+  canMutate: boolean;
+}) {
   const queryClient = useQueryClient();
+  const visibleTabs = canMutate
+    ? TABS
+    : TABS.filter((item) => item.id === 'property-objects' || item.id === 'organizations');
   const [tab, setTab] = useState<TabId>('property-objects');
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('ALL');
@@ -92,13 +101,21 @@ export function ReferenceDataView({ csrfToken }: { csrfToken: string }) {
   }
 
   const items = listQuery.data?.items ?? [];
+  const showAddress = tab === 'property-objects' || tab === 'organizations';
 
   return (
     <section className="grid gap-4">
-      <PageHeader title="Справочники" description="Объекты, организации, виды работ и дефектов." />
+      <PageHeader
+        title="Справочники"
+        description={
+          canMutate
+            ? 'Объекты, организации, виды работ и дефектов.'
+            : 'Просмотр объектов и организаций.'
+        }
+      />
       <Tabs value={tab} onValueChange={(value) => setTab(value as TabId)}>
         <TabsList aria-label="Справочники" className="flex h-auto flex-wrap">
-          {TABS.map((item) => (
+          {visibleTabs.map((item) => (
             <TabsTrigger key={item.id} value={item.id} role="tab">
               {item.label}
             </TabsTrigger>
@@ -123,9 +140,11 @@ export function ReferenceDataView({ csrfToken }: { csrfToken: string }) {
             <SelectItem value="ARCHIVED">Архивные</SelectItem>
           </SelectContent>
         </Select>
-        <Button type="button" onClick={() => setCreateOpen(true)}>
-          Создать
-        </Button>
+        {canMutate ? (
+          <Button type="button" onClick={() => setCreateOpen(true)}>
+            Создать
+          </Button>
+        ) : null}
       </div>
       {listQuery.isError ? (
         <ErrorState
@@ -148,8 +167,9 @@ export function ReferenceDataView({ csrfToken }: { csrfToken: string }) {
           <thead>
             <tr className="border-b bg-background text-left text-[12px] font-medium text-muted-foreground">
               <th className="px-3 py-3">Название</th>
+              {showAddress ? <th className="px-3 py-3">Адрес</th> : null}
               <th className="px-3 py-3">Статус</th>
-              <th className="px-3 py-3">Действия</th>
+              {canMutate ? <th className="px-3 py-3">Действия</th> : null}
             </tr>
           </thead>
           <tbody>
@@ -158,39 +178,47 @@ export function ReferenceDataView({ csrfToken }: { csrfToken: string }) {
               const version = Number(item.version);
               const active = Boolean(item.active);
               const title = String(item.name ?? item.officialName ?? item.code);
+              const address = String(item.address ?? item.postalAddress ?? '');
               return (
                 <tr key={id} className="border-b">
                   <td className="px-3 py-3 font-medium">{title}</td>
+                  {showAddress ? (
+                    <td className="max-w-[28rem] truncate px-3 py-3 text-muted-foreground">
+                      {address || '—'}
+                    </td>
+                  ) : null}
                   <td className="px-3 py-3">
                     <Badge variant={active ? 'success' : 'outline'}>
                       {active ? 'Активно' : 'Архив'}
                     </Badge>
                   </td>
-                  <td className="px-3 py-3">
-                    {active ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setArchiveTarget({ id, version, title })}
-                      >
-                        Архивировать
-                      </Button>
-                    ) : (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          void mutate(`/api/reference-data/${tab}/${id}/restore`, 'POST', {
-                            expectedVersion: version,
-                          })
-                        }
-                      >
-                        Восстановить
-                      </Button>
-                    )}
-                  </td>
+                  {canMutate ? (
+                    <td className="px-3 py-3">
+                      {active ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setArchiveTarget({ id, version, title })}
+                        >
+                          Архивировать
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            void mutate(`/api/reference-data/${tab}/${id}/restore`, 'POST', {
+                              expectedVersion: version,
+                            })
+                          }
+                        >
+                          Восстановить
+                        </Button>
+                      )}
+                    </td>
+                  ) : null}
                 </tr>
               );
             })}
@@ -205,40 +233,46 @@ export function ReferenceDataView({ csrfToken }: { csrfToken: string }) {
           const version = Number(item.version);
           const active = Boolean(item.active);
           const title = String(item.name ?? item.officialName ?? item.code);
+          const address = String(item.address ?? item.postalAddress ?? '');
           return (
             <Card key={id} className="shadow-none">
               <CardContent className="grid gap-2 p-4">
-                <strong>{title}</strong>
+                <strong className="break-words">{title}</strong>
+                {showAddress && address ? (
+                  <p className="text-sm break-words text-muted-foreground">{address}</p>
+                ) : null}
                 <Badge variant={active ? 'success' : 'outline'} className="w-fit">
                   {active ? 'Активно' : 'Архив'}
                 </Badge>
-                {active ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setArchiveTarget({ id, version, title })}
-                  >
-                    Архивировать
-                  </Button>
-                ) : (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() =>
-                      void mutate(`/api/reference-data/${tab}/${id}/restore`, 'POST', {
-                        expectedVersion: version,
-                      })
-                    }
-                  >
-                    Восстановить
-                  </Button>
-                )}
+                {canMutate ? (
+                  active ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setArchiveTarget({ id, version, title })}
+                    >
+                      Архивировать
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() =>
+                        void mutate(`/api/reference-data/${tab}/${id}/restore`, 'POST', {
+                          expectedVersion: version,
+                        })
+                      }
+                    >
+                      Восстановить
+                    </Button>
+                  )
+                ) : null}
               </CardContent>
             </Card>
           );
         })}
       </div>
-      {createOpen ? (
+      {canMutate && createOpen ? (
         <CreateReferenceDialog
           tab={tab}
           onClose={() => setCreateOpen(false)}

@@ -30,7 +30,7 @@ export function navItemsForRole(role: UserRole): AppNavItem[] {
       match: (pathname) => pathname.startsWith('/deadlines'),
     });
   }
-  if (hasCapability(role, 'MANAGE_REFERENCE_DATA')) {
+  if (hasCapability(role, 'VIEW_REFERENCE_DATA')) {
     items.push({
       href: '/reference-data',
       label: 'Справочники',

@@ -240,8 +240,12 @@ describe('capabilities contract', () => {
   it('keeps role mappings aligned with the domain contract', () => {
     expect(capabilitiesForRole('ADMIN')).toContain('MANAGE_USERS');
     expect(capabilitiesForRole('SGR_MANAGER')).toContain('CREATE_ACT');
+    expect(capabilitiesForRole('SGR_MANAGER')).toContain('VIEW_REFERENCE_DATA');
+    expect(capabilitiesForRole('RESPONSIBLE_ENGINEER')).toContain('VIEW_REFERENCE_DATA');
+    expect(capabilitiesForRole('RESPONSIBLE_ENGINEER')).not.toContain('MANAGE_REFERENCE_DATA');
     expect(capabilitiesForRole('RESPONSIBLE_ENGINEER')).not.toContain('VIEW_ALL_ACTS');
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).toContain('EDIT_THIRD_PARTY_DEADLINE');
+    expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('VIEW_REFERENCE_DATA');
   });
 });
 

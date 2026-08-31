@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useId, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { MultiSelect } from '@/components/multi-select';
+import { LinkedObjectFields } from '@/components/linked-object-fields';
 import { PageHeader } from '@/components/page-header';
 import { ErrorState } from '@/components/states';
 import { Button } from '@/components/ui/button';
@@ -24,7 +25,7 @@ import { ApiError, commandFetch } from '../../../lib/command-api';
 import { queryKeys } from '../../../lib/query-keys';
 
 interface Lookups {
-  propertyObjects: Array<{ id: string; name: string }>;
+  propertyObjects: Array<{ id: string; name: string; address: string }>;
   customers: Array<{ id: string; officialName: string }>;
   defectTypes: Array<{ id: string; name: string }>;
   responsibleEngineers: Array<{ id: string; fullName: string }>;
@@ -164,21 +165,11 @@ export function CreateActForm({ csrfToken }: { csrfToken: string }) {
               </SelectContent>
             </Select>
           </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="object">Объект</Label>
-            <Select value={objectId} onValueChange={setObjectId}>
-              <SelectTrigger id="object" aria-label="Объект">
-                <SelectValue placeholder="Выберите объект" />
-              </SelectTrigger>
-              <SelectContent>
-                {(data?.propertyObjects ?? []).map((item) => (
-                  <SelectItem key={item.id} value={item.id}>
-                    {item.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <LinkedObjectFields
+            objects={data?.propertyObjects ?? []}
+            objectId={objectId}
+            onObjectIdChange={setObjectId}
+          />
           <div className="grid gap-1.5">
             <Label htmlFor="customer">Заказчик</Label>
             <Select value={customerOrganizationId} onValueChange={setCustomerOrganizationId}>

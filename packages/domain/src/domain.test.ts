@@ -15,6 +15,7 @@ import {
   assertUniqueProposalSlots,
   canAddProposalSlot,
   capabilitiesForRole,
+  canAccessReferenceKind,
   completeDefectItem,
   computeActStatus,
   createDefectItem,
@@ -47,6 +48,9 @@ import {
   shapeProposals,
   shapeSummary,
   isEmptyRegistryQuery,
+  filterPropertyObjects,
+  propertyObjectById,
+  selectablePropertyObjects,
 } from './index';
 
 describe('DefectItem lifecycle', () => {
@@ -235,6 +239,7 @@ describe('capabilities', () => {
     expect(capabilitiesForRole('ADMIN')).toEqual([
       'MANAGE_USERS',
       'MANAGE_REFERENCE_DATA',
+      'VIEW_REFERENCE_DATA',
       'VIEW_SYSTEM_STATUS',
       'VIEW_ALL_ACTS',
       'CREATE_ACT',
@@ -261,8 +266,10 @@ describe('capabilities', () => {
       'MANAGE_NOTIFICATION_SETTINGS',
     ]);
     expect(capabilitiesForRole('SGR_MANAGER')).toContain('CREATE_ACT');
+    expect(capabilitiesForRole('SGR_MANAGER')).toContain('VIEW_REFERENCE_DATA');
     expect(capabilitiesForRole('SGR_MANAGER')).not.toContain('MANAGE_USERS');
     expect(capabilitiesForRole('RESPONSIBLE_ENGINEER')).toEqual([
+      'VIEW_REFERENCE_DATA',
       'VIEW_ASSIGNED_DEFECTS',
       'EDIT_PLANNED_DEADLINE',
       'COMPLETE_DEFECT',
@@ -277,6 +284,9 @@ describe('capabilities', () => {
     ]);
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).toContain('EDIT_THIRD_PARTY_DEADLINE');
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('MANAGE_REFERENCE_DATA');
+    expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('VIEW_REFERENCE_DATA');
+    expect(hasCapability('RESPONSIBLE_ENGINEER', 'VIEW_REFERENCE_DATA')).toBe(true);
+    expect(hasCapability('RESPONSIBLE_ENGINEER', 'MANAGE_REFERENCE_DATA')).toBe(false);
     expect(hasCapability('RESPONSIBLE_ENGINEER', 'VIEW_ALL_ACTS')).toBe(false);
     expect(roleLabel('ADMIN')).toBe('Администратор');
   });
@@ -440,5 +450,65 @@ describe('summary and proposal shaping', () => {
         'proposalASum',
       ),
     ).toBe(false);
+  });
+});
+
+describe('property object linked selection', () => {
+  const objects = [
+    {
+      id: 'obj-north',
+      name: 'ЖК «Северный парк»',
+      address: 'г. Минск, ул. Вымышленная, 1',
+    },
+    {
+      id: 'obj-north-2',
+      name: 'ЖК «Северный парк»',
+      address: 'г. Минск, пр. Другой, 5',
+    },
+    {
+      id: 'obj-river',
+      name: 'ЖК «Речной квартал»',
+      address: 'г. Минск, ул. Вымышленная, 1',
+    },
+    {
+      id: 'obj-archived',
+      name: 'ЖК «Архивный корпус»',
+      address: 'г. Минск, ул. Закрытая, 9',
+      active: false,
+    },
+  ];
+
+  it('filters by name and address without exact match, case or alphabet', () => {
+    expect(filterPropertyObjects(objects, 'северный', 'name').map((item) => item.id)).toEqual([
+      'obj-north',
+      'obj-north-2',
+    ]);
+    expect(filterPropertyObjects(objects, 'ДРУГОЙ, 5', 'address').map((item) => item.id)).toEqual([
+      'obj-north-2',
+    ]);
+    expect(selectablePropertyObjects(objects).some((item) => item.id === 'obj-archived')).toBe(
+      false,
+    );
+  });
+
+  it('distinguishes duplicate names and addresses by id', () => {
+    const byName = filterPropertyObjects(objects, 'Северный парк', 'name');
+    expect(byName).toHaveLength(2);
+    expect(new Set(byName.map((item) => item.id)).size).toBe(2);
+    const sameAddress = filterPropertyObjects(objects, 'ул. Вымышленная, 1', 'address');
+    expect(sameAddress.map((item) => item.id).sort()).toEqual(['obj-north', 'obj-river']);
+    expect(propertyObjectById(objects, 'obj-river')?.name).toBe('ЖК «Речной квартал»');
+    expect(propertyObjectById(objects, 'obj-river')?.address).toBe('г. Минск, ул. Вымышленная, 1');
+    expect(propertyObjectById(objects, null)).toBeNull();
+  });
+
+  it('restricts reference kinds for view-only responsible engineers', () => {
+    expect(canAccessReferenceKind('RESPONSIBLE_ENGINEER', 'property-objects')).toBe(true);
+    expect(canAccessReferenceKind('RESPONSIBLE_ENGINEER', 'organizations')).toBe(true);
+    expect(canAccessReferenceKind('RESPONSIBLE_ENGINEER', 'work-types')).toBe(false);
+    expect(canAccessReferenceKind('RESPONSIBLE_ENGINEER', 'defect-types')).toBe(false);
+    expect(canAccessReferenceKind('CONTRACTOR_ENGINEER', 'property-objects')).toBe(false);
+    expect(canAccessReferenceKind('ADMIN', 'defect-types')).toBe(true);
+    expect(canAccessReferenceKind('SGR_MANAGER', 'organizations')).toBe(true);
   });
 });

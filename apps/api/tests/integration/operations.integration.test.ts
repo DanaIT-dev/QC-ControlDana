@@ -104,6 +104,14 @@ async function mutate(
   });
 }
 
+async function read(session: { cookie: string }, url: string) {
+  return inject({
+    method: 'GET',
+    url,
+    cookies: { [SESSION_COOKIE_NAME]: session.cookie },
+  });
+}
+
 async function catalogs() {
   const suffix = Math.random().toString(16).slice(2, 8);
   const object = await prisma.propertyObject.create({
@@ -355,6 +363,102 @@ describe('operations integration', () => {
     expect(stillThere?.active).toBe(false);
   });
 
+  it('lets RESPONSIBLE_ENGINEER read objects and organizations but not mutate catalogs', async () => {
+    const admin = await createUser('ADMIN');
+    const responsible = await createUser('RESPONSIBLE_ENGINEER');
+    const contractor = await createUser('CONTRACTOR_ENGINEER');
+    const adminSession = await login(admin.email);
+    const responsibleSession = await login(responsible.email);
+    const contractorSession = await login(contractor.email);
+    const created = await mutate(adminSession, {
+      method: 'POST',
+      url: '/api/reference-data/property-objects',
+      payload: { name: `Объект view ${Date.now()}`, address: 'Минск, просмотр' },
+    });
+    expect(created.statusCode).toBe(201);
+    const createdBody = created.json() as {
+      id: string;
+      version: number;
+      name: string;
+      address: string;
+    };
+    const objects = await read(responsibleSession, '/api/reference-data/property-objects');
+    expect(objects.statusCode).toBe(200);
+    const objectItems = (
+      objects.json() as { items: Array<{ id: string; name: string; address: string }> }
+    ).items;
+    expect(
+      objectItems.some((item) => item.id === createdBody.id && item.address === 'Минск, просмотр'),
+    ).toBe(true);
+    const orgs = await read(responsibleSession, '/api/reference-data/organizations');
+    expect(orgs.statusCode).toBe(200);
+    expect((orgs.json() as { items: unknown[] }).items).toBeDefined();
+    expect((await read(responsibleSession, '/api/reference-data/work-types')).statusCode).toBe(403);
+    expect((await read(responsibleSession, '/api/reference-data/defect-types')).statusCode).toBe(
+      403,
+    );
+    expect(
+      (
+        await read(
+          responsibleSession,
+          `/api/reference-data/property-objects/${createdBody.id}/history`,
+        )
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await mutate(responsibleSession, {
+          method: 'POST',
+          url: '/api/reference-data/property-objects',
+          payload: { name: 'Нет', address: 'Нет' },
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await mutate(responsibleSession, {
+          method: 'PATCH',
+          url: `/api/reference-data/property-objects/${createdBody.id}`,
+          payload: {
+            expectedVersion: createdBody.version,
+            name: 'Взлом',
+            address: 'Взлом',
+          },
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await mutate(responsibleSession, {
+          method: 'POST',
+          url: `/api/reference-data/property-objects/${createdBody.id}/archive`,
+          payload: { expectedVersion: createdBody.version },
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect((await read(contractorSession, '/api/reference-data/property-objects')).statusCode).toBe(
+      403,
+    );
+    expect(
+      (
+        await mutate(contractorSession, {
+          method: 'POST',
+          url: '/api/reference-data/organizations',
+          payload: {
+            officialName: 'Нет',
+            postalAddress: 'Нет',
+            email: 'no@example.sgr.local',
+            phone: '1',
+            contactPerson: 'Нет',
+            roles: ['CUSTOMER'],
+          },
+        })
+      ).statusCode,
+    ).toBe(403);
+    const afterDenied = await prisma.propertyObject.findUnique({ where: { id: createdBody.id } });
+    expect(afterDenied?.name).toBe(createdBody.name);
+  });
+
   it('creates acts with idempotency, unique numbers and assignment scope', async () => {
     const admin = await createUser('ADMIN');
     const manager = await createUser('SGR_MANAGER');
@@ -424,6 +528,46 @@ describe('operations integration', () => {
         })
       ).statusCode,
     ).toBe(403);
+    const stored = await prisma.act.findUnique({ where: { id: firstBody.id } });
+    expect(stored?.objectId).toBe(object.id);
+    expect(
+      (
+        await mutate(adminSession, {
+          method: 'POST',
+          url: '/api/acts',
+          payload: { ...payload, objectName: 'Подмена', objectAddress: 'Чужой адрес' },
+          headers: { 'idempotency-key': `spoof-${key}` },
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await mutate(adminSession, {
+          method: 'POST',
+          url: '/api/acts',
+          payload: { ...payload, objectId: '00000000-0000-4000-8000-000000000099' },
+          headers: { 'idempotency-key': `unknown-obj-${key}` },
+        })
+      ).statusCode,
+    ).toBe(400);
+    const archivedObject = await prisma.propertyObject.create({
+      data: {
+        name: `Архив ${key}`,
+        address: 'архивный адрес',
+        active: false,
+        archivedAt: new Date(),
+      },
+    });
+    expect(
+      (
+        await mutate(adminSession, {
+          method: 'POST',
+          url: '/api/acts',
+          payload: { ...payload, objectId: archivedObject.id },
+          headers: { 'idempotency-key': `archived-obj-${key}` },
+        })
+      ).statusCode,
+    ).toBe(400);
     const managerAct = await mutate(managerSession, {
       method: 'POST',
       url: '/api/acts',

@@ -3,6 +3,7 @@ import type { UserRole } from '@sgr-registry/contracts';
 export const CAPABILITIES = [
   'MANAGE_USERS',
   'MANAGE_REFERENCE_DATA',
+  'VIEW_REFERENCE_DATA',
   'VIEW_SYSTEM_STATUS',
   'VIEW_ALL_ACTS',
   'VIEW_ASSIGNED_DEFECTS',
@@ -36,6 +37,7 @@ const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
   ADMIN: [
     'MANAGE_USERS',
     'MANAGE_REFERENCE_DATA',
+    'VIEW_REFERENCE_DATA',
     'VIEW_SYSTEM_STATUS',
     'VIEW_ALL_ACTS',
     'CREATE_ACT',
@@ -63,6 +65,7 @@ const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
   ],
   SGR_MANAGER: [
     'MANAGE_REFERENCE_DATA',
+    'VIEW_REFERENCE_DATA',
     'VIEW_ALL_ACTS',
     'CREATE_ACT',
     'EDIT_ACT_HEADER',
@@ -101,6 +104,7 @@ const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
     'VIEW_DEADLINE_CONTROL',
   ],
   RESPONSIBLE_ENGINEER: [
+    'VIEW_REFERENCE_DATA',
     'VIEW_ASSIGNED_DEFECTS',
     'EDIT_PLANNED_DEADLINE',
     'COMPLETE_DEFECT',
@@ -118,6 +122,7 @@ const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
 export const CAPABILITY_LABELS: Record<Capability, string> = {
   MANAGE_USERS: 'Управление пользователями',
   MANAGE_REFERENCE_DATA: 'Управление справочниками',
+  VIEW_REFERENCE_DATA: 'Просмотр справочников',
   VIEW_SYSTEM_STATUS: 'Состояние системы',
   VIEW_ALL_ACTS: 'Просмотр всех актов',
   VIEW_ASSIGNED_DEFECTS: 'Просмотр назначенных дефектов',
@@ -159,6 +164,31 @@ export function canManageUsers(role: UserRole): boolean {
 
 export function canManageReferenceData(role: UserRole): boolean {
   return hasCapability(role, 'MANAGE_REFERENCE_DATA');
+}
+
+export function canViewReferenceData(role: UserRole): boolean {
+  return hasCapability(role, 'VIEW_REFERENCE_DATA');
+}
+
+export const MANAGED_REFERENCE_KINDS = [
+  'property-objects',
+  'organizations',
+  'work-types',
+  'defect-types',
+] as const;
+
+export const VIEW_ONLY_REFERENCE_KINDS = ['property-objects', 'organizations'] as const;
+
+export type ReferenceCatalogKind = (typeof MANAGED_REFERENCE_KINDS)[number];
+
+export function canAccessReferenceKind(role: UserRole, kind: string): boolean {
+  if (hasCapability(role, 'MANAGE_REFERENCE_DATA')) {
+    return (MANAGED_REFERENCE_KINDS as readonly string[]).includes(kind);
+  }
+  if (hasCapability(role, 'VIEW_REFERENCE_DATA')) {
+    return (VIEW_ONLY_REFERENCE_KINDS as readonly string[]).includes(kind);
+  }
+  return false;
 }
 
 export function canCreateAct(role: UserRole): boolean {

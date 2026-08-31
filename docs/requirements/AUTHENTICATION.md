@@ -75,7 +75,7 @@
 
 `mustChangePassword` блокирует продуктовые API до смены пароля на `/change-password`.
 
-`/registry` доступна активной сессии без обязательной смены пароля. `/system-status` и `/users` — только `ADMIN`. `/reference-data` и `/acts/new` — ADMIN и SGR_MANAGER. `GET /api/health` и `GET /api/ready` остаются машинными.
+`/registry` доступна активной сессии без обязательной смены пароля. `/system-status` и `/users` — только `ADMIN`. `/acts/new` — ADMIN и SGR_MANAGER. `/reference-data` — ADMIN, SGR_MANAGER и `RESPONSIBLE_ENGINEER` (последнему только просмотр объектов и организаций). `GET /api/health` и `GET /api/ready` остаются машинными.
 
 ## Аудит
 

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, cleanup, within } from '@testing-library/react';
+import { act, cleanup, render, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { hydrateRoot } from 'react-dom/client';
@@ -126,5 +126,48 @@ describe('create act draft ids', () => {
     expect(randomUUID).toHaveBeenCalledTimes(1);
 
     console.error = originalError;
+  });
+
+  it('submits only canonical objectId without name or address spoof fields', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/api/operations/lookups')) {
+        return {
+          ok: true,
+          json: async () => ({
+            propertyObjects: [
+              { id: 'obj-a', name: 'ЖК «Альфа»', address: 'г. Минск, ул. Первая, 1' },
+            ],
+            customers: [{ id: 'cust-1', officialName: 'Заказчик' }],
+            defectTypes: [{ id: 'type-1', name: 'Течь' }],
+            responsibleEngineers: [{ id: 'eng-1', fullName: 'Инженер' }],
+            liableOrganizations: [{ id: 'org-1', officialName: 'Подрядчик' }],
+          }),
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({ id: 'act-created' }),
+      };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { findByRole, getByRole } = render(formTree());
+    const user = userEvent.setup();
+    await user.click(await findByRole('combobox', { name: 'Объект' }));
+    await user.click(await findByRole('option', { name: /ул\. Первая, 1/ }));
+    await user.click(getByRole('button', { name: 'Создать акт' }));
+
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some((call) => String(call[0]).includes('/api/acts'))).toBe(true);
+    });
+    const createCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/api/acts'));
+    expect(createCall).toBeTruthy();
+    const body = JSON.parse(String(createCall?.[1]?.body)) as Record<string, unknown>;
+    expect(body.objectId).toBe('obj-a');
+    expect(body).not.toHaveProperty('objectName');
+    expect(body).not.toHaveProperty('objectAddress');
+    expect(body).not.toHaveProperty('name');
+    expect(body).not.toHaveProperty('address');
   });
 });

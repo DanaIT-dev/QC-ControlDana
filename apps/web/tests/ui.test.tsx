@@ -212,6 +212,7 @@ describe('role-aware navigation', () => {
   it('hides unavailable items', () => {
     const admin = navItemsForRole('ADMIN').map((item) => item.label);
     const responsible = navItemsForRole('RESPONSIBLE_ENGINEER').map((item) => item.label);
+    const contractor = navItemsForRole('CONTRACTOR_ENGINEER').map((item) => item.label);
     expect(admin).toEqual([
       'Реестр',
       'Создать акт',
@@ -220,7 +221,10 @@ describe('role-aware navigation', () => {
       'Пользователи',
       'Состояние системы',
     ]);
-    expect(responsible).toEqual(['Реестр', 'Контроль сроков']);
+    expect(responsible).toEqual(['Реестр', 'Контроль сроков', 'Справочники']);
+    expect(contractor).toEqual(['Реестр', 'Контроль сроков']);
+    expect(contractor).not.toContain('Справочники');
+    expect(contractor).not.toContain('Создать акт');
   });
 });
 

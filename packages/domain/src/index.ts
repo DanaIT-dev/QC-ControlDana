@@ -8,6 +8,7 @@ export * from './proposal';
 export * from './assignments';
 export * from './role-labels';
 export * from './capabilities';
+export * from './property-object-choice';
 export * from './email';
 export * from './password-policy';
 export * from './auth-constants';

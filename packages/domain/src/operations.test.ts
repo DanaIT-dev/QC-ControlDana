@@ -43,6 +43,8 @@ describe('permission matrix', () => {
     expect(hasCapability('ADMIN', 'MANAGE_USERS')).toBe(true);
     expect(hasCapability('SGR_MANAGER', 'MANAGE_USERS')).toBe(false);
     expect(capabilitiesForRole('RESPONSIBLE_ENGINEER')).not.toContain('MANAGE_PROPOSALS');
+    expect(hasCapability('RESPONSIBLE_ENGINEER', 'VIEW_REFERENCE_DATA')).toBe(true);
+    expect(hasCapability('RESPONSIBLE_ENGINEER', 'MANAGE_REFERENCE_DATA')).toBe(false);
     expect(hasCapability('CONTRACTOR_ENGINEER', 'COMPLETE_DEFECT')).toBe(false);
   });
 });
@@ -109,6 +111,24 @@ describe('act create validation', () => {
       defectItems: [],
     });
     expect(parsed.success).toBe(false);
+    const spoofed = createActRequestSchema.safeParse({
+      formCode: 'S1',
+      objectId: '11111111-1111-4111-8111-111111111111',
+      objectName: 'Подмена',
+      objectAddress: 'Чужой адрес',
+      customerOrganizationId: '22222222-2222-4222-8222-222222222222',
+      issuedOn: '2026-08-01',
+      defectItems: [
+        {
+          location: 'Кв. 1',
+          defectTypeId: '33333333-3333-4333-8333-333333333333',
+          claimDetails: 'Течь',
+          responsibleEngineerIds: ['44444444-4444-4444-8444-444444444444'],
+          liableOrganizationIds: ['55555555-5555-4555-8555-555555555555'],
+        },
+      ],
+    });
+    expect(spoofed.success).toBe(false);
     const unknown = patchActHeaderRequestSchema.safeParse({
       expectedVersion: 1,
       officialNumber: 'С-1-2026-000001',

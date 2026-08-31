@@ -11,7 +11,7 @@ async function login(page: Page, email: string, password = DEMO_PASSWORD) {
 }
 
 async function chooseFirst(page: Page, label: string) {
-  await page.getByRole('combobox', { name: label }).first().click();
+  await page.getByRole('combobox', { name: label, exact: true }).first().click();
   await page.getByRole('option').first().click();
 }
 

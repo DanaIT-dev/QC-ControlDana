@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   HttpCode,
   Inject,
@@ -12,6 +13,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { canAccessReferenceKind } from '@sgr-registry/domain';
 import type { FastifyRequest } from 'fastify';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { AuthenticationGuard } from '../auth/authentication.guard';
@@ -23,20 +25,25 @@ import { ReferenceDataService, type ReferenceKind } from './reference-data.servi
 
 @Controller('reference-data')
 @UseGuards(AuthenticationGuard, CapabilityGuard)
-@RequireCapability('MANAGE_REFERENCE_DATA')
 export class ReferenceDataController {
   constructor(
     @Inject(ReferenceDataService) private readonly referenceDataService: ReferenceDataService,
   ) {}
 
   @Get(':kind')
-  list(@Param('kind') kind: ReferenceKind, @Query() query: Record<string, unknown>) {
-    return this.referenceDataService.list(assertKind(kind), query);
+  @RequireCapability('VIEW_REFERENCE_DATA', 'MANAGE_REFERENCE_DATA')
+  list(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('kind') kind: ReferenceKind,
+    @Query() query: Record<string, unknown>,
+  ) {
+    return this.referenceDataService.list(assertReadableKind(kind, user.role), query);
   }
 
   @Post(':kind')
   @HttpCode(201)
   @UseGuards(BrowserOriginGuard, CsrfGuard)
+  @RequireCapability('MANAGE_REFERENCE_DATA')
   create(
     @CurrentUser() user: AuthenticatedUser,
     @Param('kind') kind: ReferenceKind,
@@ -48,6 +55,7 @@ export class ReferenceDataController {
 
   @Patch(':kind/:id')
   @UseGuards(BrowserOriginGuard, CsrfGuard)
+  @RequireCapability('MANAGE_REFERENCE_DATA')
   update(
     @CurrentUser() user: AuthenticatedUser,
     @Param('kind') kind: ReferenceKind,
@@ -61,6 +69,7 @@ export class ReferenceDataController {
   @Post(':kind/:id/archive')
   @HttpCode(200)
   @UseGuards(BrowserOriginGuard, CsrfGuard)
+  @RequireCapability('MANAGE_REFERENCE_DATA')
   archive(
     @CurrentUser() user: AuthenticatedUser,
     @Param('kind') kind: ReferenceKind,
@@ -74,6 +83,7 @@ export class ReferenceDataController {
   @Post(':kind/:id/restore')
   @HttpCode(200)
   @UseGuards(BrowserOriginGuard, CsrfGuard)
+  @RequireCapability('MANAGE_REFERENCE_DATA')
   restore(
     @CurrentUser() user: AuthenticatedUser,
     @Param('kind') kind: ReferenceKind,
@@ -85,6 +95,7 @@ export class ReferenceDataController {
   }
 
   @Get(':kind/:id/history')
+  @RequireCapability('MANAGE_REFERENCE_DATA')
   history(
     @Param('kind') kind: ReferenceKind,
     @Param('id') id: string,
@@ -104,4 +115,12 @@ function assertKind(kind: string): ReferenceKind {
     return kind;
   }
   throw new NotFoundException('Запись не найдена');
+}
+
+function assertReadableKind(kind: string, role: AuthenticatedUser['role']): ReferenceKind {
+  const asserted = assertKind(kind);
+  if (!canAccessReferenceKind(role, asserted)) {
+    throw new ForbiddenException('Недостаточно прав');
+  }
+  return asserted;
 }
