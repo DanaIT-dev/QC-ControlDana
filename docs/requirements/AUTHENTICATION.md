@@ -77,6 +77,8 @@
 
 `/registry` доступна активной сессии без обязательной смены пароля. `/system-status` и `/users` — только `ADMIN`. `/acts/new` — ADMIN и SGR_MANAGER. `/reference-data` — ADMIN, SGR_MANAGER и `RESPONSIBLE_ENGINEER` (последнему только просмотр объектов и организаций). `GET /api/health` и `GET /api/ready` остаются машинными.
 
+История изменений: `VIEW_HISTORY` у ADMIN и SGR_MANAGER (полный журнал), `VIEW_ASSIGNED_HISTORY` у RESPONSIBLE_ENGINEER (только назначенные дефекты). `CONTRACTOR_ENGINEER` не имеет ни одной history-capability: вкладка скрыта, прямые запросы `/history` и `/audit-log` возвращают `403`.
+
 ## Аудит
 
 Append-only `AuditLog`: `LOGIN_SUCCEEDED`, `LOGIN_FAILED`, `LOGIN_RATE_LIMITED`, `LOGOUT`, `LOGOUT_ALL`, `SESSION_REJECTED_ARCHIVED_USER`, `SESSION_REJECTED_VERSION_MISMATCH`.

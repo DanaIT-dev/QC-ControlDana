@@ -229,6 +229,22 @@ describe('role-aware navigation', () => {
   });
 });
 
+describe('history access in the act card', () => {
+  it('renders the history tab only when canViewHistory is true', () => {
+    const source = readFileSync(
+      resolve(import.meta.dirname, '../app/acts/[actId]/act-detail.tsx'),
+      'utf8',
+    );
+    expect(source).toContain('canViewHistory(user.role)');
+    expect(source).toContain('{showHistory ? <TabsTrigger value="history"');
+    expect(source).toContain('{showHistory ? (');
+    const logout = readFileSync(resolve(import.meta.dirname, '../lib/logout.ts'), 'utf8');
+    expect(logout).toContain('queryClient.clear()');
+    expect(logout).not.toContain('localStorage');
+    expect(logout).not.toContain('sessionStorage');
+  });
+});
+
 const sampleRow: RegistryDefectRow = {
   rowId: 'r1',
   actId: 'act-1',

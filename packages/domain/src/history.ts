@@ -1,4 +1,5 @@
 import type { UserRole } from '@sgr-registry/contracts';
+import { canViewAssignedHistory, canViewFullHistory } from './capabilities';
 import { visibleProposalSlots } from './registry-access';
 
 export const AUDIT_ACTIONS = [
@@ -118,8 +119,11 @@ export function historyVisibleToRole(
   event: HistoryEventSource,
   input: { role: UserRole; assignedDefectItemIds: ReadonlySet<string>; actId: string },
 ): boolean {
-  if (input.role !== 'RESPONSIBLE_ENGINEER') {
+  if (canViewFullHistory(input.role)) {
     return true;
+  }
+  if (!canViewAssignedHistory(input.role)) {
+    return false;
   }
   if (isProposalBcEvent(event)) {
     return false;
@@ -155,7 +159,7 @@ export function historyVisibleToRole(
 }
 
 export function shapeHistoryForRole(event: HistoryEventSource, role: UserRole): HistoryEventSource {
-  if (role !== 'RESPONSIBLE_ENGINEER') {
+  if (!canViewAssignedHistory(role) || canViewFullHistory(role)) {
     return event;
   }
   return {

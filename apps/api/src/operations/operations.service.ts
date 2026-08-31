@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import {
   addDefectRequestSchema,
   archiveProposalRequestSchema,
@@ -28,6 +28,9 @@ import {
   assertUniqueIds,
   calendarDateInTimeZone,
   calendarDateToUtcNoon,
+  canViewAssignedHistory,
+  canViewFullHistory,
+  canViewHistory,
   completeDefectItem,
   computeActStatus,
   createDefectItem,
@@ -46,6 +49,7 @@ import {
   parseProposalAmount,
   reopenDefectItem,
   shapeHistoryForRole,
+  visibleProposalSlots,
 } from '@sgr-registry/domain';
 import type { FastifyRequest } from 'fastify';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
@@ -868,27 +872,103 @@ export class OperationsService {
   }
 
   async actHistory(user: AuthenticatedUser, actId: string, rawQuery: Record<string, unknown>) {
+    this.assertHistoryRead(user);
     if (!UUID_PATTERN.test(actId)) {
       throw new NotFoundException('Запись не найдена');
     }
     const act = await this.requireVisibleAct(user, actId);
     const assigned = await this.assignedDefectIds(user, act.id);
+    return this.paginateHistory(
+      user,
+      {
+        OR: [
+          { entityType: 'ACT', entityId: act.id },
+          { parentEntityType: 'ACT', parentEntityId: act.id },
+          { parentEntityType: 'DEFECT_ITEM', parentEntityId: { in: [...assigned] } },
+          { entityType: 'DEFECT_ITEM', entityId: { in: [...assigned] } },
+        ],
+      },
+      assigned,
+      act.id,
+      rawQuery,
+    );
+  }
+
+  async defectHistory(
+    user: AuthenticatedUser,
+    defectItemId: string,
+    rawQuery: Record<string, unknown>,
+  ) {
+    this.assertHistoryRead(user);
+    const item = await this.requireVisibleDefect(user, defectItemId);
+    const assigned = await this.assignedDefectIds(user, item.actId);
+    return this.paginateHistory(
+      user,
+      {
+        OR: [
+          { entityType: 'DEFECT_ITEM', entityId: item.id },
+          { parentEntityType: 'DEFECT_ITEM', parentEntityId: item.id },
+        ],
+      },
+      assigned,
+      item.actId,
+      rawQuery,
+    );
+  }
+
+  async proposalHistory(
+    user: AuthenticatedUser,
+    proposalId: string,
+    rawQuery: Record<string, unknown>,
+  ) {
+    this.assertHistoryRead(user);
+    if (!UUID_PATTERN.test(proposalId)) {
+      throw new NotFoundException('Запись не найдена');
+    }
+    const proposal = await this.prisma.client.proposal.findFirst({
+      where: { id: proposalId },
+      select: { id: true, slot: true, defectItemId: true },
+    });
+    if (!proposal) {
+      throw new NotFoundException('Запись не найдена');
+    }
+    const item = await this.requireVisibleDefect(user, proposal.defectItemId);
+    if (
+      canViewAssignedHistory(user.role) &&
+      !canViewFullHistory(user.role) &&
+      !visibleProposalSlots(user.role).includes(proposal.slot)
+    ) {
+      throw new NotFoundException('Запись не найдена');
+    }
+    const assigned = await this.assignedDefectIds(user, item.actId);
+    return this.paginateHistory(
+      user,
+      { entityType: 'PROPOSAL', entityId: proposal.id },
+      assigned,
+      item.actId,
+      rawQuery,
+    );
+  }
+
+  private assertHistoryRead(user: AuthenticatedUser) {
+    if (!canViewHistory(user.role)) {
+      throw new ForbiddenException('Недостаточно прав');
+    }
+  }
+
+  private async paginateHistory(
+    user: AuthenticatedUser,
+    scope: Prisma.AuditLogWhereInput,
+    assigned: Set<string>,
+    actId: string,
+    rawQuery: Record<string, unknown>,
+  ) {
     const query = parseCommandBody(historyQuerySchema, rawQuery);
     const limit = query.limit ?? 50;
     const cursor = query.cursor ? decodeHistoryCursor(query.cursor) : null;
     const rows = await this.prisma.client.auditLog.findMany({
       where: {
-        AND: [
-          {
-            OR: [
-              { entityType: 'ACT', entityId: act.id },
-              { parentEntityType: 'ACT', parentEntityId: act.id },
-              { parentEntityType: 'DEFECT_ITEM', parentEntityId: { in: [...assigned] } },
-              { entityType: 'DEFECT_ITEM', entityId: { in: [...assigned] } },
-            ],
-          },
-          cursor ? historyWhereAfter(cursor) : {},
-        ],
+        AND: [scope, cursor ? historyWhereAfter(cursor) : {}],
       },
       orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
       take: 500,
@@ -908,12 +988,11 @@ export class OperationsService {
         historyVisibleToRole(event, {
           role: user.role,
           assignedDefectItemIds: assigned,
-          actId: act.id,
+          actId,
         }),
       )
-      .filter((event) => (user.role === 'RESPONSIBLE_ENGINEER' ? !isProposalBcEvent(event) : true));
-    const start = 0;
-    const page = visible.slice(start, start + limit);
+      .filter((event) => (canViewAssignedHistory(user.role) ? !isProposalBcEvent(event) : true));
+    const page = visible.slice(0, limit);
     return {
       items: page.map((row) => ({
         id: row.id,

@@ -46,7 +46,7 @@ export class ActsController {
 
   @Get(':actId/history')
   @UseGuards(CapabilityGuard)
-  @RequireCapability('VIEW_HISTORY')
+  @RequireCapability('VIEW_HISTORY', 'VIEW_ASSIGNED_HISTORY')
   history(
     @CurrentUser() user: AuthenticatedUser,
     @Param('actId') actId: string,

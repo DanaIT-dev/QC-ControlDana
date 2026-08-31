@@ -16,6 +16,9 @@ import {
   canAddProposalSlot,
   capabilitiesForRole,
   canAccessReferenceKind,
+  canViewAssignedHistory,
+  canViewFullHistory,
+  canViewHistory,
   completeDefectItem,
   computeActStatus,
   createDefectItem,
@@ -268,6 +271,8 @@ describe('capabilities', () => {
     ]);
     expect(capabilitiesForRole('SGR_MANAGER')).toContain('CREATE_ACT');
     expect(capabilitiesForRole('SGR_MANAGER')).toContain('VIEW_REFERENCE_DATA');
+    expect(capabilitiesForRole('SGR_MANAGER')).toContain('VIEW_HISTORY');
+    expect(capabilitiesForRole('SGR_MANAGER')).not.toContain('VIEW_ASSIGNED_HISTORY');
     expect(capabilitiesForRole('SGR_MANAGER')).not.toContain('MANAGE_USERS');
     expect(capabilitiesForRole('RESPONSIBLE_ENGINEER')).toEqual([
       'VIEW_REFERENCE_DATA',
@@ -275,7 +280,7 @@ describe('capabilities', () => {
       'EDIT_PLANNED_DEADLINE',
       'COMPLETE_DEFECT',
       'VIEW_PROPOSAL_A',
-      'VIEW_HISTORY',
+      'VIEW_ASSIGNED_HISTORY',
       'VIEW_ATTACHMENTS',
       'UPLOAD_DEFECT_ATTACHMENT',
       'ARCHIVE_ATTACHMENT',
@@ -286,9 +291,17 @@ describe('capabilities', () => {
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).toContain('EDIT_THIRD_PARTY_DEADLINE');
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('MANAGE_REFERENCE_DATA');
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('VIEW_REFERENCE_DATA');
+    expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('VIEW_HISTORY');
+    expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('VIEW_ASSIGNED_HISTORY');
     expect(hasCapability('RESPONSIBLE_ENGINEER', 'VIEW_REFERENCE_DATA')).toBe(true);
     expect(hasCapability('RESPONSIBLE_ENGINEER', 'MANAGE_REFERENCE_DATA')).toBe(false);
     expect(hasCapability('RESPONSIBLE_ENGINEER', 'VIEW_ALL_ACTS')).toBe(false);
+    expect(hasCapability('RESPONSIBLE_ENGINEER', 'VIEW_HISTORY')).toBe(false);
+    expect(hasCapability('RESPONSIBLE_ENGINEER', 'VIEW_ASSIGNED_HISTORY')).toBe(true);
+    expect(canViewFullHistory('ADMIN')).toBe(true);
+    expect(canViewFullHistory('SGR_MANAGER')).toBe(true);
+    expect(canViewAssignedHistory('RESPONSIBLE_ENGINEER')).toBe(true);
+    expect(canViewHistory('CONTRACTOR_ENGINEER')).toBe(false);
     expect(roleLabel('ADMIN')).toBe('Администратор');
   });
 });

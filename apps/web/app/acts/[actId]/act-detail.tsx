@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { canViewProposalGroupBC } from '@sgr-registry/domain';
+import { canViewProposalGroupBC, canViewHistory } from '@sgr-registry/domain';
 import type { SafeUserProfile } from '@sgr-registry/contracts';
 import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
@@ -64,6 +64,7 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
 
   const act = detailQuery.data;
   const showBC = canViewProposalGroupBC(user.role);
+  const showHistory = canViewHistory(user.role);
 
   return (
     <article className="act-detail grid gap-4">
@@ -143,7 +144,7 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
       <Tabs defaultValue="defects">
         <TabsList>
           <TabsTrigger value="defects">Дефекты</TabsTrigger>
-          <TabsTrigger value="history">История изменений</TabsTrigger>
+          {showHistory ? <TabsTrigger value="history">История изменений</TabsTrigger> : null}
         </TabsList>
         <TabsContent value="defects" className="mt-4 grid gap-3">
           {act.defectItems.map((item) => (
@@ -270,9 +271,11 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
             </Card>
           ))}
         </TabsContent>
-        <TabsContent value="history" className="mt-4">
-          <ActHistory actId={act.id} />
-        </TabsContent>
+        {showHistory ? (
+          <TabsContent value="history" className="mt-4">
+            <ActHistory actId={act.id} />
+          </TabsContent>
+        ) : null}
       </Tabs>
     </article>
   );

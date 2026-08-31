@@ -21,7 +21,8 @@
 | REOPEN_DEFECT                | да    | да          | нет                 | нет                                |
 | MANAGE_PROPOSALS             | да    | да          | да                  | нет                                |
 | VIEW_PROPOSAL_A              | да    | да          | да                  | да                                 |
-| VIEW_HISTORY                 | да    | да          | да                  | да, только свои строки             |
+| VIEW_HISTORY                 | да    | да          | нет                 | нет                                |
+| VIEW_ASSIGNED_HISTORY        | нет   | нет         | нет                 | да, только назначенные дефекты     |
 | CANCEL_ACT                   | да    | да          | нет                 | нет                                |
 | VIEW_ATTACHMENTS             | да    | да          | да                  | да, только доступный scope         |
 | UPLOAD_ACT_ATTACHMENT        | да    | да          | нет                 | нет                                |
@@ -34,5 +35,7 @@
 | MANAGE_NOTIFICATION_SETTINGS | да    | нет         | нет                 | нет                                |
 
 Сумма Proposal A видна ADMIN и SGR_MANAGER (`canViewProposalASum`). B/C видны всем, кроме RESPONSIBLE_ENGINEER. Для каждого видимого слота в реестре показываются наименование организации и стоимость.
+
+`VIEW_HISTORY` — полный журнал акта. `VIEW_ASSIGNED_HISTORY` — только события назначенных дефектов (и безопасный объём шапки акта). `CONTRACTOR_ENGINEER` не читает историю: вкладка и history API недоступны (`403`). Действия подрядчика по-прежнему пишутся в AuditLog и видны ADMIN и SGR_MANAGER.
 
 Capability без доступа к строке недостаточна: RESPONSIBLE с COMPLETE_DEFECT получает 404 на чужой DefectItem.

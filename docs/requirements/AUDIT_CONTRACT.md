@@ -12,4 +12,10 @@
 
 История newest first, cursor pagination, tie-break по `id`.
 
-RESPONSIBLE_ENGINEER видит только события назначенных DefectItem и безопасный объём шапки Act. События B/C исключаются полностью; totalCount их не считает. Значения не маскируются `null`.
+Чтение журнала:
+
+- `ADMIN` и `SGR_MANAGER` — полная история доступного акта (`VIEW_HISTORY`);
+- `RESPONSIBLE_ENGINEER` — только события назначенных DefectItem и безопасный объём шапки Act (`VIEW_ASSIGNED_HISTORY`). События B/C исключаются полностью; totalCount их не считает. Значения не маскируются `null`. Чужой акт/дефект → тот же безопасный `404`;
+- `CONTRACTOR_ENGINEER` — чтения нет (`403`), включая прямой запрос. Запись его действий в AuditLog не прекращается.
+
+Пользовательских update/delete endpoints нет.

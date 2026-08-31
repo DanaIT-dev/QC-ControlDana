@@ -47,6 +47,10 @@ describe('permission matrix', () => {
     expect(hasCapability('RESPONSIBLE_ENGINEER', 'VIEW_REFERENCE_DATA')).toBe(true);
     expect(hasCapability('RESPONSIBLE_ENGINEER', 'MANAGE_REFERENCE_DATA')).toBe(false);
     expect(hasCapability('CONTRACTOR_ENGINEER', 'COMPLETE_DEFECT')).toBe(false);
+    expect(hasCapability('CONTRACTOR_ENGINEER', 'VIEW_HISTORY')).toBe(false);
+    expect(hasCapability('CONTRACTOR_ENGINEER', 'VIEW_ASSIGNED_HISTORY')).toBe(false);
+    expect(hasCapability('ADMIN', 'VIEW_HISTORY')).toBe(true);
+    expect(hasCapability('RESPONSIBLE_ENGINEER', 'VIEW_ASSIGNED_HISTORY')).toBe(true);
   });
 });
 
@@ -247,6 +251,28 @@ describe('history visibility', () => {
       'RESPONSIBLE_ENGINEER',
     );
     expect(shaped.oldValue).toEqual({});
+  });
+
+  it('hides every history event from contractors', () => {
+    const visible = historyVisibleToRole(
+      {
+        id: 'e3',
+        action: 'DEADLINE_UPDATED',
+        entityType: 'DEFECT_ITEM',
+        entityId: 'd1',
+        parentEntityType: 'ACT',
+        parentEntityId: 'act',
+        oldValue: null,
+        newValue: { thirdPartyDeadline: '2026-10-01' },
+        reason: null,
+        actorUserId: 'u',
+        actorName: 'Подрядчик',
+        occurredAt: new Date(),
+        requestId: null,
+      },
+      { role: 'CONTRACTOR_ENGINEER', assignedDefectItemIds: new Set(['d1']), actId: 'act' },
+    );
+    expect(visible).toBe(false);
   });
 });
 

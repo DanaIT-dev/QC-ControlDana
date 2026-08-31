@@ -19,6 +19,7 @@ export const CAPABILITIES = [
   'MANAGE_PROPOSALS',
   'VIEW_PROPOSAL_A',
   'VIEW_HISTORY',
+  'VIEW_ASSIGNED_HISTORY',
   'CANCEL_ACT',
   'VIEW_ATTACHMENTS',
   'UPLOAD_ACT_ATTACHMENT',
@@ -94,7 +95,6 @@ const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
     'EDIT_THIRD_PARTY_DEADLINE',
     'MANAGE_PROPOSALS',
     'VIEW_PROPOSAL_A',
-    'VIEW_HISTORY',
     'VIEW_ATTACHMENTS',
     'UPLOAD_DEFECT_ATTACHMENT',
     'UPLOAD_PROPOSAL_ATTACHMENT',
@@ -109,7 +109,7 @@ const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
     'EDIT_PLANNED_DEADLINE',
     'COMPLETE_DEFECT',
     'VIEW_PROPOSAL_A',
-    'VIEW_HISTORY',
+    'VIEW_ASSIGNED_HISTORY',
     'VIEW_ATTACHMENTS',
     'UPLOAD_DEFECT_ATTACHMENT',
     'ARCHIVE_ATTACHMENT',
@@ -137,7 +137,8 @@ export const CAPABILITY_LABELS: Record<Capability, string> = {
   REOPEN_DEFECT: 'Возврат дефекта в работу',
   MANAGE_PROPOSALS: 'Управление предложениями',
   VIEW_PROPOSAL_A: 'Просмотр предложения A',
-  VIEW_HISTORY: 'Просмотр истории изменений',
+  VIEW_HISTORY: 'Просмотр полной истории изменений',
+  VIEW_ASSIGNED_HISTORY: 'Просмотр истории назначенных дефектов',
   CANCEL_ACT: 'Аннулирование актов',
   VIEW_ATTACHMENTS: 'Просмотр вложений',
   UPLOAD_ACT_ATTACHMENT: 'Загрузка документов акта',
@@ -193,4 +194,16 @@ export function canAccessReferenceKind(role: UserRole, kind: string): boolean {
 
 export function canCreateAct(role: UserRole): boolean {
   return hasCapability(role, 'CREATE_ACT');
+}
+
+export function canViewFullHistory(role: UserRole): boolean {
+  return hasCapability(role, 'VIEW_HISTORY');
+}
+
+export function canViewAssignedHistory(role: UserRole): boolean {
+  return hasCapability(role, 'VIEW_ASSIGNED_HISTORY');
+}
+
+export function canViewHistory(role: UserRole): boolean {
+  return canViewFullHistory(role) || canViewAssignedHistory(role);
 }

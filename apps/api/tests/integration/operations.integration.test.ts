@@ -871,4 +871,98 @@ describe('operations integration', () => {
     expect(lookupIds).toContain(alt.id);
     expect(lookupIds).not.toContain(archivedAlt.id);
   });
+
+  it('denies contractor history reads while still recording contractor mutations', async () => {
+    const admin = await createUser('ADMIN');
+    const manager = await createUser('SGR_MANAGER');
+    const contractor = await createUser('CONTRACTOR_ENGINEER');
+    const responsible = await createUser('RESPONSIBLE_ENGINEER');
+    const foreign = await createUser('RESPONSIBLE_ENGINEER');
+    const adminSession = await login(admin.email);
+    const managerSession = await login(manager.email);
+    const contractorSession = await login(contractor.email);
+    const responsibleSession = await login(responsible.email);
+    const foreignSession = await login(foreign.email);
+    const { object, customer, liable, alt, defectType } = await catalogs();
+    const created = await mutate(adminSession, {
+      method: 'POST',
+      url: '/api/acts',
+      payload: {
+        formCode: 'S1',
+        objectId: object.id,
+        customerOrganizationId: customer.id,
+        issuedOn: '2026-08-20',
+        defectItems: [
+          {
+            location: 'Кв. история',
+            defectTypeId: defectType.id,
+            claimDetails: 'Течь',
+            responsibleEngineerIds: [responsible.id],
+            liableOrganizationIds: [liable.id],
+            plannedDeadline: '2026-09-01',
+          },
+        ],
+      },
+      headers: { 'idempotency-key': `hist-${Date.now()}` },
+    });
+    expect(created.statusCode).toBe(201);
+    const actId = (created.json() as { id: string }).id;
+    createdActIds.push(actId);
+    const detail = await read(adminSession, `/api/acts/${actId}`);
+    const defectId = (detail.json() as { defectItems: Array<{ id: string }> }).defectItems[0]!.id;
+
+    const proposal = await mutate(adminSession, {
+      method: 'PUT',
+      url: `/api/defects/${defectId}/proposals/A`,
+      payload: { amount: '11.00', alternativeContractorOrganizationId: alt.id },
+    });
+    expect(proposal.statusCode).toBe(200);
+    const proposalId = (proposal.json() as { id: string }).id;
+
+    const afterProposal = await read(adminSession, `/api/acts/${actId}`);
+    const defectVersion = (
+      afterProposal.json() as { defectItems: Array<{ id: string; version: number }> }
+    ).defectItems[0]!.version;
+    const thirdParty = await mutate(contractorSession, {
+      method: 'PATCH',
+      url: `/api/defects/${defectId}/deadlines`,
+      payload: { expectedVersion: defectVersion, thirdPartyDeadline: '2026-10-01' },
+    });
+    expect(thirdParty.statusCode).toBe(200);
+
+    const adminHistory = await read(adminSession, `/api/acts/${actId}/history`);
+    expect(adminHistory.statusCode).toBe(200);
+    expect(JSON.stringify(adminHistory.json())).toContain('DEADLINE_UPDATED');
+
+    const managerHistory = await read(managerSession, `/api/acts/${actId}/history`);
+    expect(managerHistory.statusCode).toBe(200);
+
+    const assignedHistory = await read(responsibleSession, `/api/acts/${actId}/history`);
+    expect(assignedHistory.statusCode).toBe(200);
+    expect(JSON.stringify(assignedHistory.json())).not.toMatch(/"slot":"B"/);
+
+    const foreignHistory = await read(foreignSession, `/api/acts/${actId}/history`);
+    expect(foreignHistory.statusCode).toBe(404);
+
+    const forbiddenUrls = [
+      `/api/acts/${actId}/history`,
+      `/api/defects/${defectId}/history`,
+      `/api/proposals/${proposalId}/history`,
+      '/api/audit-log',
+      `/api/users/${admin.id}/history`,
+      `/api/acts/00000000-0000-4000-8000-000000000099/history`,
+    ];
+    for (const url of forbiddenUrls) {
+      const response = await read(contractorSession, url);
+      expect(response.statusCode).toBe(403);
+      const body = JSON.stringify(response.json());
+      expect(body).not.toMatch(/DEADLINE_UPDATED|actorName|totalCount|"items"/);
+      expect(body).not.toContain(admin.fullName);
+    }
+
+    const defectHistory = await read(adminSession, `/api/defects/${defectId}/history`);
+    expect(defectHistory.statusCode).toBe(200);
+    const proposalHistory = await read(adminSession, `/api/proposals/${proposalId}/history`);
+    expect(proposalHistory.statusCode).toBe(200);
+  });
 });

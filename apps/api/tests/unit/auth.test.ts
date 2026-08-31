@@ -246,6 +246,8 @@ describe('capabilities contract', () => {
     expect(capabilitiesForRole('RESPONSIBLE_ENGINEER')).not.toContain('VIEW_ALL_ACTS');
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).toContain('EDIT_THIRD_PARTY_DEADLINE');
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('VIEW_REFERENCE_DATA');
+    expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('VIEW_HISTORY');
+    expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('VIEW_ASSIGNED_HISTORY');
   });
 });
 
