@@ -40,6 +40,7 @@ import {
   effectiveDeadlineOf,
   deadlineStateOf,
   serializeDecimal,
+  formatProposalMoney,
   registryAccessMode,
   visibleProposalSlots,
   canViewProposalASum,
@@ -416,6 +417,9 @@ describe('deadlines', () => {
       '1180.50',
     );
     expect(() => serializeDecimal(1180.5)).toThrow();
+    expect(formatProposalMoney('1250.00', 'BYN')).toBe('1 250,00 BYN');
+    expect(formatProposalMoney('1180.50')).toBe('1 180,50 BYN');
+    expect(formatProposalMoney('0.00')).toBe('0,00 BYN');
   });
 });
 

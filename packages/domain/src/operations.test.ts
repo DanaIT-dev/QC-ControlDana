@@ -3,6 +3,7 @@ import {
   createActRequestSchema,
   patchActHeaderRequestSchema,
   patchDeadlinesRequestSchema,
+  upsertProposalRequestSchema,
 } from '@sgr-registry/contracts';
 import {
   assertAuditPayloadSafe,
@@ -193,6 +194,15 @@ describe('proposals', () => {
         status: 'ACTIVE',
       }),
     ).toBe(true);
+  });
+
+  it('rejects unknown organizationName on upsert', () => {
+    const parsed = upsertProposalRequestSchema.safeParse({
+      amount: '10.00',
+      alternativeContractorOrganizationId: '11111111-1111-4111-8111-111111111111',
+      organizationName: 'ООО Подмена',
+    });
+    expect(parsed.success).toBe(false);
   });
 });
 

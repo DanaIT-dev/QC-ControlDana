@@ -33,6 +33,6 @@
 | VIEW_DEADLINE_CONTROL        | да    | да          | THIRD_PARTY         | назначенные GENERAL                |
 | MANAGE_NOTIFICATION_SETTINGS | да    | нет         | нет                 | нет                                |
 
-Сумма Proposal A видна ADMIN и SGR_MANAGER (`canViewProposalASum`). B/C видны всем, кроме RESPONSIBLE_ENGINEER.
+Сумма Proposal A видна ADMIN и SGR_MANAGER (`canViewProposalASum`). B/C видны всем, кроме RESPONSIBLE_ENGINEER. Для каждого видимого слота в реестре показываются наименование организации и стоимость.
 
 Capability без доступа к строке недостаточна: RESPONSIBLE с COMPLETE_DEFECT получает 404 на чужой DefectItem.

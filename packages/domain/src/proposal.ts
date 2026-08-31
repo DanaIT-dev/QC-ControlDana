@@ -57,3 +57,10 @@ export function isProposalAmountExact(value: string): boolean {
     return false;
   }
 }
+
+export function formatProposalMoney(amount: string, currency = 'BYN'): string {
+  const normalized = parseProposalAmount(amount);
+  const [whole = '0', fraction = '00'] = normalized.split('.');
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  return `${grouped},${fraction} ${currency}`;
+}

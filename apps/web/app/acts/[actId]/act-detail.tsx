@@ -27,7 +27,9 @@ import { formatCalendarDate, formatTimestamp, isSafeDocumentHref } from '../../.
 import { queryKeys } from '../../../lib/query-keys';
 import { ActHistory, ActOperations } from './act-operations';
 import { AttachmentsPanel } from '@/components/attachments-panel';
+import { ProposalValue, proposalSlotOf } from '@/components/proposal-value';
 import { cn } from '@/lib/utils';
+import type { ReactNode } from 'react';
 
 export function ActDetailView({ actId, user }: { actId: string; user: SafeUserProfile }) {
   const params = useSearchParams();
@@ -177,24 +179,29 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
                   <Meta label="Дата готовности" value={formatTimestamp(item.readyAt)} />
                   <Meta
                     label="Предложение А"
-                    value={
-                      item.proposalA ? `${item.proposalA.amount} ${item.proposalA.currency}` : '—'
-                    }
+                    value={<ProposalValue proposal={item.proposalA} layout="block" />}
                   />
                   {showBC ? (
-                    <Meta
-                      label="Предложения B/C"
-                      value={
-                        item.proposalsBC?.length
-                          ? item.proposalsBC
-                              .map(
-                                (proposal) =>
-                                  `${proposal.slot}: ${proposal.amount} ${proposal.currency}`,
-                              )
-                              .join('; ')
-                          : '—'
-                      }
-                    />
+                    <>
+                      <Meta
+                        label="Предложение B"
+                        value={
+                          <ProposalValue
+                            proposal={proposalSlotOf(item.proposalsBC, 'B')}
+                            layout="block"
+                          />
+                        }
+                      />
+                      <Meta
+                        label="Предложение C"
+                        value={
+                          <ProposalValue
+                            proposal={proposalSlotOf(item.proposalsBC, 'C')}
+                            layout="block"
+                          />
+                        }
+                      />
+                    </>
                   ) : null}
                 </div>
                 {item.notes ? <p className="text-sm">Примечания: {item.notes}</p> : null}
@@ -271,11 +278,11 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
   );
 }
 
-function Meta({ label, value }: { label: string; value: string }) {
+function Meta({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="grid gap-1">
+    <div className="grid min-w-0 gap-1">
       <span className="text-[13px] text-muted-foreground">{label}</span>
-      <span className="text-sm">{value || '—'}</span>
+      <span className="text-sm">{value ?? '—'}</span>
     </div>
   );
 }

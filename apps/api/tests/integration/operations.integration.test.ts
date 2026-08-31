@@ -747,4 +747,128 @@ describe('operations integration', () => {
     });
     expect(after.statusCode).toBe(404);
   });
+
+  it('rejects unknown, archived and spoofed proposal organizations', async () => {
+    const admin = await createUser('ADMIN');
+    const responsible = await createUser('RESPONSIBLE_ENGINEER');
+    const adminSession = await login(admin.email);
+    const { object, customer, liable, alt, defectType } = await catalogs();
+    const archivedAlt = await prisma.organization.create({
+      data: {
+        officialName: `Архив альт ${Date.now()}`,
+        postalAddress: 'addr',
+        email: `arch-alt-${Date.now()}@example.sgr.local`,
+        phone: '1',
+        contactPerson: 'А',
+        active: false,
+        archivedAt: new Date(),
+        roles: { create: [{ role: 'ALTERNATIVE_CONTRACTOR' }] },
+      },
+    });
+    const created = await mutate(adminSession, {
+      method: 'POST',
+      url: '/api/acts',
+      payload: {
+        formCode: 'S1',
+        objectId: object.id,
+        customerOrganizationId: customer.id,
+        issuedOn: '2026-08-20',
+        defectItems: [
+          {
+            location: 'Кв. орг',
+            defectTypeId: defectType.id,
+            claimDetails: 'Течь',
+            responsibleEngineerIds: [responsible.id],
+            liableOrganizationIds: [liable.id],
+          },
+        ],
+      },
+      headers: { 'idempotency-key': `prop-org-${Date.now()}` },
+    });
+    expect(created.statusCode).toBe(201);
+    const actId = (created.json() as { id: string }).id;
+    createdActIds.push(actId);
+    const detail = await inject({
+      method: 'GET',
+      url: `/api/acts/${actId}`,
+      cookies: { [SESSION_COOKIE_NAME]: adminSession.cookie },
+    });
+    const defectId = (detail.json() as { defectItems: Array<{ id: string }> }).defectItems[0]!.id;
+
+    expect(
+      (
+        await mutate(adminSession, {
+          method: 'PUT',
+          url: `/api/defects/${defectId}/proposals/A`,
+          payload: {
+            amount: '10.00',
+            alternativeContractorOrganizationId: alt.id,
+            organizationName: 'ООО Подмена',
+          },
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await mutate(adminSession, {
+          method: 'PUT',
+          url: `/api/defects/${defectId}/proposals/A`,
+          payload: {
+            amount: '10.00',
+            alternativeContractorOrganizationId: '00000000-0000-4000-8000-000000000099',
+          },
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await mutate(adminSession, {
+          method: 'PUT',
+          url: `/api/defects/${defectId}/proposals/A`,
+          payload: {
+            amount: '10.00',
+            alternativeContractorOrganizationId: archivedAlt.id,
+          },
+        })
+      ).statusCode,
+    ).toBe(400);
+
+    const valid = await mutate(adminSession, {
+      method: 'PUT',
+      url: `/api/defects/${defectId}/proposals/A`,
+      payload: { amount: '15.50', alternativeContractorOrganizationId: alt.id },
+    });
+    expect(valid.statusCode).toBe(200);
+    expect((valid.json() as { slot: string }).slot).toBe('A');
+
+    const afterSave = await inject({
+      method: 'GET',
+      url: `/api/acts/${actId}`,
+      cookies: { [SESSION_COOKIE_NAME]: adminSession.cookie },
+    });
+    const proposalA = (
+      afterSave.json() as {
+        defectItems: Array<{
+          proposalA: { amount: string; currency: string; contractorName: string };
+        }>;
+      }
+    ).defectItems[0]!.proposalA;
+    expect(proposalA).toMatchObject({
+      amount: '15.50',
+      currency: 'BYN',
+      contractorName: alt.officialName,
+    });
+
+    const lookups = await inject({
+      method: 'GET',
+      url: '/api/operations/lookups',
+      cookies: { [SESSION_COOKIE_NAME]: adminSession.cookie },
+    });
+    expect(lookups.statusCode).toBe(200);
+    const lookupIds = (
+      lookups.json() as { alternativeContractors: Array<{ id: string }> }
+    ).alternativeContractors.map((org) => org.id);
+    expect(lookupIds).toContain(alt.id);
+    expect(lookupIds).not.toContain(archivedAlt.id);
+  });
 });

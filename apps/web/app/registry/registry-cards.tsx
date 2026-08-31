@@ -2,6 +2,7 @@
 
 import type { RegistryDefectRow } from '@sgr-registry/contracts';
 import { DeadlineBadge, deadlineToneClass, StatusBadge } from '@/components/status-badge';
+import { ProposalValue, proposalSlotOf } from '@/components/proposal-value';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { formatCalendarDate } from '../../lib/registry-url';
@@ -9,9 +10,11 @@ import { cn } from '@/lib/utils';
 
 export function RegistryCards({
   rows,
+  canViewBC,
   onOpen,
 }: {
   rows: RegistryDefectRow[];
+  canViewBC: boolean;
   onOpen: (row: RegistryDefectRow) => void;
 }) {
   return (
@@ -42,6 +45,7 @@ export function RegistryCards({
               <p className="text-sm text-muted-foreground">
                 Виновные: {row.liableOrganizations.map((item) => item.name).join(', ') || '—'}
               </p>
+              <ProposalBlocks row={row} canViewBC={canViewBC} />
               <Button type="button" className="mt-1 min-h-11" onClick={() => onOpen(row)}>
                 Открыть
               </Button>
@@ -50,5 +54,32 @@ export function RegistryCards({
         </li>
       ))}
     </ul>
+  );
+}
+
+function ProposalBlocks({ row, canViewBC }: { row: RegistryDefectRow; canViewBC: boolean }) {
+  const blocks = [
+    { label: 'Предложение А', proposal: row.proposalA },
+    ...(canViewBC
+      ? [
+          { label: 'Предложение B', proposal: proposalSlotOf(row.proposalsBC, 'B') },
+          { label: 'Предложение C', proposal: proposalSlotOf(row.proposalsBC, 'C') },
+        ]
+      : []),
+  ].filter((block) => block.proposal);
+
+  if (blocks.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="grid min-w-0 gap-2" data-slot="proposal-blocks">
+      {blocks.map((block) => (
+        <div key={block.label} className="grid min-w-0 gap-0.5">
+          <p className="text-[13px] text-muted-foreground">{block.label}</p>
+          <ProposalValue proposal={block.proposal} layout="block" />
+        </div>
+      ))}
+    </div>
   );
 }

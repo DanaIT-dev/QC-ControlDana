@@ -16,6 +16,7 @@ import { Input } from '../components/ui/input';
 import { DateRange } from '../app/registry/registry-filters';
 import { RegistryTable } from '../app/registry/registry-table';
 import { RegistryCards } from '../app/registry/registry-cards';
+import { ProposalValue } from '../components/proposal-value';
 import { navItemsForRole } from '../lib/app-nav';
 import { buildRegistryFilterChips } from '../lib/filter-chips';
 import { TooltipProvider } from '../components/ui/tooltip';
@@ -253,9 +254,17 @@ const sampleRow: RegistryDefectRow = {
   deadlineState: 'NORMAL',
   deadlineStateLabel: 'В срок',
   readyAt: null,
-  proposalA: null,
+  proposalA: {
+    slot: 'A',
+    amount: '1250.00',
+    currency: 'BYN',
+    contractorName: 'ООО «СтройСервис»',
+  },
   documentRef: null,
 };
+
+const longOrg =
+  'ООО «Очень длинное наименование альтернативной организации для проверки сокращения в ячейке реестра»';
 
 describe('RESPONSIBLE has no B/C controls', () => {
   it('does not render B/C toggle', () => {
@@ -276,6 +285,97 @@ describe('RESPONSIBLE has no B/C controls', () => {
     );
     expect(screen.queryByRole('button', { name: /предложения B и C/ })).toBeNull();
     expect(screen.queryByText('Предложение B')).toBeNull();
+    expect(screen.getByText('ООО «СтройСервис»')).toBeInTheDocument();
+    expect(screen.getByText('1 250,00 BYN')).toBeInTheDocument();
+  });
+});
+
+describe('proposal display', () => {
+  it('shows organization and BYN amount, dash when empty, and tooltip for long names', () => {
+    const { rerender } = render(
+      <TooltipProvider>
+        <ProposalValue
+          proposal={{
+            contractorName: longOrg,
+            amount: '1250.00',
+            currency: 'BYN',
+          }}
+        />
+      </TooltipProvider>,
+    );
+    const name = screen.getByText(longOrg);
+    expect(name.className).toMatch(/truncate/);
+    expect(name.className).toMatch(/font-medium/);
+    expect(name.getAttribute('data-slot')).toBe('tooltip-trigger');
+    expect(screen.getByText('1 250,00 BYN')).toBeInTheDocument();
+
+    rerender(
+      <TooltipProvider>
+        <ProposalValue proposal={null} />
+      </TooltipProvider>,
+    );
+    expect(screen.getByText('—')).toBeInTheDocument();
+    expect(screen.queryByText('0,00 BYN')).toBeNull();
+  });
+
+  it('keeps archived organization names on historical proposals', () => {
+    render(
+      <TooltipProvider>
+        <ProposalValue
+          proposal={{
+            contractorName: 'ООО «Архивная организация»',
+            amount: '640.00',
+            currency: 'BYN',
+          }}
+        />
+      </TooltipProvider>,
+    );
+    expect(screen.getByText('ООО «Архивная организация»')).toBeInTheDocument();
+    expect(screen.getByText('640,00 BYN')).toBeInTheDocument();
+  });
+
+  it('renders A/B/C columns without splitting organization and amount', () => {
+    render(
+      <TooltipProvider>
+        <RegistryTable
+          rows={[
+            {
+              ...sampleRow,
+              proposalsBC: [
+                {
+                  slot: 'B',
+                  amount: '1180.50',
+                  currency: 'BYN',
+                  contractorName: 'ООО «Альтернатива Б» (демо)',
+                },
+                {
+                  slot: 'C',
+                  amount: '1310.00',
+                  currency: 'BYN',
+                  contractorName: 'ООО «Альтернатива В» (демо)',
+                },
+              ],
+            },
+          ]}
+          canViewBC
+          expandBC
+          onToggleBC={() => undefined}
+          onOpen={() => undefined}
+          sortBy="effectiveDeadline"
+          sortDirection="asc"
+          onSort={() => undefined}
+          loading={false}
+        />
+      </TooltipProvider>,
+    );
+    expect(screen.getByText('Предложение А')).toBeInTheDocument();
+    expect(screen.getByText('Предложение B')).toBeInTheDocument();
+    expect(screen.getByText('Предложение C')).toBeInTheDocument();
+    expect(screen.queryByText('Организация')).toBeNull();
+    expect(screen.getByText('ООО «СтройСервис»')).toBeInTheDocument();
+    expect(screen.getByText('1 250,00 BYN')).toBeInTheDocument();
+    expect(screen.getByText('ООО «Альтернатива Б» (демо)')).toBeInTheDocument();
+    expect(screen.getByText('1 180,50 BYN')).toBeInTheDocument();
   });
 });
 
@@ -306,9 +406,53 @@ describe('states', () => {
 
 describe('mobile cards and date-only value', () => {
   it('renders defect cards instead of relying on the desktop table', () => {
-    render(<RegistryCards rows={[sampleRow]} onOpen={() => undefined} />);
+    render(<RegistryCards rows={[sampleRow]} canViewBC={false} onOpen={() => undefined} />);
     expect(document.querySelector('.defect-card')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Открыть' })).toBeInTheDocument();
+    expect(screen.getByText('Предложение А')).toBeInTheDocument();
+    expect(screen.getByText('ООО «СтройСервис»')).toBeInTheDocument();
+    expect(screen.getByText('1 250,00 BYN')).toBeInTheDocument();
+    expect(screen.queryByText('Предложение B')).toBeNull();
+  });
+
+  it('shows separate organization and amount lines for available A/B/C slots', () => {
+    render(
+      <RegistryCards
+        rows={[
+          {
+            ...sampleRow,
+            proposalsBC: [
+              {
+                slot: 'B',
+                amount: '1180.50',
+                currency: 'BYN',
+                contractorName: 'ООО «Альтернатива Б» (демо)',
+              },
+            ],
+          },
+        ]}
+        canViewBC
+        onOpen={() => undefined}
+      />,
+    );
+    expect(screen.getByText('Предложение А')).toBeInTheDocument();
+    expect(screen.getByText('Предложение B')).toBeInTheDocument();
+    expect(screen.queryByText('Предложение C')).toBeNull();
+    const amount = screen.getByText('1 250,00 BYN');
+    expect(amount.previousElementSibling).toHaveTextContent('ООО «СтройСервис»');
+  });
+
+  it('proposal editor keeps shadcn Select and submits organizationId', () => {
+    const source = readFileSync(
+      resolve(import.meta.dirname, '../app/acts/[actId]/act-operations.tsx'),
+      'utf8',
+    );
+    const editor = source.slice(source.indexOf('function ProposalEditor'));
+    expect(editor).toContain('aria-label="Организация"');
+    expect(editor).toContain('alternativeContractorOrganizationId: organizationId');
+    expect(editor).toContain('currentProposal?.contractorName');
+    expect(editor).toContain('<SelectTrigger');
+    expect(editor).not.toMatch(/<select[\s>]/);
   });
 
   it('keeps date-only values from date inputs', () => {

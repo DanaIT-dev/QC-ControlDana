@@ -207,7 +207,11 @@ export function RegistryView({ user }: { user: SafeUserProfile }) {
       ) : null}
       {!listQuery.isError && !listQuery.isLoading && rows.length > 0 ? (
         isMobile ? (
-          <RegistryCards rows={rows} onOpen={openRow} />
+          <RegistryCards
+            rows={rows}
+            canViewBC={canViewProposalGroupBC(user.role)}
+            onOpen={openRow}
+          />
         ) : (
           <RegistryTable
             rows={rows}

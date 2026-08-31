@@ -315,6 +315,13 @@ describe('registry integration', () => {
     expect(body.totalCount).toBe(body.items.length);
     expect(JSON.stringify(body)).not.toMatch(/"slot":"B"/);
     expect(JSON.stringify(body)).not.toMatch(/proposalsBC/);
+    const assigned = body.items.find((item) => item.rowId === sharedItemId);
+    expect(assigned?.proposalA).toMatchObject({
+      amount: '1250.00',
+      currency: 'BYN',
+      contractorName: expect.stringContaining('Альтернатива тест А'),
+    });
+    expect(Object.prototype.hasOwnProperty.call(assigned ?? {}, 'proposalsBC')).toBe(false);
   });
 
   it('returns a safe 404 for a foreign act id and hides the unassigned item on a split act', async () => {
@@ -333,9 +340,15 @@ describe('registry integration', () => {
     const response = await authedGet(cookie, '/api/registry/defects?pageSize=200');
     const body = response.json() as { items: Array<Record<string, unknown>> };
     const withBC = body.items.find((item) => item.rowId === sharedItemId);
-    expect(withBC?.proposalA).toMatchObject({ amount: '1250.00', currency: 'BYN' });
+    expect(withBC?.proposalA).toMatchObject({
+      amount: '1250.00',
+      currency: 'BYN',
+      contractorName: expect.stringContaining('Альтернатива тест А'),
+    });
+    expect(JSON.stringify(withBC?.proposalA)).not.toMatch(/unp|postalAddress|archivedAt|phone/);
     expect(JSON.stringify(withBC)).toMatch(/"slot":"B"/);
     expect(JSON.stringify(withBC)).toContain('1180.50');
+    expect(JSON.stringify(withBC)).toMatch(/Альтернатива тест Б/);
   });
 
   it('accepts only 25/50/100/200 page sizes', async () => {

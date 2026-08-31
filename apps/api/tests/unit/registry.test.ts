@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { RegistryAccessScope } from '../../src/registry/registry-access-scope';
 import { deadlineStateWhere, registryOrderBy } from '../../src/registry/registry-query-builder';
 import { shapeProposals, shapeSummary } from '@sgr-registry/domain';
+import { registryListSelect } from '../../src/registry/registry-serializer';
 
 describe('RegistryAccessScope', () => {
   it('keeps assigned-only filtering inside the Prisma where for responsible engineers', () => {
@@ -40,6 +41,15 @@ describe('registry query builder', () => {
 });
 
 describe('response shaping', () => {
+  it('loads the contractor name in the list query instead of a per-row lookup', () => {
+    expect(registryListSelect.proposals.select.alternativeContractor).toEqual({
+      select: { officialName: true },
+    });
+    expect(Object.keys(registryListSelect.proposals.select.alternativeContractor.select)).toEqual([
+      'officialName',
+    ]);
+  });
+
   it('does not emit a proposalsBC key for responsible engineers', () => {
     const shaped = shapeProposals(
       [

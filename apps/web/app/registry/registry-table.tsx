@@ -10,6 +10,7 @@ import {
   StatusBadge,
   TruncateText,
 } from '@/components/status-badge';
+import { ProposalValue, proposalSlotOf } from '@/components/proposal-value';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { formatCalendarDate, formatTimestamp, isSafeDocumentHref } from '../../lib/registry-url';
@@ -134,10 +135,8 @@ export function RegistryTable({
       {
         id: 'proposalA',
         header: 'Предложение А',
-        cell: ({ row }) => (
-          <span className="block text-right">{amount(row.original.proposalA)}</span>
-        ),
-        meta: { className: 'col-secondary hidden xl:table-cell text-right' },
+        cell: ({ row }) => <ProposalValue proposal={row.original.proposalA} />,
+        meta: { className: 'col-secondary hidden xl:table-cell min-w-0' },
       },
     ];
     if (canViewBC && expandBC) {
@@ -145,17 +144,17 @@ export function RegistryTable({
         id: 'proposalB',
         header: 'Предложение B',
         cell: ({ row }) => (
-          <span className="block text-right">{amount(slot(row.original, 'B'))}</span>
+          <ProposalValue proposal={proposalSlotOf(row.original.proposalsBC, 'B')} />
         ),
-        meta: { className: 'col-bc text-right' },
+        meta: { className: 'col-bc min-w-0' },
       });
       base.push({
         id: 'proposalC',
         header: 'Предложение C',
         cell: ({ row }) => (
-          <span className="block text-right">{amount(slot(row.original, 'C'))}</span>
+          <ProposalValue proposal={proposalSlotOf(row.original.proposalsBC, 'C')} />
         ),
-        meta: { className: 'col-bc text-right' },
+        meta: { className: 'col-bc min-w-0' },
       });
     }
     base.push({
@@ -262,7 +261,7 @@ export function RegistryTable({
                     key={row.id}
                     tabIndex={0}
                     className={cn(
-                      'registry-row h-14 cursor-pointer border-b hover:bg-muted/40 focus-visible:bg-accent',
+                      'registry-row min-h-14 cursor-pointer border-b hover:bg-muted/40 focus-visible:bg-accent',
                       deadlineToneClass(row.original.deadlineState),
                     )}
                     onClick={() => onOpen(row.original)}
@@ -339,17 +338,6 @@ function names(values: string[]) {
       <TooltipContent>{text}</TooltipContent>
     </Tooltip>
   );
-}
-
-function slot(row: RegistryDefectRow, code: 'B' | 'C') {
-  return row.proposalsBC?.find((item) => item.slot === code) ?? null;
-}
-
-function amount(value: RegistryDefectRow['proposalA']) {
-  if (!value) {
-    return '—';
-  }
-  return `${value.amount} ${value.currency}`;
 }
 
 function classNameOf(meta: unknown): string | undefined {
