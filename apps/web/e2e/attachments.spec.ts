@@ -30,10 +30,11 @@ test.describe('attachments', () => {
   test('ADMIN uploads a PDF and sees READY without skeleton leftovers', async ({ page }) => {
     await login(page, ACCOUNTS.admin.email);
     await openFirstAct(page);
+    const readyBadges = page.getByText('Готово');
+    await expect(readyBadges.first()).toBeVisible();
+    const readyBefore = await readyBadges.count();
     await page.getByRole('button', { name: 'Загрузить' }).first().click();
     await expect(page.getByRole('heading', { name: 'Загрузка файла' })).toBeVisible();
-    const readyBadges = page.getByText('Готово');
-    const readyBefore = await readyBadges.count();
     await page.locator('#attachment-file').setInputFiles({
       name: 'act-scan.pdf',
       mimeType: 'application/pdf',

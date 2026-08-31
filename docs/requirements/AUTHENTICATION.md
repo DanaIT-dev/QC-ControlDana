@@ -93,7 +93,9 @@ pnpm test:integration
 pnpm test:e2e
 ```
 
-Integration-тесты используют только `TEST_DATABASE_URL` с именем базы `*_test`. Playwright поднимает Chromium и проверяет вход, роли, logout и вёрстку 390 px.
+Integration-тесты используют `TEST_DATABASE_URL` (имя `*_test`) и раздельные `DATABASE_URL` / `AUTH_DATABASE_URL` / `WORKER_DATABASE_URL` / `MIGRATION_DATABASE_URL`, перенаправленные на test-базу. Playwright поднимает Chromium и проверяет вход, роли, logout и вёрстку 390 px.
+
+API ходит в PostgreSQL как `sgr_app_user`, login/session/password — как `sgr_auth_user`. Секрет RLS (`RLS_CONTEXT_SECRET`) не доступен AUTH и не читается из таблицы runtime-ролями. См. [RLS_OPERATIONS.md](../security/RLS_OPERATIONS.md).
 
 ## Production
 

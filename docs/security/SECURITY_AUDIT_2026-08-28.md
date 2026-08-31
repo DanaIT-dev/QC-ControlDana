@@ -58,7 +58,7 @@ Out of scope:
 - External SMTP, public URLs, non-loopback DAST targets
 - Destructive ZAP active scan against development data
 - Production cluster images (this environment uses local compose images)
-- 1С, SMS, Telegram, WebSocket, PostgreSQL RLS (not in this version)
+- 1С, SMS, Telegram, WebSocket (1С исключена из проекта, не будущий канал)
 
 ## Exclusions
 

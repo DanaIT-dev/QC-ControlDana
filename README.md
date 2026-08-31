@@ -2,7 +2,7 @@
 
 Внутренний продукт Dana Holding. Модульный монолит: web, API, worker, PostgreSQL, Redis и S3-совместимое хранилище.
 
-Текущий этап — уведомления, контроль сроков, Mailpit/SMTP и transactional outbox. 1С, SMS, Telegram, WebSocket, PostgreSQL RLS не входят в эту версию.
+Текущий этап включает PostgreSQL RLS и раздельные роли БД. Акты создаются вручную. Интеграция с 1С исключена. SMS, Telegram и WebSocket не входят в эту версию.
 
 ## UI
 

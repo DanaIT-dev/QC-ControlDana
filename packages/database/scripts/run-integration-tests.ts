@@ -3,13 +3,14 @@ import { resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { config as loadDotenv } from 'dotenv';
 import { Pool } from 'pg';
+import { applyTestDatabaseEnv } from '../src/test-env';
 import { assertSafeTestDatabaseUrl } from '../src/test-database';
 
 const repoRoot = resolve(__dirname, '../../..');
 const envFile = existsSync(resolve(repoRoot, '.env'))
   ? resolve(repoRoot, '.env')
   : resolve(repoRoot, '.env.example');
-loadDotenv({ path: envFile });
+loadDotenv({ path: envFile, override: true });
 
 const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 
@@ -45,12 +46,13 @@ async function main(): Promise<void> {
     await pool.end();
   }
 
-  process.env.DATABASE_URL = databaseUrl;
   process.env.NODE_ENV = 'test';
+  applyTestDatabaseEnv(databaseUrl);
 
+  const extraArgs = process.argv.slice(2).filter((arg) => arg !== '--');
   const child = spawn(
     'pnpm',
-    ['exec', 'vitest', 'run', '--config', 'vitest.integration.config.mts'],
+    ['exec', 'vitest', 'run', '--config', 'vitest.integration.config.mts', ...extraArgs],
     {
       cwd: resolve(__dirname, '..'),
       stdio: 'inherit',

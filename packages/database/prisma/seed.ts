@@ -12,13 +12,13 @@ import {
   normalizeUnp,
 } from '@sgr-registry/domain';
 import argon2 from 'argon2';
-import { allocateActNumber, createPrismaClient } from '../src/index';
+import { allocateActNumber, createOwnerPrismaClient } from '../src/index';
 
 const repoRoot = resolve(__dirname, '../../..');
 const envFile = existsSync(resolve(repoRoot, '.env'))
   ? resolve(repoRoot, '.env')
   : resolve(repoRoot, '.env.example');
-loadDotenv({ path: envFile });
+loadDotenv({ path: envFile, override: true });
 
 const DEFECT_TYPES = [
   { code: 'SEWER', name: 'Дефекты канализации', sortOrder: 1 },
@@ -93,12 +93,12 @@ const DEMO_USERS = [
 ] as const;
 
 async function seed(): Promise<void> {
-  const databaseUrl = process.env.DATABASE_URL;
+  const databaseUrl = process.env.MIGRATION_DATABASE_URL ?? process.env.DATABASE_URL;
   if (!databaseUrl) {
-    throw new Error('DATABASE_URL is required to seed the database');
+    throw new Error('MIGRATION_DATABASE_URL is required to seed the database');
   }
 
-  const prisma = createPrismaClient(databaseUrl);
+  const prisma = createOwnerPrismaClient(databaseUrl);
   const isProduction = process.env.NODE_ENV === 'production';
   const demoPassword = isProduction ? undefined : process.env.SEED_DEMO_PASSWORD;
   if (!isProduction && !demoPassword) {

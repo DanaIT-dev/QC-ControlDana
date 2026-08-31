@@ -38,7 +38,7 @@ ADMIN и SGR_MANAGER назначают ответственных инжене�
 
 Атомарная операция: шапка, минимум один DefectItem, назначения, сроки, AuditLog, номер из `allocateActNumber`.
 
-Вручную акты создают роли с `CREATE_ACT`: `ADMIN`, `SGR_MANAGER` и `RESPONSIBLE_ENGINEER`. Инженер создаёт акт только на активном объекте, за которым он закреплён; чужой или архивный `objectId` → тот же безопасный `404`. Автоматическое поступление актов из 1С будет отдельным будущим этапом и дополнит ручной способ, а не заменит его. Поле источника акта и интеграция с 1С в этой версии не реализуются.
+Вручную акты создают роли с `CREATE_ACT`: `ADMIN`, `SGR_MANAGER` и `RESPONSIBLE_ENGINEER`. Инженер создаёт акт только на активном объекте, за которым он закреплён; чужой или архивный `objectId` → тот же безопасный `404`. Интеграция с 1С исключена из проекта и не является каналом поступления актов.
 
 Каноническая связь с объектом — только `objectId`. Клиент не передаёт наименование и адрес как доверенные поля: схема `createActRequestSchema` их отклоняет. Сервер проверяет, что объект существует и активен. В форме создания акта наименование и адрес — связанные combobox к одному `objectId`.
 
@@ -94,4 +94,4 @@ RESPONSIBLE не мутирует Proposal, получает только A (о�
 
 Вложения: XOR-владелец, stream upload, ClamAV до READY, архив без физического DELETE. См. [ATTACHMENTS_CONTRACT.md](./ATTACHMENTS_CONTRACT.md).
 
-PostgreSQL RLS по-прежнему не используется: действует прикладной `RegistryAccessScope`.
+PostgreSQL RLS — второй уровень защиты поверх `RegistryAccessScope`: отдельные runtime-роли, `FORCE ROW LEVEL SECURITY`, HMAC-контекст. См. [RLS_POLICY_MATRIX.md](../security/RLS_POLICY_MATRIX.md) и [RLS_OPERATIONS.md](../security/RLS_OPERATIONS.md).

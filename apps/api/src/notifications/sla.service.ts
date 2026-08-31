@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { SlaListResponse, SlaSummaryResponse } from '@sgr-registry/contracts';
-import type { Prisma, PrismaClient } from '@sgr-registry/database';
+import type { Prisma } from '@sgr-registry/database';
 import {
   DEFAULT_SLA_PAGE_SIZE,
   addCalendarDays,
@@ -14,12 +14,16 @@ import {
   slaStateOf,
 } from '@sgr-registry/domain';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
-import { PRISMA_CLIENT } from '../auth/prisma.tokens';
+import { PrismaService } from '../auth/prisma.tokens';
 import { RegistryAccessScope } from '../registry/registry-access-scope';
 
 @Injectable()
 export class SlaQueryService {
-  constructor(@Inject(PRISMA_CLIENT) private readonly prisma: PrismaClient) {}
+  constructor(@Inject(PrismaService) private readonly prismaService: PrismaService) {}
+
+  private get prisma() {
+    return this.prismaService.client;
+  }
 
   async summary(user: AuthenticatedUser): Promise<SlaSummaryResponse> {
     const base = this.baseWhere(user);

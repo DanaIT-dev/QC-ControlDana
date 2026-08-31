@@ -34,10 +34,13 @@ docker compose -f infra/docker/compose.yaml --env-file .env up -d --force-recrea
 
 ```bash
 docker compose -f infra/docker/compose.yaml --env-file .env up -d
+pnpm db:roles:provision
 pnpm db:migrate
-# также примените миграции к TEST_DATABASE_URL
+# также примените миграции к test-базе (тот же migrator URL с именем *_test)
 pnpm db:seed
 ```
+
+Не используйте bootstrap `sgr_registry` в `DATABASE_URL` / `AUTH_DATABASE_URL` / `WORKER_DATABASE_URL`. Seed и migrate — `MIGRATION_DATABASE_URL`. Development-базу не reset-ьте ради RLS.
 
 Порты PostgreSQL, Redis, MinIO, Mailpit и ClamAV публикуются только на `127.0.0.1`. Проверка:
 

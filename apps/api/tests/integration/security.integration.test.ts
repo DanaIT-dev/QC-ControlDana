@@ -4,7 +4,7 @@ import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { loadConfig } from '@sgr-registry/config';
 import {
-  createPrismaClient,
+  createOwnerPrismaClient,
   disconnectPrismaClient,
   type PrismaClient,
 } from '@sgr-registry/database';
@@ -66,7 +66,7 @@ describe('API security harness', () => {
     process.env.NODE_ENV = 'test';
     process.env.REDIS_KEY_PREFIX = 'sgr-test';
     const config = loadConfig();
-    prisma = createPrismaClient(config.DATABASE_URL);
+    prisma = createOwnerPrismaClient(config.MIGRATION_DATABASE_URL);
     redis = new Redis(config.REDIS_URL, { maxRetriesPerRequest: 1 });
     app = await NestFactory.create<NestFastifyApplication>(
       AppModule,

@@ -38,6 +38,8 @@
 
 Сумма Proposal A видна ADMIN и SGR_MANAGER (`canViewProposalASum`). B/C видны всем, кроме RESPONSIBLE_ENGINEER. Для каждого видимого слота в реестре показываются наименование организации и стоимость. RESPONSIBLE не мутирует A/B/C.
 
-`VIEW_HISTORY` — полный журнал акта. `VIEW_ASSIGNED_HISTORY` — события всех дефектов актов закреплённых объектов (и безопасный объём шапки акта); B/C исключаются. `CONTRACTOR_ENGINEER` не читает историю: вкладка и history API недоступны (`403`). Действия подрядчика по-прежнему пишутся в AuditLog и видны ADMIN и SGR_MANAGER.
+`VIEW_HISTORY` — полный журнал акта. `VIEW_ASSIGNED_HISTORY` — события всех дефектов актов закреплённых объектов (и безопасный объём шапки акта); B/C исключаются. `CONTRACTOR_ENGINEER` не читает историю: вкладка и history API недоступны (`403`), прямой SQL под runtime-ролью тоже пуст. Действия подрядчика по-прежнему пишутся в AuditLog и видны ADMIN и SGR_MANAGER.
 
 Capability без доступа к строке недостаточна: RESPONSIBLE с COMPLETE_DEFECT получает безопасный `404` на акт/дефект чужого объекта. Отсутствие capability → `403`. Завершённый дефект не редактирует RESPONSIBLE; ADMIN и SGR_MANAGER — только с подтверждением и причиной.
+
+PostgreSQL RLS дублирует эту матрицу как второй уровень (объектный scope, слот A vs B/C, запрет истории подрядчику, неизменяемый AuditLog). Подробности: [RLS_POLICY_MATRIX.md](../security/RLS_POLICY_MATRIX.md).

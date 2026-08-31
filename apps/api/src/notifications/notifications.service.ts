@@ -5,7 +5,6 @@ import type {
   UnreadCountResponse,
 } from '@sgr-registry/contracts';
 import { notificationSettingsPatchSchema } from '@sgr-registry/contracts';
-import type { PrismaClient } from '@sgr-registry/database';
 import {
   DEFAULT_NOTIFICATION_PAGE_SIZE,
   StaleWriteError,
@@ -18,7 +17,7 @@ import {
 } from '@sgr-registry/domain';
 import type { FastifyRequest } from 'fastify';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
-import { PRISMA_CLIENT } from '../auth/prisma.tokens';
+import { PrismaService } from '../auth/prisma.tokens';
 import { parseCommandBody } from '../common/command-body';
 import { actorContext } from '../common/request-context';
 import { toJsonValue, writeAuditLog } from '../common/audit-writer';
@@ -26,7 +25,11 @@ import { RegistryAccessScope } from '../registry/registry-access-scope';
 
 @Injectable()
 export class NotificationsService {
-  constructor(@Inject(PRISMA_CLIENT) private readonly prisma: PrismaClient) {}
+  constructor(@Inject(PrismaService) private readonly prismaService: PrismaService) {}
+
+  private get prisma() {
+    return this.prismaService.client;
+  }
 
   async list(
     user: AuthenticatedUser,

@@ -4,7 +4,7 @@ import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { loadConfig } from '@sgr-registry/config';
 import {
-  createPrismaClient,
+  createOwnerPrismaClient,
   disconnectPrismaClient,
   type PrismaClient,
 } from '@sgr-registry/database';
@@ -101,7 +101,7 @@ describe('auth integration', () => {
     process.env.AUTH_LOGIN_WINDOW_SECONDS = '30';
     process.env.AUTH_LOGIN_MAX_FAILURES = '5';
     const config = loadConfig();
-    prisma = createPrismaClient(config.DATABASE_URL);
+    prisma = createOwnerPrismaClient(config.MIGRATION_DATABASE_URL);
     redis = new Redis(config.REDIS_URL, { maxRetriesPerRequest: 1 });
     app = await NestFactory.create<NestFastifyApplication>(
       AppModule,

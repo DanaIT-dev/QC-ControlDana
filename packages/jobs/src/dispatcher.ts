@@ -155,6 +155,13 @@ export class NotificationDispatcher {
       }
       await this.markProcessed(claimed.id);
     } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        (error.code === 'P2003' || error.code === 'P2025')
+      ) {
+        await this.markProcessed(claimed.id);
+        return;
+      }
       const attempts = claimed.attempts;
       const dead = isTerminalAttempt(attempts, OUTBOX_MAX_ATTEMPTS);
       await this.prisma.outboxEvent.update({

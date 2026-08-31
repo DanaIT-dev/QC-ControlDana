@@ -56,20 +56,18 @@ Docker Compose поднимает:
 
 Экран «Контроль сроков» (`/deadlines`) читает `SlaClock` в `RegistryAccessScope`. Состояние считает сервер в `Europe/Minsk`.
 
-## Будущая интеграция с 1С
+## Создание актов
 
-Интеграция с 1С не входит в текущую версию: нет импорта, синхронизации, внешнего API 1С и поля источника акта.
+Акты создаются только вручную (`CREATE_ACT` у ADMIN, SGR_MANAGER и RESPONSIBLE_ENGINEER на закреплённых активных объектах). Интеграция с 1С исключена из проекта и не является каналом поступления данных.
 
-Ручное создание актов (`CREATE_ACT` у ADMIN и SGR_MANAGER) сохраняется после подключения 1С. Интеграция будет дополнительным каналом поступления актов, а не заменой ручного ввода.
+## Доступ к реестру и PostgreSQL RLS
 
-Когда она появится, её следует подключать адаптером на границе `apps/api` или `apps/worker`, который отображает внешние документы на уже существующие доменные сущности (`Act`, `DefectItem`, `Organization`). Доменная модель не должна получать поля «1С» или знать протокол обмена. Конфликты и идемпотентность импорта остаются в антикоррупционном слое, а не в `packages/domain`.
+Список, count, summary, filter-options и карточка акта используют прикладной `RegistryAccessScope` (Guards, capabilities, Prisma `where`) и второй уровень — PostgreSQL RLS (`FORCE ROW LEVEL SECURITY`, verified HMAC-контекст, отдельные runtime-роли). Коммерческие поля B/C скрываются и serializer’ом, и row policy / slot predicate: RESPONSIBLE_ENGINEER не читает B/C даже прямым SQL под `sgr_app`. Пагинация выполняется в PostgreSQL (`skip`/`take`). Для сортировки по `effectiveDeadline` используется generated stored column `COALESCE(claimDeadline, plannedDeadline)`.
+
+Роли БД, provisioning и rotation секрета: [RLS_OPERATIONS.md](../security/RLS_OPERATIONS.md), матрица: [RLS_POLICY_MATRIX.md](../security/RLS_POLICY_MATRIX.md).
 
 ## Операционные команды
 
 Мутации идут через command-specific DTO со strict whitelist, не через generic PATCH. Цепочка: сессия → mustChangePassword → CSRF → capability → RegistryAccessScope → валидация → инвариант → optimistic concurrency → transaction + AuditLog → safe serializer.
 
 Идемпотентность создания акта хранится в `idempotency_records` с уникальным ключом `(actorUserId, command, idempotencyKey)`.
-
-## Реестр DefectItem
-
-Список, count, summary, filter-options и карточка акта используют один `RegistryAccessScope`. Условие доступа входит в Prisma `where`; это прикладной scope, а не PostgreSQL RLS. Коммерческие поля B/C формируются role-aware serializer на сервере и не маскируются на клиенте. Пагинация выполняется в PostgreSQL (`skip`/`take`). Для сортировки по `effectiveDeadline` используется generated stored column `COALESCE(claimDeadline, plannedDeadline)`.

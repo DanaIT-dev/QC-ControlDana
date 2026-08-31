@@ -3,12 +3,24 @@ import { resolve } from 'node:path';
 import { config as loadDotenv } from 'dotenv';
 import { z } from 'zod';
 
+const BOOTSTRAP_DB_USERS = new Set(['sgr_registry', 'postgres']);
+
+function postgresUser(url: string): string {
+  try {
+    return decodeURIComponent(new URL(url).username);
+  } catch {
+    return '';
+  }
+}
+
 function hydrateProcessEnv(): void {
   let dir = process.cwd();
   for (let i = 0; i < 8; i += 1) {
     const envPath = resolve(dir, '.env');
     if (existsSync(envPath)) {
-      loadDotenv({ path: envPath });
+      const bootstrap =
+        !process.env.DATABASE_URL || BOOTSTRAP_DB_USERS.has(postgresUser(process.env.DATABASE_URL));
+      loadDotenv({ path: envPath, override: bootstrap });
       return;
     }
     const parent = resolve(dir, '..');
@@ -29,6 +41,15 @@ const booleanFalse = z
   .default('false')
   .transform((value) => value === 'true' || value === '1');
 
+const postgresUrl = (name: string) =>
+  z
+    .string()
+    .min(1, `${name} is required`)
+    .refine(
+      (value) => value.startsWith('postgresql://') || value.startsWith('postgres://'),
+      `${name} must be a PostgreSQL connection string`,
+    );
+
 const envSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -36,13 +57,11 @@ const envSchema = z
     API_PORT: z.coerce.number().int().positive().default(3001),
     WEB_PORT: z.coerce.number().int().positive().default(3000),
     WEB_ORIGIN: z.url().default('http://localhost:3000'),
-    DATABASE_URL: z
-      .string()
-      .min(1, 'DATABASE_URL is required')
-      .refine(
-        (value) => value.startsWith('postgresql://') || value.startsWith('postgres://'),
-        'DATABASE_URL must be a PostgreSQL connection string',
-      ),
+    DATABASE_URL: postgresUrl('DATABASE_URL'),
+    AUTH_DATABASE_URL: postgresUrl('AUTH_DATABASE_URL'),
+    WORKER_DATABASE_URL: postgresUrl('WORKER_DATABASE_URL'),
+    MIGRATION_DATABASE_URL: postgresUrl('MIGRATION_DATABASE_URL'),
+    RLS_CONTEXT_SECRET: z.string().min(32, 'RLS_CONTEXT_SECRET must be at least 32 characters'),
     REDIS_URL: z
       .string()
       .min(1, 'REDIS_URL is required')
@@ -128,6 +147,38 @@ const envSchema = z
           code: 'custom',
           path: ['WEB_ORIGIN'],
           message: 'WEB_ORIGIN must use HTTPS in production',
+        });
+      }
+    }
+    if (value.NODE_ENV === 'production') {
+      const runtimeUrls: Array<[string, string, string]> = [
+        ['DATABASE_URL', value.DATABASE_URL, 'sgr_app_user'],
+        ['AUTH_DATABASE_URL', value.AUTH_DATABASE_URL, 'sgr_auth_user'],
+        ['WORKER_DATABASE_URL', value.WORKER_DATABASE_URL, 'sgr_worker_user'],
+      ];
+      for (const [path, url, expected] of runtimeUrls) {
+        const user = postgresUser(url);
+        if (BOOTSTRAP_DB_USERS.has(user) || user === 'sgr_owner' || user === 'sgr_migrator') {
+          ctx.addIssue({
+            code: 'custom',
+            path: [path],
+            message: `${path} must not use bootstrap, owner, or migrator roles at runtime`,
+          });
+        }
+        if (user && user !== expected) {
+          ctx.addIssue({
+            code: 'custom',
+            path: [path],
+            message: `${path} must use ${expected} in production`,
+          });
+        }
+      }
+      const migratorUser = postgresUser(value.MIGRATION_DATABASE_URL);
+      if (BOOTSTRAP_DB_USERS.has(migratorUser)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['MIGRATION_DATABASE_URL'],
+          message: 'MIGRATION_DATABASE_URL must not use the bootstrap superuser',
         });
       }
     }

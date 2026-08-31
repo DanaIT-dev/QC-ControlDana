@@ -15,9 +15,7 @@
 
 ## Access scope
 
-Доступ к строкам задаётся централизованно (`RegistryAccessScope`) и входит в Prisma `where` для списка, count, summary, filter-options и карточки акта. Клиентские role/capabilities не являются источником прав. Запрещённые строки не отфильтровываются после полной выборки из БД.
-
-На этом этапе это **прикладной** access scope, а не PostgreSQL RLS. Политика RLS будет отдельным этапом.
+Доступ к строкам задаётся централизованно (`RegistryAccessScope`) и входит в Prisma `where` для списка, count, summary, filter-options и карточки акта. Клиентские role/capabilities не являются источником прав. Запрещённые строки не отфильтровываются после полной выборки из БД. PostgreSQL RLS (`FORCE`, verified HMAC-контекст) — второй уровень: RESPONSIBLE видит только закреплённые объекты, B/C скрыты от RESPONSIBLE на уровне строк, подрядчик не читает `audit_logs`.
 
 Правила:
 

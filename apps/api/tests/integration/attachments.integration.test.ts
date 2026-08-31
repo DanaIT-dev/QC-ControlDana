@@ -6,7 +6,7 @@ import { loadConfig } from '@sgr-registry/config';
 import {
   allocateActNumber,
   assertSafeTestBucket,
-  createPrismaClient,
+  createOwnerPrismaClient,
   disconnectPrismaClient,
   Prisma,
   type PrismaClient,
@@ -156,7 +156,7 @@ describe('attachments integration', () => {
     process.env.REDIS_KEY_PREFIX = 'sgr-test';
     const config = loadConfig();
     assertSafeTestBucket(config.S3_TEST_BUCKET);
-    prisma = createPrismaClient(config.DATABASE_URL);
+    prisma = createOwnerPrismaClient(config.MIGRATION_DATABASE_URL);
     redis = new Redis(config.REDIS_URL, { maxRetriesPerRequest: 1 });
     const clamd = new ClamdClient(config.CLAMD_HOST, config.CLAMD_PORT);
     const started = Date.now();

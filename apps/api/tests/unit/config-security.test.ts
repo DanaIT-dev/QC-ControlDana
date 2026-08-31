@@ -5,7 +5,11 @@ import { sessionCookieOptions, sessionCookieSecure } from '../../src/auth/cookie
 function productionEnv(overrides: Record<string, string> = {}) {
   return {
     NODE_ENV: 'production',
-    DATABASE_URL: 'postgresql://sgr:sgr@localhost:5432/sgr_registry',
+    DATABASE_URL: 'postgresql://sgr_app_user:sgr@localhost:5432/sgr_registry',
+    AUTH_DATABASE_URL: 'postgresql://sgr_auth_user:sgr@localhost:5432/sgr_registry',
+    WORKER_DATABASE_URL: 'postgresql://sgr_worker_user:sgr@localhost:5432/sgr_registry',
+    MIGRATION_DATABASE_URL: 'postgresql://sgr_migrator:sgr@localhost:5432/sgr_registry',
+    RLS_CONTEXT_SECRET: 'production-rls-context-secret-value-32',
     REDIS_URL: 'redis://localhost:6379',
     S3_ENDPOINT: 'https://minio.example.local',
     S3_REGION: 'us-east-1',
@@ -45,5 +49,24 @@ describe('production session cookie policy', () => {
     expect(config.SESSION_IDLE_TIMEOUT_SECONDS).toBe(12 * 60 * 60);
     expect(config.SESSION_ABSOLUTE_LIFETIME_SECONDS).toBe(7 * 24 * 60 * 60);
     expect(sessionCookieSecure(config.NODE_ENV)).toBe(true);
+  });
+
+  it('refuses production runtime URLs that use bootstrap, owner, or migrator roles', () => {
+    expect(() =>
+      loadConfig(productionEnv({ DATABASE_URL: 'postgresql://sgr_registry:x@localhost:5432/sgr' })),
+    ).toThrow(MissingConfigurationError);
+    expect(() =>
+      loadConfig(productionEnv({ DATABASE_URL: 'postgresql://sgr_owner:x@localhost:5432/sgr' })),
+    ).toThrow(MissingConfigurationError);
+    expect(() =>
+      loadConfig(
+        productionEnv({ WORKER_DATABASE_URL: 'postgresql://sgr_migrator:x@localhost:5432/sgr' }),
+      ),
+    ).toThrow(MissingConfigurationError);
+    expect(() =>
+      loadConfig(
+        productionEnv({ MIGRATION_DATABASE_URL: 'postgresql://sgr_registry:x@localhost:5432/sgr' }),
+      ),
+    ).toThrow(MissingConfigurationError);
   });
 });

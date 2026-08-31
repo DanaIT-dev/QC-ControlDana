@@ -122,9 +122,7 @@
 ## Отложено на следующие этапы
 
 - загрузка документов в S3/MinIO — см. [ATTACHMENTS_CONTRACT.md](./ATTACHMENTS_CONTRACT.md);
-- интеграция с 1С — дополнительный будущий канал создания актов, ручной ввод сохраняется (ADMIN, SGR_MANAGER и RESPONSIBLE_ENGINEER на закреплённых объектах);
 - SMS, Telegram, мобильные push, WebSocket;
 - фактические расходы и взыскания;
 - электронная подпись;
-- production deployment;
-- PostgreSQL RLS (сейчас используется прикладной access scope в запросах).
+- production deployment.

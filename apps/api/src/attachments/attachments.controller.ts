@@ -20,6 +20,7 @@ import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { CapabilityGuard, RequireCapability } from '../common/capability.guard';
 import { buildContentDisposition, ValidationError } from '@sgr-registry/domain';
 import '@fastify/multipart';
+import { SkipRlsTransaction } from '../auth/skip-rls-transaction';
 import { AttachmentsService } from './attachments.service';
 
 @Controller()
@@ -35,6 +36,7 @@ export class AttachmentsController {
 
   @Post('acts/:actId/attachments')
   @HttpCode(202)
+  @SkipRlsTransaction()
   @UseGuards(BrowserOriginGuard, CsrfGuard)
   @RequireCapability('UPLOAD_ACT_ATTACHMENT')
   async uploadAct(
@@ -55,6 +57,7 @@ export class AttachmentsController {
 
   @Post('defects/:defectItemId/attachments')
   @HttpCode(202)
+  @SkipRlsTransaction()
   @UseGuards(BrowserOriginGuard, CsrfGuard)
   @RequireCapability('UPLOAD_DEFECT_ATTACHMENT')
   async uploadDefect(
@@ -81,6 +84,7 @@ export class AttachmentsController {
 
   @Post('proposals/:proposalId/attachments')
   @HttpCode(202)
+  @SkipRlsTransaction()
   @UseGuards(BrowserOriginGuard, CsrfGuard)
   @RequireCapability('UPLOAD_PROPOSAL_ATTACHMENT')
   async uploadProposal(
@@ -106,6 +110,7 @@ export class AttachmentsController {
   }
 
   @Get('attachments/:attachmentId/content')
+  @SkipRlsTransaction()
   @RequireCapability('DOWNLOAD_ATTACHMENT')
   @Header('X-Content-Type-Options', 'nosniff')
   @Header('Cache-Control', 'private, no-store')

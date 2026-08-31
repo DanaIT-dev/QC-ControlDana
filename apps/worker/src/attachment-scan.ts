@@ -1,5 +1,5 @@
 import { loadConfig } from '@sgr-registry/config';
-import { Prisma, type PrismaClient } from '@sgr-registry/database';
+import { Prisma, type PrismaClient, withWorkerDbContext } from '@sgr-registry/database';
 import { isScanTerminal, shouldFailScan } from '@sgr-registry/domain';
 import { notifyAttachmentScan, OutboxWriter, toJsonValue, writeAuditLog } from '@sgr-registry/jobs';
 import type { Job } from 'bullmq';
@@ -12,7 +12,13 @@ export const ATTACHMENT_RECOVERY_JOB = 'attachment.recover';
 
 export async function processAttachmentJob(
   job: Job<{ attachmentId?: string }>,
-  deps: { prisma: PrismaClient; store: ObjectStore; outboxWriter: OutboxWriter },
+  deps: {
+    prisma: PrismaClient;
+    store: ObjectStore;
+    outboxWriter: OutboxWriter;
+    rootPrisma: PrismaClient;
+    secret: string;
+  },
 ): Promise<{ ok: boolean }> {
   if (job.name === ATTACHMENT_RECOVERY_JOB) {
     return { ok: true };
@@ -28,15 +34,28 @@ export async function processAttachmentJob(
 async function scanAttachment(
   attachmentId: string,
   attempt: number,
-  deps: { prisma: PrismaClient; store: ObjectStore; outboxWriter: OutboxWriter },
+  deps: {
+    prisma: PrismaClient;
+    store: ObjectStore;
+    outboxWriter: OutboxWriter;
+    rootPrisma: PrismaClient;
+    secret: string;
+  },
 ): Promise<void> {
   const config = loadConfig();
   const clamd = new ClamdClient(config.CLAMD_HOST, config.CLAMD_PORT);
-  const acquired = await deps.prisma.attachment.updateMany({
-    where: { id: attachmentId, status: { in: ['PENDING_SCAN', 'SCANNING'] } },
-    data: { status: 'SCANNING' },
-  });
-  const attachment = await deps.prisma.attachment.findUnique({ where: { id: attachmentId } });
+  const inWorkerTx = <T>(fn: () => Promise<T>): Promise<T> =>
+    withWorkerDbContext({ prisma: deps.rootPrisma, secret: deps.secret, callback: fn });
+
+  const acquired = await inWorkerTx(() =>
+    deps.prisma.attachment.updateMany({
+      where: { id: attachmentId, status: { in: ['PENDING_SCAN', 'SCANNING'] } },
+      data: { status: 'SCANNING' },
+    }),
+  );
+  const attachment = await inWorkerTx(() =>
+    deps.prisma.attachment.findUnique({ where: { id: attachmentId } }),
+  );
   if (!attachment) {
     return;
   }
@@ -61,48 +80,56 @@ async function scanAttachment(
           );
     const result = await clamd.scanStream(stream);
     if (result.clean) {
-      await finishScan(deps, attachment, {
-        type: 'ATTACHMENT_READY',
-        action: 'ATTACHMENT_SCAN_PASSED',
-        data: {
-          status: 'READY',
-          scannedAt: new Date(),
-          scanEngine: result.engine,
-          scanSignature: null,
-          failureCode: null,
-        },
-        audit: { status: 'READY' },
-      });
+      await inWorkerTx(() =>
+        finishScan(deps, attachment, {
+          type: 'ATTACHMENT_READY',
+          action: 'ATTACHMENT_SCAN_PASSED',
+          data: {
+            status: 'READY',
+            scannedAt: new Date(),
+            scanEngine: result.engine,
+            scanSignature: null,
+            failureCode: null,
+          },
+          audit: { status: 'READY' },
+        }),
+      );
       return;
     }
-    await finishScan(deps, attachment, {
-      type: 'ATTACHMENT_REJECTED',
-      action: 'ATTACHMENT_REJECTED',
-      data: {
-        status: 'REJECTED',
-        scannedAt: new Date(),
-        scanEngine: result.engine,
-        scanSignature: result.signature,
-        rejectionReason: 'Обнаружена угроза',
-        objectKey: null,
-      },
-      audit: { status: 'REJECTED', scanSignature: result.signature },
-    });
+    await inWorkerTx(() =>
+      finishScan(deps, attachment, {
+        type: 'ATTACHMENT_REJECTED',
+        action: 'ATTACHMENT_REJECTED',
+        data: {
+          status: 'REJECTED',
+          scannedAt: new Date(),
+          scanEngine: result.engine,
+          scanSignature: result.signature,
+          rejectionReason: 'Обнаружена угроза',
+          objectKey: null,
+        },
+        audit: { status: 'REJECTED', scanSignature: result.signature },
+      }),
+    );
     await deps.store.deleteExact(attachment.objectKey);
   } catch (error) {
     if (shouldFailScan(attempt)) {
-      await finishScan(deps, attachment, {
-        type: 'ATTACHMENT_SCAN_FAILED',
-        action: 'ATTACHMENT_SCAN_FAILED',
-        data: { status: 'SCAN_FAILED', failureCode: 'SCANNER_UNAVAILABLE' },
-        audit: { status: 'SCAN_FAILED' },
-      });
+      await inWorkerTx(() =>
+        finishScan(deps, attachment, {
+          type: 'ATTACHMENT_SCAN_FAILED',
+          action: 'ATTACHMENT_SCAN_FAILED',
+          data: { status: 'SCAN_FAILED', failureCode: 'SCANNER_UNAVAILABLE' },
+          audit: { status: 'SCAN_FAILED' },
+        }),
+      );
       return;
     }
-    await deps.prisma.attachment.update({
-      where: { id: attachmentId },
-      data: { status: 'PENDING_SCAN' },
-    });
+    await inWorkerTx(() =>
+      deps.prisma.attachment.update({
+        where: { id: attachmentId },
+        data: { status: 'PENDING_SCAN' },
+      }),
+    );
     throw error;
   }
 }

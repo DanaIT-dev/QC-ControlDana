@@ -2,13 +2,13 @@ import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { allocateActNumber } from '../../src/act-number';
-import { createPrismaClient } from '../../src/client';
+import { createOwnerPrismaClient } from '../../src/client';
 import { assertSafeTestDatabaseUrl } from '../../src/test-database';
 
-const databaseUrl = process.env.DATABASE_URL ?? '';
+const databaseUrl = process.env.MIGRATION_DATABASE_URL ?? process.env.DATABASE_URL ?? '';
 assertSafeTestDatabaseUrl(databaseUrl);
 
-const prisma = createPrismaClient(databaseUrl);
+const prisma = createOwnerPrismaClient(databaseUrl);
 
 async function cleanup(): Promise<void> {
   await prisma.emailDelivery.deleteMany();

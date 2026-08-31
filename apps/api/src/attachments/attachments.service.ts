@@ -12,7 +12,7 @@ import {
   type AttachmentListResponse,
   type AttachmentCategory,
 } from '@sgr-registry/contracts';
-import { Prisma, type PrismaClient } from '@sgr-registry/database';
+import { Prisma, currentRlsTransaction } from '@sgr-registry/database';
 import {
   ATTACHMENT_DUPLICATE_STATUSES,
   ATTACHMENT_MAX_BYTES,
@@ -37,7 +37,7 @@ import {
   type AttachmentOwnerRef,
 } from '@sgr-registry/domain';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
-import { PRISMA_CLIENT } from '../auth/prisma.tokens';
+import { PrismaService } from '../auth/prisma.tokens';
 import { writeAuditLog, toJsonValue } from '../common/audit-writer';
 import { actorContext } from '../common/request-context';
 import { RegistryAccessScope } from '../registry/registry-access-scope';
@@ -78,10 +78,21 @@ export class HashingLimiter extends Transform {
 @Injectable()
 export class AttachmentsService {
   constructor(
-    @Inject(PRISMA_CLIENT) private readonly prisma: PrismaClient,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(ObjectStore) private readonly store: ObjectStore,
     @InjectQueue(ATTACHMENT_QUEUE) private readonly queue: Queue,
   ) {}
+
+  private withUserDb<T>(
+    user: AuthenticatedUser,
+    request: FastifyRequest | null,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    if (currentRlsTransaction()) {
+      return fn();
+    }
+    return this.prisma.withUser(user, request, fn);
+  }
 
   async listForAct(user: AuthenticatedUser, actId: string): Promise<AttachmentListResponse> {
     await this.requireVisibleAct(user, actId);
@@ -111,7 +122,7 @@ export class AttachmentsService {
     file: MultipartFile,
     category: string,
   ) {
-    await this.requireVisibleAct(user, actId);
+    await this.withUserDb(user, request, () => this.requireVisibleAct(user, actId));
     return this.upload(user, request, file, category, { type: 'ACT', actId });
   }
 
@@ -122,7 +133,9 @@ export class AttachmentsService {
     file: MultipartFile,
     category: string,
   ) {
-    const owner = await this.requireVisibleDefect(user, defectItemId);
+    const owner = await this.withUserDb(user, request, () =>
+      this.requireVisibleDefect(user, defectItemId),
+    );
     return this.upload(user, request, file, category, owner);
   }
 
@@ -133,7 +146,9 @@ export class AttachmentsService {
     file: MultipartFile,
     category: string,
   ) {
-    const owner = await this.requireVisibleProposal(user, proposalId);
+    const owner = await this.withUserDb(user, request, () =>
+      this.requireVisibleProposal(user, proposalId),
+    );
     return this.upload(user, request, file, category, owner);
   }
 
@@ -165,7 +180,7 @@ export class AttachmentsService {
     if (attachment.version !== parsed.expectedVersion) {
       throw new StaleWriteError();
     }
-    const updated = await this.prisma.$transaction(async (tx) => {
+    const updated = await this.prisma.client.$transaction(async (tx) => {
       const next = await tx.attachment.update({
         where: { id: attachment.id, version: parsed.expectedVersion },
         data: {
@@ -198,7 +213,9 @@ export class AttachmentsService {
   }
 
   async content(user: AuthenticatedUser, attachmentId: string, range?: string) {
-    const { attachment, owner, assigned } = await this.loadScoped(user, attachmentId);
+    const { attachment, owner, assigned } = await this.withUserDb(user, null, () =>
+      this.loadScoped(user, attachmentId),
+    );
     if (
       !canDownloadAttachment(attachment.status) ||
       !attachment.objectKey ||
@@ -227,7 +244,7 @@ export class AttachmentsService {
   ): Promise<AttachmentListResponse> {
     const assigned = await this.assignedDefectIds(user, owner.actId);
     const where = ownerWhere(owner);
-    const items = await this.prisma.attachment.findMany({
+    const items = await this.prisma.client.attachment.findMany({
       where: { ...where, status: { notIn: ['UPLOADING', 'ARCHIVED'] } },
       include: { uploadedBy: true },
       orderBy: { createdAt: 'desc' },
@@ -273,17 +290,21 @@ export class AttachmentsService {
     if (!canUploadCategory(user.role, owner.type, category)) {
       throw new NotFoundException('Запись не найдена');
     }
-    const assigned = await this.assignedDefectIds(user, owner.actId);
+    const assigned = await this.withUserDb(user, request, () =>
+      this.assignedDefectIds(user, owner.actId),
+    );
     if (!canViewAttachmentOwner(user.role, owner, assigned)) {
       throw new NotFoundException('Запись не найдена');
     }
-    const limits = await this.limits();
-    const activeCount = await this.prisma.attachment.count({
-      where: {
-        ...ownerWhere(owner),
-        status: { in: [...ATTACHMENT_DUPLICATE_STATUSES, 'UPLOADING'] },
-      },
-    });
+    const limits = await this.withUserDb(user, request, () => this.limits());
+    const activeCount = await this.withUserDb(user, request, () =>
+      this.prisma.client.attachment.count({
+        where: {
+          ...ownerWhere(owner),
+          status: { in: [...ATTACHMENT_DUPLICATE_STATUSES, 'UPLOADING'] },
+        },
+      }),
+    );
     if (activeCount >= limits.maxPerOwner) {
       throw new ValidationError('file', `Нельзя загрузить больше ${limits.maxPerOwner} файлов`);
     }
@@ -347,23 +368,25 @@ export class AttachmentsService {
       }
     }
 
-    const created = await this.prisma.attachment.create({
-      data: {
-        id,
-        ...ownerIds(owner),
-        originalFilename: file.filename,
-        safeDisplayName: detected.safeDisplayName,
-        objectKey,
-        bucket: this.store.bucket,
-        sizeBytes: 0,
-        declaredMimeType: file.mimetype,
-        detectedMimeType: detected.detectedMimeType,
-        sha256: 'pending',
-        category,
-        status: 'UPLOADING',
-        uploadedById: user.id,
-      },
-    });
+    const created = await this.withUserDb(user, request, () =>
+      this.prisma.client.attachment.create({
+        data: {
+          id,
+          ...ownerIds(owner),
+          originalFilename: file.filename,
+          safeDisplayName: detected.safeDisplayName,
+          objectKey,
+          bucket: this.store.bucket,
+          sizeBytes: 0,
+          declaredMimeType: file.mimetype,
+          detectedMimeType: detected.detectedMimeType,
+          sha256: 'pending',
+          category,
+          status: 'UPLOADING',
+          uploadedById: user.id,
+        },
+      }),
+    );
 
     try {
       const uploaded = this.store.putStream(objectKey, sink, detected.detectedMimeType);
@@ -382,48 +405,54 @@ export class AttachmentsService {
       if (hasher.size > limits.maxBytes) {
         throw new AttachmentTooLargeError();
       }
-      const duplicate = await this.prisma.attachment.findFirst({
-        where: {
-          ...ownerWhere(owner),
-          sha256: digest,
-          status: { in: [...ATTACHMENT_DUPLICATE_STATUSES] },
-          id: { not: id },
-        },
-      });
+      const duplicate = await this.withUserDb(user, request, () =>
+        this.prisma.client.attachment.findFirst({
+          where: {
+            ...ownerWhere(owner),
+            sha256: digest,
+            status: { in: [...ATTACHMENT_DUPLICATE_STATUSES] },
+            id: { not: id },
+          },
+        }),
+      );
       if (duplicate) {
         await this.store.deleteExact(objectKey);
-        await this.prisma.attachment.delete({ where: { id } });
+        await this.withUserDb(user, request, () =>
+          this.prisma.client.attachment.delete({ where: { id } }),
+        );
         throw new DuplicateValueError('Такой файл уже загружен');
       }
       await this.store.head(objectKey);
-      const ready = await this.prisma.$transaction(async (tx) => {
-        const next = await tx.attachment.update({
-          where: { id },
-          data: {
-            status: 'PENDING_SCAN',
-            sizeBytes: hasher.size,
-            sha256: digest,
-            uploadedAt: new Date(),
-          },
-          include: { uploadedBy: true },
-        });
-        await writeAuditLog(tx, {
-          ...actorContext(user, request),
-          action: 'ATTACHMENT_UPLOADED',
-          entityType: 'ATTACHMENT',
-          entityId: id,
-          parentEntityType: owner.type,
-          parentEntityId: ownerId(owner),
-          newValue: toJsonValue({
-            category,
-            sizeBytes: hasher.size,
-            detectedMimeType: detected.detectedMimeType,
-            sha256: digest,
-            slot: owner.type === 'PROPOSAL' ? owner.slot : undefined,
-          }),
-        });
-        return next;
-      });
+      const ready = await this.withUserDb(user, request, () =>
+        this.prisma.client.$transaction(async (tx) => {
+          const next = await tx.attachment.update({
+            where: { id },
+            data: {
+              status: 'PENDING_SCAN',
+              sizeBytes: hasher.size,
+              sha256: digest,
+              uploadedAt: new Date(),
+            },
+            include: { uploadedBy: true },
+          });
+          await writeAuditLog(tx, {
+            ...actorContext(user, request),
+            action: 'ATTACHMENT_UPLOADED',
+            entityType: 'ATTACHMENT',
+            entityId: id,
+            parentEntityType: owner.type,
+            parentEntityId: ownerId(owner),
+            newValue: toJsonValue({
+              category,
+              sizeBytes: hasher.size,
+              detectedMimeType: detected.detectedMimeType,
+              sha256: digest,
+              slot: owner.type === 'PROPOSAL' ? owner.slot : undefined,
+            }),
+          });
+          return next;
+        }),
+      );
       await this.queue.add(
         ATTACHMENT_SCAN_JOB,
         { attachmentId: id },
@@ -437,7 +466,9 @@ export class AttachmentsService {
       return { statusCode: 202, body: this.toItem(user, ready, owner, assigned) };
     } catch (error) {
       await this.store.deleteExact(objectKey).catch(() => undefined);
-      await this.prisma.attachment.delete({ where: { id: created.id } }).catch(() => undefined);
+      await this.withUserDb(user, request, () =>
+        this.prisma.client.attachment.delete({ where: { id: created.id } }),
+      ).catch(() => undefined);
       throw error;
     }
   }
@@ -490,7 +521,7 @@ export class AttachmentsService {
     if (!UUID_PATTERN.test(attachmentId)) {
       throw new NotFoundException('Запись не найдена');
     }
-    const attachment = await this.prisma.attachment.findUnique({
+    const attachment = await this.prisma.client.attachment.findUnique({
       where: { id: attachmentId },
       include: { uploadedBy: true, proposal: true },
     });
@@ -512,7 +543,7 @@ export class AttachmentsService {
     proposal: { defectItemId: string; slot: 'A' | 'B' | 'C' } | null;
   }): Promise<AttachmentOwnerRef> {
     if (row.actId) {
-      const act = await this.prisma.act.findUnique({
+      const act = await this.prisma.client.act.findUnique({
         where: { id: row.actId },
         select: { id: true },
       });
@@ -520,7 +551,7 @@ export class AttachmentsService {
       return { type: 'ACT', actId: row.actId };
     }
     if (row.defectItemId) {
-      const defect = await this.prisma.defectItem.findUnique({
+      const defect = await this.prisma.client.defectItem.findUnique({
         where: { id: row.defectItemId },
         select: { id: true, actId: true },
       });
@@ -528,7 +559,7 @@ export class AttachmentsService {
       return { type: 'DEFECT_ITEM', defectItemId: defect.id, actId: defect.actId };
     }
     if (row.proposalId && row.proposal) {
-      const defect = await this.prisma.defectItem.findUnique({
+      const defect = await this.prisma.client.defectItem.findUnique({
         where: { id: row.proposal.defectItemId },
         select: { actId: true },
       });
@@ -546,7 +577,7 @@ export class AttachmentsService {
 
   private async requireVisibleAct(user: AuthenticatedUser, actId: string) {
     const scope = new RegistryAccessScope(user);
-    const act = await this.prisma.act.findFirst({ where: scope.actVisibleWhere(actId) });
+    const act = await this.prisma.client.act.findFirst({ where: scope.actVisibleWhere(actId) });
     if (!act) throw new NotFoundException('Запись не найдена');
   }
 
@@ -555,7 +586,7 @@ export class AttachmentsService {
     defectItemId: string,
   ): Promise<AttachmentOwnerRef> {
     const scope = new RegistryAccessScope(user);
-    const defect = await this.prisma.defectItem.findFirst({
+    const defect = await this.prisma.client.defectItem.findFirst({
       where: { id: defectItemId, AND: [scope.defectItemWhere()] },
       select: { id: true, actId: true },
     });
@@ -568,7 +599,7 @@ export class AttachmentsService {
     proposalId: string,
   ): Promise<AttachmentOwnerRef> {
     const scope = new RegistryAccessScope(user);
-    const proposal = await this.prisma.proposal.findFirst({
+    const proposal = await this.prisma.client.proposal.findFirst({
       where: { id: proposalId, defectItem: scope.defectItemWhere() },
       select: { id: true, slot: true, defectItemId: true, defectItem: { select: { actId: true } } },
     });
@@ -592,7 +623,7 @@ export class AttachmentsService {
       return new Set();
     }
     const scope = new RegistryAccessScope(user);
-    const rows = await this.prisma.defectItem.findMany({
+    const rows = await this.prisma.client.defectItem.findMany({
       where: actId ? scope.defectItemsOnActWhere(actId) : scope.defectItemWhere(),
       select: { id: true },
     });
@@ -600,7 +631,9 @@ export class AttachmentsService {
   }
 
   private async limits() {
-    const settings = await this.prisma.systemSettings.findUnique({ where: { id: 'default' } });
+    const settings = await this.prisma.client.systemSettings.findUnique({
+      where: { id: 'default' },
+    });
     return {
       maxBytes:
         settings?.maxAttachmentBytes ?? loadConfig().ATTACHMENT_MAX_BYTES ?? ATTACHMENT_MAX_BYTES,

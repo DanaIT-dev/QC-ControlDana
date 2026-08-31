@@ -5,7 +5,7 @@ import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fa
 import { loadConfig } from '@sgr-registry/config';
 import {
   allocateActNumber,
-  createPrismaClient,
+  createOwnerPrismaClient,
   disconnectPrismaClient,
   Prisma,
   type PrismaClient,
@@ -114,7 +114,7 @@ describe('registry integration', () => {
     process.env.NODE_ENV = 'test';
     process.env.REDIS_KEY_PREFIX = 'sgr-test';
     const config = loadConfig();
-    prisma = createPrismaClient(config.DATABASE_URL);
+    prisma = createOwnerPrismaClient(config.MIGRATION_DATABASE_URL);
     redis = new Redis(config.REDIS_URL, { maxRetriesPerRequest: 1 });
     app = await NestFactory.create<NestFastifyApplication>(
       AppModule,

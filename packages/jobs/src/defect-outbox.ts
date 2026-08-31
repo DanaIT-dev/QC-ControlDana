@@ -6,6 +6,7 @@ import {
   shouldBumpGeneralCycle,
   type NotificationType,
 } from '@sgr-registry/domain';
+import { writeAuditLog } from './audit-writer';
 import { OutboxWriter, syncSlaClocks } from './outbox.writer';
 
 type OutboxTx = Prisma.TransactionClient;
@@ -117,15 +118,13 @@ export async function revokeRecipientsForUsers(
     data: { revokedAt: new Date() },
   });
   if (result.count > 0) {
-    await tx.auditLog.create({
-      data: {
-        action: 'NOTIFICATION_RECIPIENT_REVOKED',
-        entityType: 'DEFECT_ITEM',
-        entityId: defectItemId,
-        newValue: { userIds, count: result.count },
-        source: 'SYSTEM',
-        occurredAt: new Date(),
-      },
+    await writeAuditLog(tx, {
+      actor: null,
+      action: 'NOTIFICATION_RECIPIENT_REVOKED',
+      entityType: 'DEFECT_ITEM',
+      entityId: defectItemId,
+      newValue: { userIds, count: result.count },
+      source: 'SYSTEM',
     });
   }
 }

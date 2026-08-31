@@ -8,7 +8,7 @@ const envFile = existsSync(resolve(repoRoot, '.env'))
   ? resolve(repoRoot, '.env')
   : resolve(repoRoot, '.env.example');
 
-loadDotenv({ path: envFile });
+loadDotenv({ path: envFile, override: !process.env.MIGRATION_DATABASE_URL });
 
 export default defineConfig({
   schema: 'prisma/schema.prisma',
@@ -17,6 +17,6 @@ export default defineConfig({
     seed: 'tsx prisma/seed.ts',
   },
   datasource: {
-    url: process.env.DATABASE_URL ?? '',
+    url: process.env.MIGRATION_DATABASE_URL || process.env.DATABASE_URL || '',
   },
 });

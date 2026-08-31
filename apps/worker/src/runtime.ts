@@ -1,6 +1,10 @@
 import { createServer, type Server } from 'node:http';
 import { loadConfig } from '@sgr-registry/config';
-import { getPrismaClient } from '@sgr-registry/database';
+import {
+  getPrismaClient,
+  prismaWithRlsTransaction,
+  withWorkerDbContext,
+} from '@sgr-registry/database';
 import {
   resolveAttachmentQueueName,
   resolveMaintenanceQueueName,
@@ -82,7 +86,11 @@ export async function startWorkerRuntime(
 ): Promise<WorkerRuntime> {
   const config = loadConfig();
   const connection = bullmqConnection(config.REDIS_URL);
-  const prisma = getPrismaClient(config.DATABASE_URL);
+  const rootPrisma = getPrismaClient(config.WORKER_DATABASE_URL);
+  const prisma = prismaWithRlsTransaction(rootPrisma);
+  const secret = config.RLS_CONTEXT_SECRET;
+  const withWorker = <T>(fn: () => Promise<T>): Promise<T> =>
+    withWorkerDbContext({ prisma: rootPrisma, secret, callback: fn });
   const heartbeatRedis = new Redis(config.REDIS_URL, { maxRetriesPerRequest: 1 });
   const notificationQueue = new Queue(resolveNotificationQueueName(), { connection });
   const attachmentQueue = new Queue(resolveAttachmentQueueName(), { connection });
@@ -94,12 +102,12 @@ export async function startWorkerRuntime(
 
   const notificationWorker = new Worker(
     resolveNotificationQueueName(),
-    (job) => processNotificationJob(dispatcher, prisma, job),
+    (job) => withWorker(() => processNotificationJob(dispatcher, prisma, job)),
     { connection, concurrency: 5 },
   );
   const attachmentWorker = new Worker(
     resolveAttachmentQueueName(),
-    (job) => processAttachmentJob(job, { prisma, store, outboxWriter }),
+    (job) => processAttachmentJob(job, { prisma, store, outboxWriter, rootPrisma, secret }),
     { connection, concurrency: 2 },
   );
   const maintenanceWorker = new Worker(resolveMaintenanceQueueName(), async () => ({ ok: true }), {
@@ -144,7 +152,7 @@ export async function startWorkerRuntime(
       config.WORKER_READY_TIMEOUT_MS,
     );
     if (options.scheduleOnStart !== false) {
-      await scheduleNotificationJobs(prisma, notificationQueue);
+      await withWorker(() => scheduleNotificationJobs(prisma, notificationQueue));
     }
     await heartbeat.start();
     if (options.listenHealth && config.WORKER_HEALTH_PORT > 0) {

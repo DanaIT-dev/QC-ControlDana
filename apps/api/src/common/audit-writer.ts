@@ -1,4 +1,4 @@
-import { Prisma } from '@sgr-registry/database';
+import { Prisma, insertAuditLogRow } from '@sgr-registry/database';
 import { assertAuditPayloadSafe } from '@sgr-registry/domain';
 
 export interface AuditActor {
@@ -22,31 +22,27 @@ export interface AuditWriteInput {
 }
 
 type AuditDb = {
-  auditLog: {
-    create: (args: { data: Prisma.AuditLogUncheckedCreateInput }) => Promise<unknown>;
-  };
+  $executeRaw: Prisma.TransactionClient['$executeRaw'];
 };
 
 export async function writeAuditLog(tx: AuditDb, input: AuditWriteInput): Promise<void> {
   assertAuditPayloadSafe(input.oldValue);
   assertAuditPayloadSafe(input.newValue);
-  await tx.auditLog.create({
-    data: {
-      actorUserId: input.actor?.id ?? null,
-      actorName: input.actor?.fullName ?? null,
-      action: input.action,
-      entityType: input.entityType,
-      entityId: input.entityId,
-      parentEntityType: input.parentEntityType ?? null,
-      parentEntityId: input.parentEntityId ?? null,
-      oldValue: input.oldValue ?? undefined,
-      newValue: input.newValue ?? undefined,
-      reason: input.reason ?? null,
-      source: input.source ?? 'WEB',
-      requestId: input.requestId ?? null,
-      ipAddress: input.ipAddress ?? null,
-      occurredAt: new Date(),
-    },
+  await insertAuditLogRow(tx, {
+    actorUserId: input.actor?.id ?? null,
+    actorName: input.actor?.fullName ?? null,
+    action: input.action,
+    entityType: input.entityType,
+    entityId: input.entityId,
+    parentEntityType: input.parentEntityType ?? null,
+    parentEntityId: input.parentEntityId ?? null,
+    oldValue: input.oldValue ?? null,
+    newValue: input.newValue ?? null,
+    reason: input.reason ?? null,
+    source: input.source ?? 'WEB',
+    occurredAt: new Date(),
+    requestId: input.requestId ?? null,
+    ipAddress: input.ipAddress ?? null,
   });
 }
 

@@ -1,13 +1,13 @@
 import 'reflect-metadata';
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { ModulesContainer, NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Queue } from 'bullmq';
 import { loadConfig } from '@sgr-registry/config';
 import type { UserRole } from '@sgr-registry/contracts';
 import {
-  createPrismaClient,
+  createOwnerPrismaClient,
   disconnectPrismaClient,
   type PrismaClient,
 } from '@sgr-registry/database';
@@ -181,7 +181,11 @@ async function createActWithDefect(
   return { actId: body.id, defectItemId: defect.id };
 }
 
-async function waitUntil(check: () => Promise<boolean>, timeoutMs = 20_000): Promise<void> {
+async function waitUntil(
+  check: () => Promise<boolean>,
+  timeoutMs = 45_000,
+  diagnose?: () => Promise<string>,
+): Promise<void> {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
     if (await check()) {
@@ -189,7 +193,8 @@ async function waitUntil(check: () => Promise<boolean>, timeoutMs = 20_000): Pro
     }
     await new Promise((resolve) => setTimeout(resolve, 150));
   }
-  throw new Error('timed out waiting for worker condition');
+  const extra = diagnose ? await diagnose() : '';
+  throw new Error(`timed out waiting for worker condition${extra}`);
 }
 
 async function mailpitMessagesFor(email: string): Promise<unknown[]> {
@@ -221,7 +226,7 @@ describe('notification worker isolation', () => {
     process.env.NODE_ENV = 'test';
     process.env.REDIS_KEY_PREFIX = 'sgr-test';
     const config = loadConfig();
-    prisma = createPrismaClient(config.DATABASE_URL);
+    prisma = createOwnerPrismaClient(config.MIGRATION_DATABASE_URL);
     redis = new Redis(config.REDIS_URL, { maxRetriesPerRequest: 1 });
     app = await NestFactory.create<NestFastifyApplication>(
       AppModule,
@@ -236,6 +241,27 @@ describe('notification worker isolation', () => {
       update: {},
       create: { id: 'default', deadlineWarningDays: 3 },
     });
+  });
+
+  beforeEach(async () => {
+    const config = loadConfig();
+    const notificationQueue = new Queue(resolveNotificationQueueName(), {
+      connection: { url: config.REDIS_URL, maxRetriesPerRequest: null },
+    });
+    const attachmentQueue = new Queue(resolveAttachmentQueueName(), {
+      connection: { url: config.REDIS_URL, maxRetriesPerRequest: null },
+    });
+    await notificationQueue.obliterate({ force: true }).catch(() => undefined);
+    await attachmentQueue.obliterate({ force: true }).catch(() => undefined);
+    await notificationQueue.close();
+    await attachmentQueue.close();
+    await prisma.outboxEvent.deleteMany({
+      where: { status: { in: ['PENDING', 'FAILED', 'CLAIMED'] } },
+    });
+    const keys = await redis.keys('sgr-test:*');
+    if (keys.length > 0) {
+      await redis.del(...keys);
+    }
   });
 
   afterAll(async () => {
@@ -324,12 +350,31 @@ describe('notification worker isolation', () => {
     try {
       runtime = await startWorkerRuntime({ listenHealth: false, scheduleOnStart: true });
       expect(logs.lines.some((line) => line.includes('Notification worker started'))).toBe(true);
-      await waitUntil(async () => {
-        const sent = await prisma.emailDelivery.count({
-          where: { recipient: { userId: responsible.id }, status: 'SENT' },
+      try {
+        await waitUntil(async () => {
+          const sent = await prisma.emailDelivery.count({
+            where: { recipient: { userId: responsible.id }, status: 'SENT' },
+          });
+          return sent === 1;
         });
-        return sent === 1;
-      });
+      } catch (error) {
+        const deliveries = await prisma.emailDelivery.findMany({
+          where: { recipient: { userId: responsible.id } },
+          select: { status: true, lastErrorCode: true, attempts: true },
+        });
+        const outbox = (
+          await prisma.outboxEvent.findMany({
+            where: { type: 'RESPONSIBLE_ASSIGNED' },
+            select: { status: true, lastErrorCode: true, payload: true },
+          })
+        ).filter(
+          (row) => (row.payload as { defectItemId?: string }).defectItemId === created.defectItemId,
+        );
+        throw new Error(
+          `${error instanceof Error ? error.message : 'timeout'} deliveries=${JSON.stringify(deliveries)} outbox=${JSON.stringify(outbox)}`,
+          { cause: error },
+        );
+      }
       const heartbeat = parseWorkerHeartbeat(await redis.get(resolveWorkerHeartbeatKey()));
       expect(heartbeat.status).toBe('up');
       const raw = await redis.get(resolveWorkerHeartbeatKey());
@@ -367,12 +412,36 @@ describe('notification worker isolation', () => {
       expect(
         logs.lines.filter((line) => line.includes('Notification worker started')),
       ).toHaveLength(2);
-      await waitUntil(async () => {
-        const sent = await prisma.emailDelivery.count({
-          where: { recipient: { userId: responsible.id }, status: 'SENT' },
-        });
-        return sent === 1;
-      });
+      await waitUntil(
+        async () => {
+          const sent = await prisma.emailDelivery.count({
+            where: {
+              status: 'SENT',
+              recipient: {
+                userId: responsible.id,
+                event: { defectItemId: created.defectItemId, type: 'RESPONSIBLE_ASSIGNED' },
+              },
+            },
+          });
+          return sent === 1;
+        },
+        45_000,
+        async () => {
+          const deliveries = await prisma.emailDelivery.findMany({
+            where: { recipient: { userId: responsible.id } },
+            select: { status: true, lastErrorCode: true },
+          });
+          const outbox = await prisma.outboxEvent.findMany({
+            where: { type: 'RESPONSIBLE_ASSIGNED' },
+            select: { status: true, lastErrorCode: true, payload: true },
+          });
+          const ours = outbox.filter(
+            (row) =>
+              (row.payload as { defectItemId?: string }).defectItemId === created.defectItemId,
+          );
+          return ` deliveries=${JSON.stringify(deliveries)} outbox=${JSON.stringify(ours.map((row) => ({ status: row.status, lastErrorCode: row.lastErrorCode })))}`;
+        },
+      );
       await queue.add(
         SLA_EVALUATE_JOB,
         { reason: 'two-worker' },

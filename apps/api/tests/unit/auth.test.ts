@@ -187,10 +187,8 @@ describe('AuthService login secrets and dummy verify', () => {
       resetLoginFailures: vi.fn(),
     };
     const prisma = {
-      client: {
-        user: { findUnique: vi.fn().mockResolvedValue(null) },
-        auditLog: { create: vi.fn().mockResolvedValue({}) },
-      },
+      user: { findUnique: vi.fn().mockResolvedValue(null) },
+      auditLog: { create: vi.fn().mockResolvedValue({}) },
     };
     const service = new AuthService(prisma as never, sessions as never, hasher as never);
     const request = { headers: { 'x-request-id': 'req-1' }, ip: '127.0.0.1', socket: {} };
@@ -204,7 +202,7 @@ describe('AuthService login secrets and dummy verify', () => {
 
     expect(hasher.verify).toHaveBeenCalledWith('dummy-hash', 'Dana-SGR-Demo-2026!');
     expect(sessions.incrementLoginFailures).toHaveBeenCalled();
-    const audit = prisma.client.auditLog.create.mock.calls[0]?.[0]?.data as {
+    const audit = prisma.auditLog.create.mock.calls[0]?.[0]?.data as {
       action: string;
       newValue: Record<string, unknown>;
     };
@@ -220,7 +218,7 @@ describe('AuthService login secrets and dummy verify', () => {
     const sessions = {
       peekLoginFailures: vi.fn().mockRejectedValue(new RedisUnavailableError()),
     };
-    const prisma = { client: { user: { findUnique: vi.fn() }, auditLog: { create: vi.fn() } } };
+    const prisma = { user: { findUnique: vi.fn() }, auditLog: { create: vi.fn() } };
     const service = new AuthService(prisma as never, sessions as never, hasher as never);
     let thrown: unknown;
     try {
@@ -293,7 +291,7 @@ describe('expired session payload', () => {
       get: vi.fn().mockResolvedValue(expired),
       delete: vi.fn().mockResolvedValue(undefined),
     };
-    const prisma = { client: { user: { findUnique: vi.fn() }, auditLog: { create: vi.fn() } } };
+    const prisma = { user: { findUnique: vi.fn() }, auditLog: { create: vi.fn() } };
     const service = new AuthService(prisma as never, sessions as never, {} as never);
     await expect(
       service.resolveSession('opaque-session-id', {
@@ -318,7 +316,7 @@ describe('expired session payload', () => {
       get: vi.fn().mockResolvedValue(expired),
       delete: vi.fn().mockResolvedValue(undefined),
     };
-    const prisma = { client: { user: { findUnique: vi.fn() }, auditLog: { create: vi.fn() } } };
+    const prisma = { user: { findUnique: vi.fn() }, auditLog: { create: vi.fn() } };
     const service = new AuthService(prisma as never, sessions as never, {} as never);
     await expect(
       service.resolveSession('opaque-session-id', {

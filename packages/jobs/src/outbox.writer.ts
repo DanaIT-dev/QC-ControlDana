@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import type { Queue } from 'bullmq';
-import { Prisma } from '@sgr-registry/database';
+import { Prisma, insertOutboxEventRow } from '@sgr-registry/database';
 import {
   OUTBOX_DISPATCH_JOB,
   assertSafeNotificationPayload,
@@ -17,16 +17,7 @@ import {
 export const NOTIFICATION_QUEUE = resolveNotificationQueueName();
 
 export type OutboxTx = {
-  outboxEvent: {
-    create: (args: {
-      data: {
-        id: string;
-        type: string;
-        payload: Prisma.InputJsonValue;
-        updatedAt: Date;
-      };
-    }) => Promise<{ id: string }>;
-  };
+  $executeRaw: Prisma.TransactionClient['$executeRaw'];
 };
 
 @Injectable()
@@ -41,13 +32,10 @@ export class OutboxWriter {
   ): Promise<string> {
     assertSafeNotificationPayload(input.payload);
     const id = randomUUID();
-    await tx.outboxEvent.create({
-      data: {
-        id,
-        type: input.type,
-        payload: input.payload as Prisma.InputJsonValue,
-        updatedAt: new Date(),
-      },
+    await insertOutboxEventRow(tx, {
+      id,
+      type: input.type,
+      payload: input.payload as Prisma.InputJsonValue,
     });
     return id;
   }

@@ -7,17 +7,17 @@ import type {
   ReadyResponse,
   SystemStatusResponse,
 } from '@sgr-registry/contracts';
-import { getPrismaClient, type PrismaClient } from '@sgr-registry/database';
+import { getPrismaClient } from '@sgr-registry/database';
 import { collectNotificationOps, NOTIFICATION_QUEUE } from '@sgr-registry/jobs';
 import type { Queue } from 'bullmq';
 import Redis from 'ioredis';
-import { PRISMA_CLIENT } from '../auth/prisma.tokens';
+import { PrismaService } from '../auth/prisma.tokens';
 import { REDIS_CLIENT } from '../auth/redis.constants';
 
 @Injectable()
 export class HealthService {
   constructor(
-    @Inject(PRISMA_CLIENT) private readonly prisma: PrismaClient,
+    @Inject(PrismaService) private readonly prismaService: PrismaService,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     @InjectQueue(NOTIFICATION_QUEUE) private readonly queue: Queue,
   ) {}
@@ -56,7 +56,7 @@ export class HealthService {
   async getSystemStatus(): Promise<SystemStatusResponse> {
     const ready = await this.getReadiness();
     const notifications = await collectNotificationOps({
-      prisma: this.prisma,
+      prisma: this.prismaService.client,
       queue: this.queue,
       redis: this.redis,
     });

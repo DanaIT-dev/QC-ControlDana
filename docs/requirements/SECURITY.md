@@ -19,4 +19,6 @@
 - select вместо отдачи Prisma-моделей
 - open redirect запрещён: ссылки писем ведут только на `/acts/:id`
 
-B/C коммерческие поля не возвращаются RESPONSIBLE_ENGINEER ни в одном канале.
+B/C коммерческие поля не возвращаются RESPONSIBLE_ENGINEER ни в одном канале, включая прямой SQL под runtime-ролью.
+
+PostgreSQL RLS: отдельные роли migrator/API/auth/worker, `FORCE ROW LEVEL SECURITY`, HMAC transaction-local context. См. [RLS_OPERATIONS.md](../security/RLS_OPERATIONS.md).

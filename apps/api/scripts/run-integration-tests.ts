@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { config as loadDotenv } from 'dotenv';
+import { applyTestDatabaseEnv } from '../../../packages/database/src/test-env';
 import { assertSafeTestDatabaseUrl } from '../../../packages/database/src/test-database';
 import { assertSafeTestBucket } from '../../../packages/database/src/test-bucket';
 
@@ -9,7 +10,7 @@ const repoRoot = resolve(__dirname, '../../..');
 const envFile = existsSync(resolve(repoRoot, '.env'))
   ? resolve(repoRoot, '.env')
   : resolve(repoRoot, '.env.example');
-loadDotenv({ path: envFile });
+loadDotenv({ path: envFile, override: true });
 
 const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 
@@ -28,7 +29,13 @@ try {
   process.exit(1);
 }
 
-process.env.DATABASE_URL = databaseUrl;
+try {
+  applyTestDatabaseEnv(databaseUrl);
+} catch (error) {
+  const message = error instanceof Error ? error.message : 'Cannot remap test database URLs';
+  console.error(message);
+  process.exit(1);
+}
 process.env.NODE_ENV = 'test';
 process.env.REDIS_KEY_PREFIX = 'sgr-test';
 process.env.AUTH_LOGIN_MAX_FAILURES = process.env.AUTH_LOGIN_MAX_FAILURES ?? '5';
@@ -42,9 +49,10 @@ try {
   process.exit(1);
 }
 
+const extraArgs = process.argv.slice(2).filter((arg) => arg !== '--');
 const child = spawn(
   'pnpm',
-  ['exec', 'vitest', 'run', '--config', 'vitest.integration.config.mts'],
+  ['exec', 'vitest', 'run', '--config', 'vitest.integration.config.mts', ...extraArgs],
   {
     cwd: resolve(__dirname, '..'),
     stdio: 'inherit',

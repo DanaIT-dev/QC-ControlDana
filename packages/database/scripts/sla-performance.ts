@@ -1,14 +1,15 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { config as loadDotenv } from 'dotenv';
-import { createPrismaClient } from '../src/client';
+import { applyTestDatabaseEnv } from '../src/test-env';
+import { createOwnerPrismaClient } from '../src/client';
 import { assertSafeTestDatabaseUrl } from '../src/test-database';
 
 const repoRoot = resolve(__dirname, '../../..');
 const envFile = existsSync(resolve(repoRoot, '.env'))
   ? resolve(repoRoot, '.env')
   : resolve(repoRoot, '.env.example');
-loadDotenv({ path: envFile });
+loadDotenv({ path: envFile, override: true });
 
 const MARKER = 'SLA-PERF';
 const TARGET_ITEMS = 100_000;
@@ -19,7 +20,8 @@ async function main(): Promise<void> {
     throw new Error('Set TEST_DATABASE_URL to a dedicated *_test database');
   }
   assertSafeTestDatabaseUrl(databaseUrl);
-  const prisma = createPrismaClient(databaseUrl);
+  applyTestDatabaseEnv(databaseUrl);
+  const prisma = createOwnerPrismaClient(process.env.MIGRATION_DATABASE_URL ?? databaseUrl);
   const started = Date.now();
   const rssBefore = process.memoryUsage().rss;
   try {
@@ -129,7 +131,7 @@ async function main(): Promise<void> {
   }
 }
 
-async function cleanup(prisma: ReturnType<typeof createPrismaClient>): Promise<void> {
+async function cleanup(prisma: ReturnType<typeof createOwnerPrismaClient>): Promise<void> {
   await prisma.$executeRawUnsafe(`
     DELETE FROM sla_clocks
     WHERE "defectItemId" IN (

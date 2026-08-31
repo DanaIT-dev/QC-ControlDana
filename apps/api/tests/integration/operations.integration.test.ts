@@ -4,7 +4,7 @@ import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { loadConfig } from '@sgr-registry/config';
 import {
-  createPrismaClient,
+  createOwnerPrismaClient,
   disconnectPrismaClient,
   type PrismaClient,
 } from '@sgr-registry/database';
@@ -168,7 +168,7 @@ describe('operations integration', () => {
     process.env.NODE_ENV = 'test';
     process.env.REDIS_KEY_PREFIX = 'sgr-test';
     const config = loadConfig();
-    prisma = createPrismaClient(config.DATABASE_URL);
+    prisma = createOwnerPrismaClient(config.MIGRATION_DATABASE_URL);
     redis = new Redis(config.REDIS_URL, { maxRetriesPerRequest: 1 });
     app = await NestFactory.create<NestFastifyApplication>(
       AppModule,
@@ -395,7 +395,10 @@ describe('operations integration', () => {
       name: string;
       address: string;
     };
-    const objects = await read(responsibleSession, '/api/reference-data/property-objects');
+    const objects = await read(
+      responsibleSession,
+      `/api/reference-data/property-objects?search=${encodeURIComponent(createdBody.name)}`,
+    );
     expect(objects.statusCode).toBe(200);
     const objectItems = (
       objects.json() as { items: Array<{ id: string; name: string; address: string }> }

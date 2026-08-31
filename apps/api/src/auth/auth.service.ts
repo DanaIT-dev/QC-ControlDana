@@ -30,7 +30,8 @@ import type { FastifyRequest } from 'fastify';
 import type { AuthenticatedUser } from './authenticated-user';
 import { generateOpaqueToken, hashSessionId } from './crypto';
 import { Argon2PasswordHasher } from './password-hasher';
-import { PrismaService } from './prisma.tokens';
+import { AUTH_PRISMA_CLIENT } from './prisma.tokens';
+import type { PrismaClient } from '@sgr-registry/database';
 import { RedisUnavailableError } from './redis.constants';
 import { clientIp } from './request-meta';
 import { RedisSessionStore } from './redis-session.store';
@@ -44,7 +45,7 @@ export class AuthService {
   private dummyHashPromise: Promise<string> | undefined;
 
   constructor(
-    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(AUTH_PRISMA_CLIENT) private readonly prisma: PrismaClient,
     @Inject(RedisSessionStore) private readonly sessions: RedisSessionStore,
     @Inject(Argon2PasswordHasher) private readonly hasher: Argon2PasswordHasher,
   ) {}
@@ -96,7 +97,7 @@ export class AuthService {
       throw unavailableOrRethrow(error);
     }
 
-    const user = await this.prisma.client.user.findUnique({ where: { email } });
+    const user = await this.prisma.user.findUnique({ where: { email } });
     const dummyHash = await this.getDummyHash();
 
     if (!user || !user.passwordHash || user.status === 'ARCHIVED') {
@@ -150,7 +151,7 @@ export class AuthService {
       throw unavailableOrRethrow(error);
     }
 
-    await this.prisma.client.user.update({
+    await this.prisma.user.update({
       where: { id: user.id },
       data: { lastLoginAt: now },
     });
@@ -198,7 +199,7 @@ export class AuthService {
       throw new UnauthorizedException('Требуется авторизация');
     }
 
-    const user = await this.prisma.client.user.findUnique({ where: { id: stored.userId } });
+    const user = await this.prisma.user.findUnique({ where: { id: stored.userId } });
     const ip = clientIp(request, config.TRUST_PROXY);
     const requestId = requestIdOf(request);
 
@@ -292,7 +293,7 @@ export class AuthService {
     if (!parsed.success) {
       throw new BadRequestException('Некорректные данные');
     }
-    const stored = await this.prisma.client.user.findUnique({ where: { id: user.id } });
+    const stored = await this.prisma.user.findUnique({ where: { id: user.id } });
     if (!stored?.passwordHash) {
       throw new UnauthorizedException('Требуется авторизация');
     }
@@ -302,7 +303,7 @@ export class AuthService {
     }
     assertPasswordPolicy(parsed.data.newPassword);
     const passwordHash = await this.hasher.hash(parsed.data.newPassword);
-    const updated = await this.prisma.client.user.update({
+    const updated = await this.prisma.user.update({
       where: { id: user.id },
       data: {
         passwordHash,
@@ -372,7 +373,7 @@ export class AuthService {
 
   async logoutAll(user: AuthenticatedUser, request: FastifyRequest): Promise<void> {
     const config = loadConfig();
-    await this.prisma.client.user.update({
+    await this.prisma.user.update({
       where: { id: user.id },
       data: { sessionVersion: { increment: 1 } },
     });
@@ -440,7 +441,7 @@ export class AuthService {
     requestId: string | null;
     newValue?: Record<string, unknown>;
   }): Promise<void> {
-    await this.prisma.client.auditLog.create({
+    await this.prisma.auditLog.create({
       data: {
         actorUserId: input.actorUserId,
         action: input.action,
