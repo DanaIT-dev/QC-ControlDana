@@ -16,8 +16,14 @@ export default async function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-dvh items-center justify-center bg-background px-4 py-8">
-      <Card className="w-full max-w-[440px] rounded-xl shadow-sm">
+    <main className="relative flex min-h-dvh items-center justify-center overflow-x-hidden px-4 py-8">
+      <div
+        aria-hidden
+        data-login-backdrop
+        className="absolute inset-0 bg-slate-950 bg-[url('/login-background.jpg')] bg-cover bg-center bg-no-repeat"
+      />
+      <div aria-hidden className="absolute inset-0 bg-slate-950/40" />
+      <Card className="relative z-10 w-full max-w-[440px] rounded-xl shadow-lg">
         <CardHeader className="gap-2">
           <QcLogo size="login" />
           <h1 className="text-2xl font-semibold">Реестр дефектных актов</h1>

@@ -83,6 +83,11 @@ test.describe('authentication browser flows', () => {
       return document.documentElement.scrollWidth > document.documentElement.clientWidth;
     });
     expect(overflow).toBe(false);
+    await expect(page.locator('[data-login-backdrop]')).toBeVisible();
+    const background = await page.locator('[data-login-backdrop]').evaluate((element) => {
+      return getComputedStyle(element).backgroundImage;
+    });
+    expect(background).toContain('login-background.jpg');
     await expect(page.getByLabel('Электронная почта')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Войти' })).toBeVisible();
   });
