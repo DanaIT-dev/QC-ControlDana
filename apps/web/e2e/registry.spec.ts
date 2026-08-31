@@ -116,6 +116,7 @@ test.describe('role-aware registry', () => {
     await page.getByPlaceholder('Номер акта, объект, адрес, заказчик…').press('Enter');
     await expect(page.getByRole('heading', { name: 'Нет строк' })).toBeVisible();
     await page.getByRole('button', { name: 'Сбросить' }).click();
+    await expect(page.locator('.registry-table tbody tr').first()).toBeVisible();
 
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(page.locator('.defect-card').first()).toBeVisible();

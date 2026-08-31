@@ -23,6 +23,7 @@ export {
 export { withAuthenticatedDbContext, withWorkerDbContext } from './authenticated-context';
 export type { AuthenticatedDbUser, AuthenticatedDbCallback } from './authenticated-context';
 export { prismaWithRlsTransaction, currentRlsTransaction } from './rls-als';
+export { serializePoolClientQueries, isPoolClientQuerySerialized } from './pg-query-queue';
 export {
   postgresUrlWithoutSchema,
   withDatabaseName,

@@ -7,68 +7,36 @@ import {
   resolveWorkerHeartbeatKey,
 } from '@sgr-registry/domain';
 import type Redis from 'ioredis';
-import nodemailer from 'nodemailer';
+import { probeSmtpTransport } from './dispatcher';
 
-export async function probeSmtp(prisma: PrismaClient): Promise<{
+export async function probeSmtp(input: { emailEnabled: boolean }): Promise<{
   status: 'up' | 'down' | 'disabled';
   latencyMs?: number;
 }> {
-  const config = loadConfig();
-  const settings = await prisma.systemSettings.findUnique({ where: { id: 'default' } });
-  if (!config.EMAIL_ENABLED || settings?.emailEnabled === false) {
+  if (!input.emailEnabled) {
     return { status: 'disabled' };
   }
-  const started = Date.now();
-  try {
-    const transporter = nodemailer.createTransport({
-      host: config.SMTP_HOST,
-      port: config.SMTP_PORT,
-      secure: config.SMTP_SECURE,
-      auth:
-        config.SMTP_USER && config.SMTP_PASSWORD
-          ? { user: config.SMTP_USER, pass: config.SMTP_PASSWORD }
-          : undefined,
-      connectionTimeout: 2000,
-      greetingTimeout: 2000,
-      socketTimeout: 2000,
-    });
-    try {
-      await transporter.verify();
-      return { status: 'up', latencyMs: Date.now() - started };
-    } finally {
-      transporter.close();
-    }
-  } catch {
-    return { status: 'down', latencyMs: Date.now() - started };
-  }
+  return probeSmtpTransport(loadConfig());
 }
 
-export async function collectNotificationOps(input: {
-  prisma: PrismaClient;
-  queue: Queue;
-  redis: Redis;
-}) {
-  const [pending, oldest, emailQueued, emailFailed, emailDead, sla, settings, heartbeatRaw] =
-    await Promise.all([
-      input.prisma.outboxEvent.count({
-        where: { status: { in: ['PENDING', 'CLAIMED', 'FAILED'] } },
-      }),
-      input.prisma.outboxEvent.findFirst({
-        where: { status: { in: ['PENDING', 'FAILED'] } },
-        orderBy: { createdAt: 'asc' },
-        select: { createdAt: true },
-      }),
-      input.prisma.emailDelivery.count({ where: { status: { in: ['QUEUED', 'SENDING'] } } }),
-      input.prisma.emailDelivery.count({ where: { status: 'FAILED' } }),
-      input.prisma.emailDelivery.count({ where: { status: 'DEAD' } }),
-      input.prisma.slaEvaluationState.findUnique({ where: { id: 'default' } }),
-      input.prisma.systemSettings.findUnique({ where: { id: 'default' } }),
-      input.redis.get(resolveWorkerHeartbeatKey()),
-    ]);
-  const counts = await input.queue.getJobCounts();
-  const smtp = await probeSmtp(input.prisma);
-  const heartbeat = parseWorkerHeartbeat(heartbeatRaw);
+export async function collectNotificationDbOps(input: { prisma: PrismaClient }) {
+  const [pending, oldest, emailQueued, emailFailed, emailDead, sla, settings] = await Promise.all([
+    input.prisma.outboxEvent.count({
+      where: { status: { in: ['PENDING', 'CLAIMED', 'FAILED'] } },
+    }),
+    input.prisma.outboxEvent.findFirst({
+      where: { status: { in: ['PENDING', 'FAILED'] } },
+      orderBy: { createdAt: 'asc' },
+      select: { createdAt: true },
+    }),
+    input.prisma.emailDelivery.count({ where: { status: { in: ['QUEUED', 'SENDING'] } } }),
+    input.prisma.emailDelivery.count({ where: { status: 'FAILED' } }),
+    input.prisma.emailDelivery.count({ where: { status: 'DEAD' } }),
+    input.prisma.slaEvaluationState.findUnique({ where: { id: 'default' } }),
+    input.prisma.systemSettings.findUnique({ where: { id: 'default' } }),
+  ]);
   return {
+    emailEnabled: loadConfig().EMAIL_ENABLED && settings?.emailEnabled !== false,
     outboxPending: pending,
     oldestPendingOutboxAgeMs: oldest ? Date.now() - oldest.createdAt.getTime() : null,
     emailQueued,
@@ -77,7 +45,16 @@ export async function collectNotificationOps(input: {
     lastSlaBusinessDate: sla?.lastSuccessfulBusinessDate ?? null,
     lastSlaRunAt: sla?.lastRunAt?.toISOString() ?? null,
     nextSlaRunAt: nextDailyEvaluationAt(settings?.dailyEvaluationMinuteOfDay ?? 480).toISOString(),
-    smtp,
+  };
+}
+
+export async function collectNotificationRuntimeOps(input: { queue: Queue; redis: Redis }) {
+  const [counts, heartbeatRaw] = await Promise.all([
+    input.queue.getJobCounts(),
+    input.redis.get(resolveWorkerHeartbeatKey()),
+  ]);
+  const heartbeat = parseWorkerHeartbeat(heartbeatRaw);
+  return {
     worker: {
       status: heartbeat.status,
       heartbeatAgeMs: heartbeat.ageMs,
@@ -86,5 +63,27 @@ export async function collectNotificationOps(input: {
       failed: counts.failed ?? 0,
       delayed: counts.delayed ?? 0,
     },
+  };
+}
+
+export async function collectNotificationOps(input: {
+  prisma: PrismaClient;
+  queue: Queue;
+  redis: Redis;
+}) {
+  const db = await collectNotificationDbOps({ prisma: input.prisma });
+  const runtime = await collectNotificationRuntimeOps({ queue: input.queue, redis: input.redis });
+  const smtp = await probeSmtp({ emailEnabled: db.emailEnabled });
+  return {
+    outboxPending: db.outboxPending,
+    oldestPendingOutboxAgeMs: db.oldestPendingOutboxAgeMs,
+    emailQueued: db.emailQueued,
+    emailFailed: db.emailFailed,
+    emailDead: db.emailDead,
+    lastSlaBusinessDate: db.lastSlaBusinessDate,
+    lastSlaRunAt: db.lastSlaRunAt,
+    nextSlaRunAt: db.nextSlaRunAt,
+    smtp,
+    worker: runtime.worker,
   };
 }

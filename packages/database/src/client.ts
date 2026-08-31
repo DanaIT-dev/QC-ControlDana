@@ -2,36 +2,44 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
 import { Pool, type PoolClient } from 'pg';
 import { postgresUrlWithoutSchema } from './database-url';
+import { serializePoolClientQueries } from './pg-query-queue';
+
+function wrapPoolConnect(pool: Pool, decorate: (client: PoolClient) => Promise<PoolClient>): void {
+  const originalConnect = pool.connect.bind(pool);
+  pool.connect = ((
+    callback?: (
+      err: Error | undefined,
+      client?: PoolClient,
+      done?: (release?: unknown) => void,
+    ) => void,
+  ) => {
+    const ready = originalConnect().then((client) => decorate(client));
+    if (callback) {
+      void ready.then(
+        (client) => {
+          callback(undefined, client, client.release.bind(client) as never);
+        },
+        (error: Error) => {
+          callback(error);
+        },
+      );
+      return undefined;
+    }
+    return ready;
+  }) as Pool['connect'];
+}
+
+async function decoratePoolClient(client: PoolClient, assumeOwner: boolean): Promise<PoolClient> {
+  serializePoolClientQueries(client);
+  if (assumeOwner) {
+    await client.query('SET ROLE sgr_owner');
+  }
+  return client;
+}
 
 function createClient(databaseUrl: string, assumeOwner: boolean): PrismaClient {
   const pool = new Pool({ connectionString: postgresUrlWithoutSchema(databaseUrl) });
-  if (assumeOwner) {
-    const originalConnect = pool.connect.bind(pool);
-    pool.connect = ((
-      callback?: (
-        err: Error | undefined,
-        client?: PoolClient,
-        done?: (release?: unknown) => void,
-      ) => void,
-    ) => {
-      const ready = originalConnect().then(async (client) => {
-        await client.query('SET ROLE sgr_owner');
-        return client;
-      });
-      if (callback) {
-        void ready.then(
-          (client) => {
-            callback(undefined, client, client.release.bind(client) as never);
-          },
-          (error: Error) => {
-            callback(error);
-          },
-        );
-        return undefined;
-      }
-      return ready;
-    }) as Pool['connect'];
-  }
+  wrapPoolConnect(pool, (client) => decoratePoolClient(client, assumeOwner));
   const adapter = new PrismaPg(pool);
   return new PrismaClient({ adapter });
 }

@@ -63,7 +63,7 @@ export class OutboxWriter {
 }
 
 export async function syncSlaClocks(
-  tx: Prisma.TransactionClient,
+  tx: Pick<Prisma.TransactionClient, 'slaClock'>,
   defect: {
     id: string;
     status: 'IN_PROGRESS' | 'COMPLETED';

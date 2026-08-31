@@ -74,9 +74,20 @@ COMPLETED завершает текущий GENERAL clock: новые WARNING/э
 
 Мутация и `OutboxEvent` пишутся в одной PostgreSQL-транзакции. HTTP mutation не отправляет SMTP. Rollback = нет outbox.
 
-Гарантия: **at-least-once** транспорт + идемпотентная проекция (`occurrenceKey`, unique recipient, unique email delivery). Exactly-once не обещается.
+Гарантия: **at-least-once** транспорт + идемпотентная проекция (`occurrenceKey`, unique recipient, unique email delivery). Exactly-once не обещается. Повторная доставка после crash между успешным SMTP и DB finalize — ожидаемая модель; `Message-ID` детерминирован от `email_deliveries.id`.
 
-Dispatcher (только worker) берёт событие через `UPDATE ... RETURNING` (claim). BullMQ `jobId` детерминирован и **не содержит `:`** (`outbox-{id}`, `email-{id}`, `sla-{businessDate}`): custom id BullMQ 5 запрещает двоеточие. Retry с exponential backoff, после лимита — `DEAD`. Повторный запуск worker поднимает PENDING/FAILED. HTTP mutation не падает, если постановка в очередь отложена: событие остаётся PENDING и будет подхвачено recover. API не регистрирует processors и не claim outbox.
+Границы транзакций worker:
+
+1. Короткая worker-context transaction: атомарный `UPDATE ... RETURNING` (claim) + lease (`availableAt` / `nextAttemptAt`).
+2. Transaction завершается. Внешний I/O (SMTP, Redis enqueue, MinIO, ClamAV) **вне** PostgreSQL.
+3. Новая короткая worker-context transaction: `SENT` либо attempts + backoff / `DEAD`.
+4. Каждая короткая транзакция отдельно вызывает `sgr_set_worker_context`.
+
+Lease: `SENDING` / `CLAIMED` с истекшим `nextAttemptAt` / `availableAt` можно взять повторно. Два worker не отправляют одну активную доставку. SMTP timeout задаётся `SMTP_TIMEOUT_MS` (по умолчанию 8 с) и не удерживает соединение PostgreSQL. На фазе TCP/greeting допускаются до трёх коротких попыток с тем же `Message-ID`; сокет после ошибки уничтожается (`destroy`), чтобы не копить `CLOSE_WAIT` на Docker Desktop. Секреты и полный SMTP response в БД и логи не пишутся (`lastErrorCode`: `SMTP_TIMEOUT` / `SMTP_CONNECTION` / `SMTP_4XX` / `SMTP_5XX`).
+
+Dispatcher (только worker) берёт событие через `UPDATE ... RETURNING` (claim). BullMQ `jobId` детерминирован и **не содержит `:`** (`outbox-{id}`, `email-{id}`, `sla-{businessDate}`): custom id BullMQ 5 запрещает двоеточие. Retry с exponential backoff, после лимита — `DEAD`. Постоянный SMTP 5xx сразу `DEAD`. Повторный запуск worker поднимает PENDING/FAILED/истекший lease. HTTP mutation не падает, если постановка в очередь отложена: событие остаётся PENDING и будет подхвачено recover. API не регистрирует processors и не claim outbox.
+
+PWA Push не входит в этот этап (нет Service Worker, VAPID, Web Push). Интеграция с 1С исключена из проекта.
 
 Stale SLA job (cycle/deadline уже другие или COMPLETED) помечается PROCESSED и не шлёт письмо.
 
@@ -86,7 +97,7 @@ Development/test: Mailpit (`axllent/mailpit:v1.27.10@sha256:b1f1be18af530d939a11
 
 Письма: русский язык, text+HTML, subject без CRLF, HTML escaping, без вложений и без публичных MinIO URL. Ссылка только на защищённую карточку Act (`PUBLIC_APP_URL`, в production HTTPS). Host входящего запроса не используется.
 
-Временная ошибка SMTP → retry. Постоянная → DEAD. `/api/ready` не падает из-за SMTP outage; System Status показывает degraded.
+Временная ошибка SMTP → retry. Постоянная → DEAD. `/api/ready` не падает из-за SMTP outage; System Status показывает degraded. SMTP probe System Status выполняется **после** короткой RLS-транзакции чтения счётчиков, не внутри неё.
 
 ## API
 
@@ -114,7 +125,7 @@ pnpm test:sla:performance
 
 Ручной evaluator: при старте worker выполняется catch-up, если за текущий businessDate расчёт не записан. Daily job: `0 8 * * *` Europe/Minsk (или из settings). Параллельные worker не дублируют evaluation: Redis lock на бизнес-дату.
 
-После outage worker: поднять процесс; в логе должно появиться `Notification worker started`; `outbox.recover` и catch-up SLA подхватят PENDING/FAILED. Heartbeat пишется в Redis с TTL (отдельный ключ для test); System Status показывает `up`/`down`. `/api/ready` не зависит от worker.
+После outage worker: поднять процесс; в логе должно появиться `Notification worker started`; `outbox.recover` и catch-up SLA подхватят PENDING/FAILED и записи с истекшим lease. Heartbeat пишется в Redis с TTL (отдельный ключ для test); System Status показывает `up`/`down`. `/api/ready` не зависит от worker. Graceful shutdown во время SMTP не оставляет `idle in transaction`: claim уже закоммичен, lease истечёт.
 
 Обновление Mailpit digest:
 

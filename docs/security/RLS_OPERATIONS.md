@@ -32,6 +32,10 @@ pnpm db:roles:provision
 
 API открывает interactive Prisma transaction, первой операцией вызывает `sgr_set_request_context(token)`. Token: `v1.{payload}.{hmac-sha256}` где payload `user|{uuid}|{sessionVersion}|{issuedAtMs}|{nonce}`. Worker: `worker|{issuedAtMs}|{nonce}`. Политики доверяют только GUC, подписанному тем же секретом (`sgr_guc_intact`). Обычный `set_config` userId/role не подменяет контекст.
 
+Контекст живёт только внутри транзакции. Worker ставит его заново на каждую короткую транзакцию claim/finalize. SMTP и прочий внешний I/O не выполняются, пока транзакция открыта. После commit/rollback соединение возвращается в пул без пользовательского GUC (`sgr_clear_request_context` в `finally`).
+
+Один PostgreSQL client в interactive transaction не получает параллельные `query()`. Сериализация — на конкретном client/транзакции, не глобальный mutex приложения. Предупреждение `pg@9` `client.query() when the client is already executing a query` не подавляется фильтром логов и не маскируется понижением `pg`.
+
 Секрет хранится в `sgr_rls_secrets` без GRANT runtime. Ошибки функции: `RLS context rejected` / `28000`, без текста секрета.
 
 Prisma `INSERT ... RETURNING` требует SELECT-политику на новую строку. Чтобы CONTRACTOR не читал `audit_logs`, а не-ADMIN не читал `outbox_events`, запись идёт через `sgr_insert_audit_log` / `sgr_insert_outbox_event` (`SECURITY DEFINER`, `session_user` ∈ runtime-ролей, без GRANT PUBLIC).
@@ -57,6 +61,18 @@ SELECT * FROM pg_policies WHERE schemaname = 'public';
 ```
 
 Пустой SELECT без контекста — ожидаемый deny-by-default, не «сломалась база». Не запускать `SET ROLE sgr_owner` и не отключать RLS с runtime-ролей.
+
+## Troubleshooting
+
+`Calling client.query() when the client is already executing a query` (pg@9): на одном transaction-bound соединении ушли параллельные queries (типично Prisma `include` to-many или `Promise.all` до сериализации client). Не фильтровать warning в логах и не понижать `pg`. Проверить, что runtime идёт через `createPrismaClient` / `getPrismaClient`.
+
+`idle in transaction` во время отправки почты: SMTP оказался внутри interactive transaction. Worker должен claim → commit → SMTP → finalize. Не поднимать `timeout` транзакции, чтобы «пережить» SMTP.
+
+SMTP `Timeout` сразу после `Connection established` без EHLO, плюс `CLOSE_WAIT` на `127.0.0.1:1025`: Docker Desktop держит полузакрытые сокеты. Worker уничтожает SMTP-сокет после отправки/ошибки; локально `docker restart sgr-registry-mailpit`.
+
+Утечка RLS-контекста user A → user B: GUC не очищен или client ушёл из транзакции в общий код. После rollback/commit `sgr_app` без контекста не видит бизнес-строк.
+
+Зависший `SENDING` / `CLAIMED`: истечение lease (`nextAttemptAt` / `availableAt`), затем recover. Не выдавать worker `BYPASSRLS` и не переносить SMTP в `SECURITY DEFINER`.
 
 ## Rollback / recovery
 

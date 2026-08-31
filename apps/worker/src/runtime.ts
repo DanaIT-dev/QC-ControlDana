@@ -95,14 +95,16 @@ export async function startWorkerRuntime(
   const notificationQueue = new Queue(resolveNotificationQueueName(), { connection });
   const attachmentQueue = new Queue(resolveAttachmentQueueName(), { connection });
   const maintenanceQueue = new Queue(resolveMaintenanceQueueName(), { connection });
-  const dispatcher = new NotificationDispatcher(prisma, notificationQueue);
+  const dispatcher = new NotificationDispatcher(prisma, notificationQueue, (fn) =>
+    withWorkerDbContext({ prisma: rootPrisma, secret, callback: fn }),
+  );
   const outboxWriter = new OutboxWriter(notificationQueue);
   const store = new ObjectStore(createS3Client(config), resolveAttachmentBucket(config));
   const heartbeat = new WorkerHeartbeat(heartbeatRedis);
 
   const notificationWorker = new Worker(
     resolveNotificationQueueName(),
-    (job) => withWorker(() => processNotificationJob(dispatcher, prisma, job)),
+    (job) => processNotificationJob(dispatcher, prisma, job),
     { connection, concurrency: 5 },
   );
   const attachmentWorker = new Worker(
@@ -152,7 +154,7 @@ export async function startWorkerRuntime(
       config.WORKER_READY_TIMEOUT_MS,
     );
     if (options.scheduleOnStart !== false) {
-      await withWorker(() => scheduleNotificationJobs(prisma, notificationQueue));
+      await scheduleNotificationJobs(prisma, notificationQueue, withWorker);
     }
     await heartbeat.start();
     if (options.listenHealth && config.WORKER_HEALTH_PORT > 0) {

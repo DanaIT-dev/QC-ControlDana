@@ -1,12 +1,15 @@
 import { randomUUID } from 'node:crypto';
+import { createConnection, isIP, type Socket } from 'node:net';
+import { connect as tlsConnect } from 'node:tls';
 import { Logger } from '@nestjs/common';
 import type { Job, Queue } from 'bullmq';
 import { loadConfig, type AppConfig } from '@sgr-registry/config';
 import type { PrismaClient } from '@sgr-registry/database';
-import { Prisma } from '@sgr-registry/database';
+import { Prisma, insertOutboxEventRow } from '@sgr-registry/database';
 import {
   EMAIL_DELIVER_JOB,
   EMAIL_MAX_ATTEMPTS,
+  OUTBOX_CLAIM_LEASE_MS,
   OUTBOX_DISPATCH_JOB,
   OUTBOX_MAX_ATTEMPTS,
   OUTBOX_RECOVERY_JOB,
@@ -15,7 +18,10 @@ import {
   buildActUrl,
   buildOccurrenceKey,
   calendarDateInTimeZone,
+  classifySmtpError,
   emailJobId,
+  emailLeaseMs,
+  emailMessageId,
   isTerminalAttempt,
   nextAttemptAt,
   notificationTitle,
@@ -23,6 +29,7 @@ import {
   overdueDaysOf,
   reachedEscalationThresholds,
   recipientsForDeadlineAlert,
+  redactTransportSecrets,
   renderNotificationEmail,
   resolveSlaEvaluationLockKey,
   slaCatchUpJobId,
@@ -30,6 +37,7 @@ import {
   nextDailyEvaluationAt,
   type NotificationType,
   type SlaClockKind,
+  type SmtpErrorCode,
 } from '@sgr-registry/domain';
 import nodemailer from 'nodemailer';
 import Redis from 'ioredis';
@@ -52,231 +60,73 @@ type OutboxPayload = {
   extraRecipientIds?: string[];
 };
 
+export type WorkerDbRunner = <T>(callback: () => Promise<T>) => Promise<T>;
+
+type ClaimedOutbox = {
+  id: string;
+  type: string;
+  payload: unknown;
+  attempts: number;
+};
+
+type ClaimedEmail = {
+  deliveryId: string;
+  attempts: number;
+  to: string;
+  title: string;
+  body: string;
+  actId: string;
+  defectItemId: string | null;
+};
+
 export class NotificationDispatcher {
   private readonly logger = new Logger(NotificationDispatcher.name);
 
   constructor(
     private readonly prisma: PrismaClient,
     private readonly queue: Queue,
+    private readonly runDb: WorkerDbRunner = (callback) => callback(),
   ) {}
 
   async dispatch(outboxId: string): Promise<void> {
-    const claimed = await this.claim(outboxId);
-    if (!claimed) {
+    const result = await this.runDb(() => this.dispatchInTx(outboxId));
+    if (!result) {
       return;
     }
-    try {
-      const payload = claimed.payload as OutboxPayload;
-      assertSafeNotificationPayload(payload);
-      if (payload.kind && payload.cycle !== undefined && payload.deadline !== undefined) {
-        if (!payload.defectItemId) {
-          await this.markProcessed(claimed.id);
-          return;
-        }
-        const clock = await this.prisma.slaClock.findUnique({
-          where: {
-            defectItemId_kind: { defectItemId: payload.defectItemId, kind: payload.kind },
-          },
-        });
-        const current = clock?.deadline ? calendarDateInTimeZone(clock.deadline) : null;
-        if (!clock || clock.cycle !== payload.cycle || current !== (payload.deadline ?? null)) {
-          await this.markProcessed(claimed.id);
-          return;
-        }
-        if (clock.state === 'COMPLETED' && payload.type.startsWith('SLA_')) {
-          await this.markProcessed(claimed.id);
-          return;
-        }
-      }
-      const recipientIds = await this.resolveRecipients(payload);
-      if (recipientIds.length === 0) {
-        await this.markProcessed(claimed.id);
-        return;
-      }
-      const event = await this.prisma.notificationEvent.upsert({
-        where: { occurrenceKey: payload.occurrenceBase },
-        update: {},
-        create: {
-          id: randomUUID(),
-          type: payload.type,
-          occurrenceKey: payload.occurrenceBase,
-          actorUserId: payload.actorUserId ?? null,
-          actId: payload.actId,
-          defectItemId: payload.defectItemId,
-          attachmentId: payload.attachmentId ?? null,
-          payload: {
-            title: notificationTitle(payload.type),
-            body: payload.body,
-            kind: payload.kind ?? null,
-            cycle: payload.cycle ?? null,
-            threshold: payload.threshold ?? null,
-          },
-          occurredAt: new Date(),
-        },
-      });
-      for (const userId of recipientIds) {
-        const recipient = await this.prisma.notificationRecipient.upsert({
-          where: {
-            notificationEventId_userId: { notificationEventId: event.id, userId },
-          },
-          update: {},
-          create: {
-            id: randomUUID(),
-            notificationEventId: event.id,
-            userId,
-          },
-        });
-        const delivery = await this.prisma.emailDelivery.upsert({
-          where: { notificationRecipientId: recipient.id },
-          update: {},
-          create: {
-            id: randomUUID(),
-            notificationRecipientId: recipient.id,
-            updatedAt: new Date(),
-          },
-        });
-        if (delivery.status === 'QUEUED' || delivery.status === 'FAILED') {
-          try {
-            await this.queue.add(
-              EMAIL_DELIVER_JOB,
-              { deliveryId: delivery.id },
-              {
-                jobId: emailJobId(delivery.id),
-                attempts: 3,
-                backoff: { type: 'exponential', delay: 2000 },
-              },
-            );
-          } catch (error) {
-            this.logger.warn(
-              `Email enqueue deferred id=${delivery.id} code=${error instanceof Error ? error.name : 'ENQUEUE_FAILED'}`,
-            );
-          }
-        }
-      }
-      await this.markProcessed(claimed.id);
-    } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        (error.code === 'P2003' || error.code === 'P2025')
-      ) {
-        await this.markProcessed(claimed.id);
-        return;
-      }
-      const attempts = claimed.attempts;
-      const dead = isTerminalAttempt(attempts, OUTBOX_MAX_ATTEMPTS);
-      await this.prisma.outboxEvent.update({
-        where: { id: claimed.id },
-        data: {
-          status: dead ? 'DEAD' : 'FAILED',
-          lastErrorCode: 'DISPATCH_FAILED',
-          availableAt: nextAttemptAt(attempts),
-          updatedAt: new Date(),
-        },
-      });
-      if (dead) {
-        await writeAuditLog(this.prisma, {
-          actor: null,
-          action: 'OUTBOX_DEAD',
-          entityType: 'OUTBOX_EVENT',
-          entityId: claimed.id,
-          newValue: toJsonValue({ type: claimed.type }),
-          source: 'SYSTEM',
-        });
-      }
-      this.logger.warn(error instanceof Error ? error.message : 'dispatch failed');
-      if (!dead) {
-        throw error;
-      }
+    for (const deliveryId of result.deliveryIds) {
+      await this.enqueueEmailJob(deliveryId);
     }
   }
 
   async deliver(deliveryId: string): Promise<void> {
-    const delivery = await this.prisma.emailDelivery.findUnique({
-      where: { id: deliveryId },
-      include: {
-        recipient: {
-          include: { event: true, user: true },
-        },
-      },
-    });
-    if (!delivery || delivery.status === 'SENT' || delivery.status === 'DEAD') {
-      return;
-    }
-    if (delivery.recipient.revokedAt || delivery.recipient.user.status === 'ARCHIVED') {
-      await this.prisma.emailDelivery.update({
-        where: { id: deliveryId },
-        data: { status: 'DEAD', lastErrorCode: 'REVOKED', updatedAt: new Date() },
-      });
-      return;
-    }
-    const settings = await this.prisma.systemSettings.findUnique({ where: { id: 'default' } });
     const config = loadConfig();
-    if (!config.EMAIL_ENABLED || settings?.emailEnabled === false) {
-      await this.prisma.emailDelivery.update({
-        where: { id: deliveryId },
-        data: { status: 'QUEUED', lastErrorCode: 'EMAIL_DISABLED', updatedAt: new Date() },
-      });
+    const claimed = await this.runDb(() => this.claimEmail(deliveryId, config));
+    if (!claimed) {
       return;
     }
-    const actId = delivery.recipient.event.actId;
-    if (!actId) {
-      await this.prisma.emailDelivery.update({
-        where: { id: deliveryId },
-        data: { status: 'DEAD', lastErrorCode: 'NO_ACT', updatedAt: new Date() },
-      });
-      return;
-    }
-    await this.prisma.emailDelivery.update({
-      where: { id: deliveryId },
-      data: { status: 'SENDING', attempts: { increment: 1 }, updatedAt: new Date() },
+    const messageId = emailMessageId(claimed.deliveryId, config.EMAIL_FROM);
+    const mail = renderNotificationEmail({
+      title: claimed.title,
+      body: claimed.body,
+      actUrl: buildActUrl(config.PUBLIC_APP_URL, claimed.actId, claimed.defectItemId ?? undefined),
     });
     try {
-      const payload = delivery.recipient.event.payload as { title?: string; body?: string };
-      const mail = renderNotificationEmail({
-        title:
-          payload.title ?? notificationTitle(delivery.recipient.event.type as NotificationType),
-        body: payload.body ?? notificationTitle(delivery.recipient.event.type as NotificationType),
-        actUrl: buildActUrl(
-          config.PUBLIC_APP_URL,
-          actId,
-          delivery.recipient.event.defectItemId ?? undefined,
-        ),
-      });
-      const info = await sendMail(config, delivery.recipient.user.email, mail);
-      await this.prisma.emailDelivery.update({
-        where: { id: deliveryId },
-        data: {
-          status: 'SENT',
-          sentAt: new Date(),
-          providerMessageId: info.messageId,
-          lastErrorCode: null,
-          updatedAt: new Date(),
-        },
-      });
+      await sendMail(config, claimed.to, mail, messageId);
+      await this.runDb(() => this.markEmailSent(claimed.deliveryId, messageId));
     } catch (error) {
-      const attempts = delivery.attempts + 1;
-      const dead = isTerminalAttempt(attempts, EMAIL_MAX_ATTEMPTS);
-      await this.prisma.emailDelivery.update({
-        where: { id: deliveryId },
-        data: {
-          status: dead ? 'DEAD' : 'FAILED',
-          lastErrorCode: 'SMTP_ERROR',
-          nextAttemptAt: nextAttemptAt(attempts),
-          updatedAt: new Date(),
-        },
-      });
-      if (dead) {
-        await writeAuditLog(this.prisma, {
-          actor: null,
-          action: 'EMAIL_DELIVERY_EXHAUSTED',
-          entityType: 'EMAIL_DELIVERY',
-          entityId: deliveryId,
-          newValue: toJsonValue({ status: 'DEAD' }),
-          source: 'SYSTEM',
-        });
-        return;
+      const classified = classifySmtpError(error);
+      const dead = await this.runDb(() =>
+        this.markEmailFailure(
+          claimed.deliveryId,
+          claimed.attempts,
+          classified.code,
+          classified.retryable,
+        ),
+      );
+      this.logger.warn(`email delivery ${classified.code}`);
+      if (!dead && classified.retryable) {
+        throw error;
       }
-      throw error;
     }
   }
 
@@ -299,196 +149,82 @@ export class NotificationDispatcher {
     }
   }
 
-  private async runDailyEvaluation(businessDate: string): Promise<void> {
-    const settings = await this.prisma.systemSettings.findUnique({ where: { id: 'default' } });
-    const warningDays = settings?.deadlineWarningDays ?? 3;
-    const thresholds = settings?.escalationDays?.length ? settings.escalationDays : [0, 3, 7, 14];
-    const [contractorPool, managers, admins] = await Promise.all([
-      this.activeIds('CONTRACTOR_ENGINEER'),
-      this.activeIds('SGR_MANAGER'),
-      this.activeIds('ADMIN'),
-    ]);
-    let cursor: string | undefined;
-    let processed = 0;
-    for (;;) {
-      const batch = await this.prisma.defectItem.findMany({
-        where: {
-          status: 'IN_PROGRESS',
-          act: { status: { not: 'CANCELLED' } },
-          ...(cursor ? { id: { gt: cursor } } : {}),
-        },
-        orderBy: { id: 'asc' },
-        take: 100,
-        include: { responsibleEngineers: true },
-      });
-      if (batch.length === 0) {
-        break;
-      }
-      for (const item of batch) {
-        cursor = item.id;
-        processed += 1;
-        const clocks = await this.ensureClocks(item, warningDays);
-        for (const clock of clocks) {
-          if (
-            clock.state === 'COMPLETED' ||
-            clock.state === 'NO_DEADLINE' ||
-            clock.state === 'NORMAL'
-          ) {
-            continue;
-          }
-          const assigned = item.responsibleEngineers.map((row) => row.userId);
-          if (clock.state === 'WARNING') {
-            await this.enqueueSla(item, clock, 'SLA_WARNING', null, businessDate, {
-              assigned,
-              contractors: contractorPool,
-              managers,
-              admins,
-            });
-          }
-          const overdueDays = overdueDaysOf({ deadline: clock.deadline });
-          for (const threshold of reachedEscalationThresholds(overdueDays, thresholds)) {
-            const type = threshold === 0 ? 'SLA_DUE_TODAY' : 'SLA_OVERDUE';
-            await this.enqueueSla(item, clock, type, threshold, businessDate, {
-              assigned,
-              contractors: contractorPool,
-              managers,
-              admins,
-            });
-          }
-        }
-      }
-      if (batch.length < 100) {
-        break;
-      }
-    }
-    await this.prisma.slaEvaluationState.upsert({
-      where: { id: 'default' },
-      update: {
-        lastSuccessfulBusinessDate: businessDate,
-        lastRunAt: new Date(),
-        lastStatus: 'OK',
-        lastErrorCode: null,
-        updatedAt: new Date(),
-      },
-      create: {
-        id: 'default',
-        lastSuccessfulBusinessDate: businessDate,
-        lastRunAt: new Date(),
-        lastStatus: 'OK',
-        updatedAt: new Date(),
-      },
-    });
-    await writeAuditLog(this.prisma, {
-      actor: null,
-      action: 'SLA_EVALUATION_COMPLETED',
-      entityType: 'SLA_EVALUATION',
-      entityId: 'default',
-      newValue: toJsonValue({ businessDate, processed }),
-      source: 'SYSTEM',
-    });
-  }
-
   async recover(): Promise<void> {
-    const pending = await this.prisma.outboxEvent.findMany({
-      where: { status: { in: ['PENDING', 'FAILED'] }, availableAt: { lte: new Date() } },
-      take: 50,
-      orderBy: { availableAt: 'asc' },
+    const snapshot = await this.runDb(async () => {
+      const pending = await this.prisma.outboxEvent.findMany({
+        where: {
+          status: { in: ['PENDING', 'FAILED', 'CLAIMED'] },
+          availableAt: { lte: new Date() },
+        },
+        take: 50,
+        orderBy: { availableAt: 'asc' },
+        select: { id: true },
+      });
+      const emails = await this.prisma.emailDelivery.findMany({
+        where: {
+          status: { in: ['QUEUED', 'FAILED', 'SENDING'] },
+          nextAttemptAt: { lte: new Date() },
+        },
+        take: 50,
+        select: { id: true },
+      });
+      const state = await this.prisma.slaEvaluationState.findUnique({ where: { id: 'default' } });
+      const today = calendarDateInTimeZone(new Date());
+      return {
+        pending: pending.map((row) => row.id),
+        emails: emails.map((row) => row.id),
+        needSla: state?.lastSuccessfulBusinessDate !== today,
+      };
     });
-    for (const row of pending) {
-      try {
-        await this.queue.add(
-          OUTBOX_DISPATCH_JOB,
-          { outboxId: row.id },
-          { jobId: outboxJobId(row.id) },
-        );
-      } catch (error) {
-        this.logger.warn(
-          `Outbox recover deferred id=${row.id} code=${error instanceof Error ? error.name : 'ENQUEUE_FAILED'}`,
-        );
-      }
+    for (const id of snapshot.pending) {
+      await this.enqueueOutboxJob(id);
     }
-    const emails = await this.prisma.emailDelivery.findMany({
-      where: { status: { in: ['QUEUED', 'FAILED'] }, nextAttemptAt: { lte: new Date() } },
-      take: 50,
-    });
-    for (const row of emails) {
-      try {
-        await this.queue.add(
-          EMAIL_DELIVER_JOB,
-          { deliveryId: row.id },
-          { jobId: emailJobId(row.id) },
-        );
-      } catch (error) {
-        this.logger.warn(
-          `Email recover deferred id=${row.id} code=${error instanceof Error ? error.name : 'ENQUEUE_FAILED'}`,
-        );
-      }
+    for (const id of snapshot.emails) {
+      await this.enqueueEmailJob(id);
     }
-    const state = await this.prisma.slaEvaluationState.findUnique({ where: { id: 'default' } });
-    const today = calendarDateInTimeZone(new Date());
-    if (state?.lastSuccessfulBusinessDate !== today) {
+    if (snapshot.needSla) {
       try {
         await this.queue.add(
           SLA_EVALUATE_JOB,
           { reason: 'catch-up' },
-          { jobId: slaCatchUpJobId(today) },
+          { jobId: slaCatchUpJobId(calendarDateInTimeZone(new Date())) },
         );
       } catch (error) {
-        this.logger.warn(
-          `SLA catch-up enqueue deferred code=${error instanceof Error ? error.name : 'ENQUEUE_FAILED'}`,
-        );
+        this.logger.warn(`SLA catch-up enqueue deferred code=${errorName(error)}`);
       }
     }
   }
 
   async smtpStatus(): Promise<{ status: 'up' | 'down' | 'disabled'; latencyMs?: number }> {
     const config = loadConfig();
-    const settings = await this.prisma.systemSettings.findUnique({ where: { id: 'default' } });
-    if (!config.EMAIL_ENABLED || settings?.emailEnabled === false) {
+    const enabled = await this.runDb(async () => {
+      const settings = await this.prisma.systemSettings.findUnique({ where: { id: 'default' } });
+      return config.EMAIL_ENABLED && settings?.emailEnabled !== false;
+    });
+    if (!enabled) {
       return { status: 'disabled' };
     }
-    const started = Date.now();
-    try {
-      const transporter = nodemailer.createTransport({
-        host: config.SMTP_HOST,
-        port: config.SMTP_PORT,
-        secure: config.SMTP_SECURE,
-        auth:
-          config.SMTP_USER && config.SMTP_PASSWORD
-            ? { user: config.SMTP_USER, pass: config.SMTP_PASSWORD }
-            : undefined,
-        connectionTimeout: 2000,
-        greetingTimeout: 2000,
-        socketTimeout: 2000,
-      });
-      try {
-        await transporter.verify();
-        return { status: 'up', latencyMs: Date.now() - started };
-      } finally {
-        transporter.close();
-      }
-    } catch {
-      return { status: 'down', latencyMs: Date.now() - started };
-    }
+    return probeSmtpTransport(config);
   }
 
   async stats() {
-    const [pending, oldest, emailQueued, emailFailed, emailDead, sla, settings] = await Promise.all(
-      [
-        this.prisma.outboxEvent.count({
-          where: { status: { in: ['PENDING', 'CLAIMED', 'FAILED'] } },
-        }),
-        this.prisma.outboxEvent.findFirst({
-          where: { status: { in: ['PENDING', 'FAILED'] } },
-          orderBy: { createdAt: 'asc' },
-          select: { createdAt: true },
-        }),
-        this.prisma.emailDelivery.count({ where: { status: { in: ['QUEUED', 'SENDING'] } } }),
-        this.prisma.emailDelivery.count({ where: { status: 'FAILED' } }),
-        this.prisma.emailDelivery.count({ where: { status: 'DEAD' } }),
-        this.prisma.slaEvaluationState.findUnique({ where: { id: 'default' } }),
-        this.prisma.systemSettings.findUnique({ where: { id: 'default' } }),
-      ],
+    const [pending, oldest, emailQueued, emailFailed, emailDead, sla, settings] = await this.runDb(
+      () =>
+        Promise.all([
+          this.prisma.outboxEvent.count({
+            where: { status: { in: ['PENDING', 'CLAIMED', 'FAILED'] } },
+          }),
+          this.prisma.outboxEvent.findFirst({
+            where: { status: { in: ['PENDING', 'FAILED'] } },
+            orderBy: { createdAt: 'asc' },
+            select: { createdAt: true },
+          }),
+          this.prisma.emailDelivery.count({ where: { status: { in: ['QUEUED', 'SENDING'] } } }),
+          this.prisma.emailDelivery.count({ where: { status: 'FAILED' } }),
+          this.prisma.emailDelivery.count({ where: { status: 'DEAD' } }),
+          this.prisma.slaEvaluationState.findUnique({ where: { id: 'default' } }),
+          this.prisma.systemSettings.findUnique({ where: { id: 'default' } }),
+        ]),
     );
     const counts = await this.queue.getJobCounts();
     const smtp = await this.smtpStatus();
@@ -513,6 +249,246 @@ export class NotificationDispatcher {
     };
   }
 
+  async recordSlaFailure(): Promise<void> {
+    await this.runDb(async () => {
+      await writeAuditLog(this.prisma, {
+        actor: null,
+        action: 'SLA_EVALUATION_FAILED',
+        entityType: 'SLA_EVALUATION',
+        entityId: 'default',
+        newValue: toJsonValue({ error: 'EVALUATION_FAILED' }),
+        source: 'SYSTEM',
+      });
+    });
+  }
+
+  private async dispatchInTx(outboxId: string): Promise<{ deliveryIds: string[] } | null> {
+    const claimed = await this.claimOutbox(outboxId);
+    if (!claimed) {
+      return null;
+    }
+    try {
+      const payload = claimed.payload as OutboxPayload;
+      assertSafeNotificationPayload(payload);
+      if (payload.kind && payload.cycle !== undefined && payload.deadline !== undefined) {
+        if (!payload.defectItemId) {
+          await this.markProcessed(claimed.id);
+          return { deliveryIds: [] };
+        }
+        const clock = await this.prisma.slaClock.findUnique({
+          where: {
+            defectItemId_kind: { defectItemId: payload.defectItemId, kind: payload.kind },
+          },
+        });
+        const current = clock?.deadline ? calendarDateInTimeZone(clock.deadline) : null;
+        if (!clock || clock.cycle !== payload.cycle || current !== (payload.deadline ?? null)) {
+          await this.markProcessed(claimed.id);
+          return { deliveryIds: [] };
+        }
+        if (clock.state === 'COMPLETED' && payload.type.startsWith('SLA_')) {
+          await this.markProcessed(claimed.id);
+          return { deliveryIds: [] };
+        }
+      }
+      const recipientIds = await this.resolveRecipients(payload);
+      if (recipientIds.length === 0) {
+        await this.markProcessed(claimed.id);
+        return { deliveryIds: [] };
+      }
+      const event = await this.prisma.notificationEvent.upsert({
+        where: { occurrenceKey: payload.occurrenceBase },
+        update: {},
+        create: {
+          id: randomUUID(),
+          type: payload.type,
+          occurrenceKey: payload.occurrenceBase,
+          actorUserId: payload.actorUserId ?? null,
+          actId: payload.actId,
+          defectItemId: payload.defectItemId,
+          attachmentId: payload.attachmentId ?? null,
+          payload: {
+            title: notificationTitle(payload.type),
+            body: payload.body,
+            kind: payload.kind ?? null,
+            cycle: payload.cycle ?? null,
+            threshold: payload.threshold ?? null,
+          },
+          occurredAt: new Date(),
+        },
+      });
+      const deliveryIds: string[] = [];
+      for (const userId of recipientIds) {
+        const recipient = await this.prisma.notificationRecipient.upsert({
+          where: {
+            notificationEventId_userId: { notificationEventId: event.id, userId },
+          },
+          update: {},
+          create: {
+            id: randomUUID(),
+            notificationEventId: event.id,
+            userId,
+          },
+        });
+        const delivery = await this.prisma.emailDelivery.upsert({
+          where: { notificationRecipientId: recipient.id },
+          update: {},
+          create: {
+            id: randomUUID(),
+            notificationRecipientId: recipient.id,
+            updatedAt: new Date(),
+          },
+        });
+        if (delivery.status === 'QUEUED' || delivery.status === 'FAILED') {
+          deliveryIds.push(delivery.id);
+        }
+      }
+      await this.markProcessed(claimed.id);
+      return { deliveryIds };
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        (error.code === 'P2003' || error.code === 'P2025')
+      ) {
+        await this.markProcessed(claimed.id);
+        return { deliveryIds: [] };
+      }
+      const attempts = claimed.attempts;
+      const dead = isTerminalAttempt(attempts, OUTBOX_MAX_ATTEMPTS);
+      await this.prisma.outboxEvent.update({
+        where: { id: claimed.id },
+        data: {
+          status: dead ? 'DEAD' : 'FAILED',
+          lastErrorCode: 'DISPATCH_FAILED',
+          availableAt: nextAttemptAt(attempts),
+          updatedAt: new Date(),
+        },
+      });
+      if (dead) {
+        await writeAuditLog(this.prisma, {
+          actor: null,
+          action: 'OUTBOX_DEAD',
+          entityType: 'OUTBOX_EVENT',
+          entityId: claimed.id,
+          newValue: toJsonValue({ type: claimed.type }),
+          source: 'SYSTEM',
+        });
+        return { deliveryIds: [] };
+      }
+      this.logger.warn(
+        redactTransportSecrets(error instanceof Error ? error.message : 'dispatch failed'),
+      );
+      throw error;
+    }
+  }
+
+  private async runDailyEvaluation(businessDate: string): Promise<void> {
+    const prelude = await this.runDb(async () => {
+      const settings = await this.prisma.systemSettings.findUnique({ where: { id: 'default' } });
+      const warningDays = settings?.deadlineWarningDays ?? 3;
+      const thresholds = settings?.escalationDays?.length ? settings.escalationDays : [0, 3, 7, 14];
+      const [contractorPool, managers, admins] = await Promise.all([
+        this.activeIds('CONTRACTOR_ENGINEER'),
+        this.activeIds('SGR_MANAGER'),
+        this.activeIds('ADMIN'),
+      ]);
+      return { warningDays, thresholds, contractorPool, managers, admins };
+    });
+    let cursor: string | undefined;
+    let processed = 0;
+    for (;;) {
+      const batch = await this.runDb(async () => {
+        const items = await this.prisma.defectItem.findMany({
+          where: {
+            status: 'IN_PROGRESS',
+            act: { status: { not: 'CANCELLED' } },
+            ...(cursor ? { id: { gt: cursor } } : {}),
+          },
+          orderBy: { id: 'asc' },
+          take: 100,
+          include: { responsibleEngineers: true },
+        });
+        const outboxIds: string[] = [];
+        for (const item of items) {
+          processed += 1;
+          const clocks = await this.ensureClocks(item, prelude.warningDays);
+          for (const clock of clocks) {
+            if (
+              clock.state === 'COMPLETED' ||
+              clock.state === 'NO_DEADLINE' ||
+              clock.state === 'NORMAL'
+            ) {
+              continue;
+            }
+            const assigned = item.responsibleEngineers.map((row) => row.userId);
+            if (clock.state === 'WARNING') {
+              const id = await this.enqueueSla(item, clock, 'SLA_WARNING', null, businessDate, {
+                assigned,
+                contractors: prelude.contractorPool,
+                managers: prelude.managers,
+                admins: prelude.admins,
+              });
+              if (id) {
+                outboxIds.push(id);
+              }
+            }
+            const overdueDays = overdueDaysOf({ deadline: clock.deadline });
+            for (const threshold of reachedEscalationThresholds(overdueDays, prelude.thresholds)) {
+              const type = threshold === 0 ? 'SLA_DUE_TODAY' : 'SLA_OVERDUE';
+              const id = await this.enqueueSla(item, clock, type, threshold, businessDate, {
+                assigned,
+                contractors: prelude.contractorPool,
+                managers: prelude.managers,
+                admins: prelude.admins,
+              });
+              if (id) {
+                outboxIds.push(id);
+              }
+            }
+          }
+        }
+        return {
+          outboxIds,
+          nextCursor: items.at(-1)?.id,
+          done: items.length < 100,
+        };
+      });
+      for (const id of batch.outboxIds) {
+        await this.enqueueOutboxJob(id);
+      }
+      if (batch.done) {
+        break;
+      }
+      cursor = batch.nextCursor;
+    }
+    await this.runDb(async () => {
+      await this.prisma.slaEvaluationState.upsert({
+        where: { id: 'default' },
+        update: {
+          lastSuccessfulBusinessDate: businessDate,
+          lastRunAt: new Date(),
+          lastStatus: 'OK',
+          lastErrorCode: null,
+          updatedAt: new Date(),
+        },
+        create: {
+          id: 'default',
+          lastSuccessfulBusinessDate: businessDate,
+          lastRunAt: new Date(),
+          lastStatus: 'OK',
+          updatedAt: new Date(),
+        },
+      });
+      await writeAuditLog(this.prisma, {
+        actor: null,
+        action: 'SLA_EVALUATION_COMPLETED',
+        entityType: 'SLA_EVALUATION',
+        entityId: 'default',
+        newValue: toJsonValue({ businessDate, processed }),
+        source: 'SYSTEM',
+      });
+    });
+  }
+
   private async enqueueSla(
     item: { id: string; actId: string },
     clock: { kind: SlaClockKind; cycle: number; deadline: Date | null; state: string },
@@ -525,7 +501,7 @@ export class NotificationDispatcher {
       managers: string[];
       admins: string[];
     },
-  ): Promise<void> {
+  ): Promise<string | null> {
     const occurrenceBase = buildOccurrenceKey([
       type,
       clock.kind,
@@ -537,52 +513,38 @@ export class NotificationDispatcher {
       where: { occurrenceKey: occurrenceBase },
     });
     if (existing) {
-      return;
+      return null;
     }
     if (process.env.SLA_EVALUATOR_DRY_RUN === 'true') {
-      return;
+      return null;
     }
-    const ids = await this.prisma.$transaction(async (tx) => {
-      const outboxId = randomUUID();
-      await tx.outboxEvent.create({
-        data: {
-          id: outboxId,
-          type,
-          payload: {
-            type,
-            occurrenceBase,
-            actId: item.actId,
-            defectItemId: item.id,
-            automatic: true,
-            kind: clock.kind,
-            cycle: clock.cycle,
-            threshold,
-            businessDate,
-            deadline: clock.deadline ? calendarDateInTimeZone(clock.deadline) : null,
-            body: notificationTitle(type),
-            extraRecipientIds: recipientsForDeadlineAlert({
-              kind: clock.kind,
-              threshold,
-              assignedResponsibleIds: pools.assigned,
-              contractorIds: pools.contractors,
-              sgrManagerIds: pools.managers,
-              adminIds: pools.admins,
-            }),
-          },
-          updatedAt: new Date(),
-        },
-      });
-      return [outboxId];
+    const outboxId = randomUUID();
+    await insertOutboxEventRow(this.prisma, {
+      id: outboxId,
+      type,
+      payload: {
+        type,
+        occurrenceBase,
+        actId: item.actId,
+        defectItemId: item.id,
+        automatic: true,
+        kind: clock.kind,
+        cycle: clock.cycle,
+        threshold,
+        businessDate,
+        deadline: clock.deadline ? calendarDateInTimeZone(clock.deadline) : null,
+        body: notificationTitle(type),
+        extraRecipientIds: recipientsForDeadlineAlert({
+          kind: clock.kind,
+          threshold,
+          assignedResponsibleIds: pools.assigned,
+          contractorIds: pools.contractors,
+          sgrManagerIds: pools.managers,
+          adminIds: pools.admins,
+        }),
+      },
     });
-    for (const id of ids) {
-      try {
-        await this.queue.add(OUTBOX_DISPATCH_JOB, { outboxId: id }, { jobId: outboxJobId(id) });
-      } catch (error) {
-        this.logger.warn(
-          `SLA outbox enqueue deferred id=${id} code=${error instanceof Error ? error.name : 'ENQUEUE_FAILED'}`,
-        );
-      }
-    }
+    return outboxId;
   }
 
   private async ensureClocks(
@@ -596,9 +558,7 @@ export class NotificationDispatcher {
     warningDays: number,
   ) {
     const { syncSlaClocks } = await import('./outbox.writer.js');
-    await this.prisma.$transaction(async (tx) => {
-      await syncSlaClocks(tx, item, warningDays);
-    });
+    await syncSlaClocks(this.prisma, item, warningDays);
     return this.prisma.slaClock.findMany({ where: { defectItemId: item.id } });
   }
 
@@ -624,24 +584,132 @@ export class NotificationDispatcher {
     return rows.map((row) => row.id);
   }
 
-  private async claim(outboxId: string) {
-    const rows = await this.prisma.$queryRaw<
-      Array<{
-        id: string;
-        type: string;
-        payload: unknown;
-        attempts: number;
-      }>
-    >(Prisma.sql`
+  private async claimOutbox(outboxId: string): Promise<ClaimedOutbox | null> {
+    const rows = await this.prisma.$queryRaw<ClaimedOutbox[]>(Prisma.sql`
       UPDATE "outbox_events"
-      SET status = 'CLAIMED', "claimedAt" = NOW(), "claimedBy" = ${`worker-${process.pid}`},
-          attempts = attempts + 1, "updatedAt" = NOW()
-      WHERE id = ${outboxId}
-        AND status IN ('PENDING', 'FAILED')
-        AND "availableAt" <= NOW()
+      SET status = 'CLAIMED',
+          "claimedAt" = NOW(),
+          "claimedBy" = ${`worker-${process.pid}`},
+          attempts = attempts + 1,
+          "availableAt" = NOW() + (${OUTBOX_CLAIM_LEASE_MS} * INTERVAL '1 millisecond'),
+          "updatedAt" = NOW()
+      WHERE id = ${outboxId}::uuid
+        AND (
+          (status IN ('PENDING', 'FAILED') AND "availableAt" <= NOW())
+          OR (status = 'CLAIMED' AND "availableAt" <= NOW())
+        )
       RETURNING id, type, payload, attempts
     `);
     return rows[0] ?? null;
+  }
+
+  private async claimEmail(deliveryId: string, config: AppConfig): Promise<ClaimedEmail | null> {
+    const leaseMs = emailLeaseMs(config.SMTP_TIMEOUT_MS);
+    const rows = await this.prisma.$queryRaw<Array<{ id: string; attempts: number }>>(Prisma.sql`
+      UPDATE "email_deliveries"
+      SET status = 'SENDING',
+          attempts = attempts + 1,
+          "nextAttemptAt" = NOW() + (${leaseMs} * INTERVAL '1 millisecond'),
+          "updatedAt" = NOW()
+      WHERE id = ${deliveryId}::uuid
+        AND (
+          (status = 'QUEUED' AND "nextAttemptAt" <= NOW())
+          OR status = 'FAILED'
+          OR (status = 'SENDING' AND "nextAttemptAt" <= NOW())
+        )
+      RETURNING id, attempts
+    `);
+    const claimed = rows[0];
+    if (!claimed) {
+      return null;
+    }
+    const delivery = await this.prisma.emailDelivery.findUnique({
+      where: { id: claimed.id },
+      include: { recipient: { include: { event: true, user: true } } },
+    });
+    if (!delivery) {
+      return null;
+    }
+    if (delivery.recipient.revokedAt || delivery.recipient.user.status === 'ARCHIVED') {
+      await this.prisma.emailDelivery.update({
+        where: { id: claimed.id },
+        data: { status: 'DEAD', lastErrorCode: 'REVOKED', updatedAt: new Date() },
+      });
+      return null;
+    }
+    const settings = await this.prisma.systemSettings.findUnique({ where: { id: 'default' } });
+    if (!config.EMAIL_ENABLED || settings?.emailEnabled === false) {
+      await this.prisma.emailDelivery.update({
+        where: { id: claimed.id },
+        data: {
+          status: 'QUEUED',
+          lastErrorCode: 'EMAIL_DISABLED',
+          nextAttemptAt: new Date(),
+          updatedAt: new Date(),
+        },
+      });
+      return null;
+    }
+    const actId = delivery.recipient.event.actId;
+    if (!actId) {
+      await this.prisma.emailDelivery.update({
+        where: { id: claimed.id },
+        data: { status: 'DEAD', lastErrorCode: 'NO_ACT', updatedAt: new Date() },
+      });
+      return null;
+    }
+    const payload = delivery.recipient.event.payload as { title?: string; body?: string };
+    return {
+      deliveryId: claimed.id,
+      attempts: claimed.attempts,
+      to: delivery.recipient.user.email,
+      title: payload.title ?? notificationTitle(delivery.recipient.event.type as NotificationType),
+      body: payload.body ?? notificationTitle(delivery.recipient.event.type as NotificationType),
+      actId,
+      defectItemId: delivery.recipient.event.defectItemId,
+    };
+  }
+
+  private async markEmailSent(deliveryId: string, messageId: string): Promise<void> {
+    await this.prisma.emailDelivery.update({
+      where: { id: deliveryId },
+      data: {
+        status: 'SENT',
+        sentAt: new Date(),
+        providerMessageId: messageId,
+        lastErrorCode: null,
+        updatedAt: new Date(),
+      },
+    });
+  }
+
+  private async markEmailFailure(
+    deliveryId: string,
+    attempts: number,
+    code: SmtpErrorCode,
+    retryable: boolean,
+  ): Promise<boolean> {
+    const dead = !retryable || isTerminalAttempt(attempts, EMAIL_MAX_ATTEMPTS);
+    await this.prisma.emailDelivery.update({
+      where: { id: deliveryId },
+      data: {
+        status: dead ? 'DEAD' : 'FAILED',
+        lastErrorCode: code,
+        nextAttemptAt: dead ? new Date() : nextAttemptAt(attempts),
+        updatedAt: new Date(),
+      },
+    });
+    if (dead) {
+      await writeAuditLog(this.prisma, {
+        actor: null,
+        action: 'EMAIL_DELIVERY_EXHAUSTED',
+        entityType: 'EMAIL_DELIVERY',
+        entityId: deliveryId,
+        newValue: toJsonValue({ status: 'DEAD', code }),
+        source: 'SYSTEM',
+      });
+    }
+    return dead;
   }
 
   private async markProcessed(id: string): Promise<void> {
@@ -650,42 +718,179 @@ export class NotificationDispatcher {
       data: { status: 'PROCESSED', processedAt: new Date(), updatedAt: new Date() },
     });
   }
+
+  private async enqueueOutboxJob(outboxId: string): Promise<void> {
+    try {
+      await this.queue.add(OUTBOX_DISPATCH_JOB, { outboxId }, { jobId: outboxJobId(outboxId) });
+    } catch (error) {
+      this.logger.warn(`Outbox enqueue deferred id=${outboxId} code=${errorName(error)}`);
+    }
+  }
+
+  private async enqueueEmailJob(deliveryId: string): Promise<void> {
+    try {
+      await this.queue.add(
+        EMAIL_DELIVER_JOB,
+        { deliveryId },
+        {
+          jobId: emailJobId(deliveryId),
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 2000 },
+        },
+      );
+    } catch (error) {
+      this.logger.warn(`Email enqueue deferred id=${deliveryId} code=${errorName(error)}`);
+    }
+  }
+}
+
+export async function probeSmtpTransport(
+  config: AppConfig = loadConfig(),
+): Promise<{ status: 'up' | 'down' | 'disabled'; latencyMs?: number }> {
+  if (!config.EMAIL_ENABLED) {
+    return { status: 'disabled' };
+  }
+  const started = Date.now();
+  const timeout = Math.min(config.SMTP_TIMEOUT_MS, 2_000);
+  try {
+    await withSmtpConnectRetry(async () => {
+      await withOwnedSmtpSocket(config, timeout, async (socket) => {
+        const transporter = smtpTransport(config, timeout, socket);
+        try {
+          await transporter.verify();
+        } finally {
+          transporter.close();
+        }
+      });
+    });
+    return { status: 'up', latencyMs: Date.now() - started };
+  } catch {
+    return { status: 'down', latencyMs: Date.now() - started };
+  }
+}
+
+function smtpTransport(config: AppConfig, timeoutMs: number, connection?: Socket) {
+  return nodemailer.createTransport({
+    host: config.SMTP_HOST,
+    port: config.SMTP_PORT,
+    secure: config.SMTP_SECURE,
+    name: 'localhost',
+    auth:
+      config.SMTP_USER && config.SMTP_PASSWORD
+        ? { user: config.SMTP_USER, pass: config.SMTP_PASSWORD }
+        : undefined,
+    connectionTimeout: timeoutMs,
+    greetingTimeout: timeoutMs,
+    socketTimeout: timeoutMs,
+    ...(connection ? { connection, secured: config.SMTP_SECURE } : {}),
+  });
+}
+
+function openSmtpSocket(config: AppConfig, timeoutMs: number): Promise<Socket> {
+  return new Promise((resolve, reject) => {
+    const socket = config.SMTP_SECURE
+      ? tlsConnect({
+          host: config.SMTP_HOST,
+          port: config.SMTP_PORT,
+          servername: config.SMTP_HOST,
+        })
+      : createConnection({
+          host: config.SMTP_HOST,
+          port: config.SMTP_PORT,
+          family: isIP(config.SMTP_HOST) === 6 ? 6 : 4,
+        });
+    const timer = setTimeout(() => {
+      socket.destroy();
+      const error = new Error('Timeout');
+      Object.assign(error, { code: 'ETIMEDOUT', command: 'CONN' });
+      reject(error);
+    }, timeoutMs);
+    const onError = (error: Error): void => {
+      clearTimeout(timer);
+      socket.destroy();
+      reject(error);
+    };
+    const onReady = (): void => {
+      clearTimeout(timer);
+      socket.removeListener('error', onError);
+      resolve(socket);
+    };
+    socket.once(config.SMTP_SECURE ? 'secureConnect' : 'connect', onReady);
+    socket.once('error', onError);
+  });
+}
+
+async function withOwnedSmtpSocket<T>(
+  config: AppConfig,
+  timeoutMs: number,
+  operation: (socket: Socket) => Promise<T>,
+): Promise<T> {
+  const socket = await openSmtpSocket(config, timeoutMs);
+  try {
+    return await operation(socket);
+  } finally {
+    if (!socket.destroyed) {
+      socket.destroy();
+    }
+  }
+}
+
+function isRetryableSmtpConnectError(error: unknown): boolean {
+  const err = error as { command?: string };
+  if (err.command && err.command !== 'CONN') {
+    return false;
+  }
+  const classified = classifySmtpError(error);
+  return classified.code === 'SMTP_TIMEOUT' || classified.code === 'SMTP_CONNECTION';
+}
+
+async function withSmtpConnectRetry<T>(operation: () => Promise<T>): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (attempt === 3 || !isRetryableSmtpConnectError(error)) {
+        throw error;
+      }
+    }
+  }
+  throw lastError;
 }
 
 async function sendMail(
   config: AppConfig,
   to: string,
   mail: { subject: string; text: string; html: string },
-): Promise<{ messageId: string }> {
-  const transporter = nodemailer.createTransport({
-    host: config.SMTP_HOST,
-    port: config.SMTP_PORT,
-    secure: config.SMTP_SECURE,
-    auth:
-      config.SMTP_USER && config.SMTP_PASSWORD
-        ? { user: config.SMTP_USER, pass: config.SMTP_PASSWORD }
-        : undefined,
-    connectionTimeout: 4000,
-    greetingTimeout: 4000,
-    socketTimeout: 4000,
-  });
-  try {
-    const info = await transporter.sendMail({
-      from: config.EMAIL_FROM,
-      to,
-      subject: mail.subject,
-      text: mail.text,
-      html: mail.html,
+  messageId: string,
+): Promise<void> {
+  await withSmtpConnectRetry(async () => {
+    await withOwnedSmtpSocket(config, config.SMTP_TIMEOUT_MS, async (socket) => {
+      const transporter = smtpTransport(config, config.SMTP_TIMEOUT_MS, socket);
+      try {
+        await transporter.sendMail({
+          from: config.EMAIL_FROM,
+          to,
+          subject: mail.subject,
+          text: mail.text,
+          html: mail.html,
+          messageId: `<${messageId.replace(/[<>]/g, '')}>`,
+        });
+      } finally {
+        transporter.close();
+      }
     });
-    return { messageId: String(info.messageId ?? '') };
-  } finally {
-    transporter.close();
-  }
+  });
+}
+
+function errorName(error: unknown): string {
+  return redactTransportSecrets(error instanceof Error ? error.name : 'ENQUEUE_FAILED');
 }
 
 export async function processNotificationJob(
   dispatcher: NotificationDispatcher,
-  prisma: PrismaClient,
+  _prisma: PrismaClient,
   job: Job<{ outboxId?: string; deliveryId?: string }>,
 ): Promise<{ ok: boolean }> {
   if (job.name === OUTBOX_RECOVERY_JOB) {
@@ -696,14 +901,7 @@ export async function processNotificationJob(
     try {
       await dispatcher.evaluateDaily();
     } catch (error) {
-      await writeAuditLog(prisma, {
-        actor: null,
-        action: 'SLA_EVALUATION_FAILED',
-        entityType: 'SLA_EVALUATION',
-        entityId: 'default',
-        newValue: toJsonValue({ error: 'EVALUATION_FAILED' }),
-        source: 'SYSTEM',
-      });
+      await dispatcher.recordSlaFailure();
       throw error;
     }
     return { ok: true };
@@ -719,10 +917,16 @@ export async function processNotificationJob(
   return { ok: true };
 }
 
-export async function scheduleNotificationJobs(prisma: PrismaClient, queue: Queue): Promise<void> {
-  const settings = await prisma.systemSettings.findUnique({
-    where: { id: 'default' },
-  });
+export async function scheduleNotificationJobs(
+  prisma: PrismaClient,
+  queue: Queue,
+  runDb: WorkerDbRunner = (callback) => callback(),
+): Promise<void> {
+  const settings = await runDb(() =>
+    prisma.systemSettings.findUnique({
+      where: { id: 'default' },
+    }),
+  );
   const minute = settings?.dailyEvaluationMinuteOfDay ?? 480;
   const hour = Math.floor(minute / 60);
   const mins = minute % 60;

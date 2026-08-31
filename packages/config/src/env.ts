@@ -113,6 +113,7 @@ const envSchema = z
     SMTP_SECURE: booleanFalse,
     SMTP_USER: z.string().default(''),
     SMTP_PASSWORD: z.string().default(''),
+    SMTP_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(120_000).default(8_000),
     EMAIL_FROM: z.string().min(1).default('sgr-registry@localhost'),
     PUBLIC_APP_URL: z.url().default('http://localhost:3000'),
     MAILPIT_API_URL: z.url().default('http://127.0.0.1:8025'),

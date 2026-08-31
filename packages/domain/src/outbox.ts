@@ -43,3 +43,75 @@ export function emailJobId(deliveryId: string): string {
 export function slaCatchUpJobId(businessDate: string): string {
   return `sla-${businessDate}`;
 }
+
+export const DEFAULT_SMTP_TIMEOUT_MS = 8_000;
+export const SMTP_LEASE_GRACE_MS = 5_000;
+export const OUTBOX_CLAIM_LEASE_MS = 15_000;
+export const PREVIOUS_RLS_TX_TIMEOUT_MS = 20_000;
+
+export type SmtpErrorCode =
+  'SMTP_TIMEOUT' | 'SMTP_CONNECTION' | 'SMTP_4XX' | 'SMTP_5XX' | 'SMTP_ERROR';
+
+export type SmtpErrorClass = {
+  code: SmtpErrorCode;
+  retryable: boolean;
+};
+
+export function emailLeaseMs(smtpTimeoutMs = DEFAULT_SMTP_TIMEOUT_MS): number {
+  return Math.max(smtpTimeoutMs, 1_000) + SMTP_LEASE_GRACE_MS;
+}
+
+export function leaseUntil(leaseMs: number, now = new Date()): Date {
+  return new Date(now.getTime() + leaseMs);
+}
+
+export function emailMessageId(deliveryId: string, fromAddress: string): string {
+  const hostPart = fromAddress.split('@').at(-1)?.trim() ?? '';
+  const host = hostPart.replace(/[^\w.-]/g, '') || 'sgr-registry.local';
+  return `${deliveryId}@${host}`;
+}
+
+export function classifySmtpError(error: unknown): SmtpErrorClass {
+  const err = error as {
+    code?: string;
+    responseCode?: number;
+    message?: string;
+    command?: string;
+    errno?: string;
+  };
+  const responseCode = Number(err.responseCode);
+  if (Number.isFinite(responseCode) && responseCode >= 500 && responseCode < 600) {
+    return { code: 'SMTP_5XX', retryable: false };
+  }
+  if (Number.isFinite(responseCode) && responseCode >= 400 && responseCode < 500) {
+    return { code: 'SMTP_4XX', retryable: true };
+  }
+  const code = `${err.code ?? err.errno ?? ''}`.toUpperCase();
+  const message = `${err.message ?? ''}`;
+  if (code.includes('TIMEOUT') || code.includes('TIMEDOUT') || /timed?\s*out/i.test(message)) {
+    return { code: 'SMTP_TIMEOUT', retryable: true };
+  }
+  if (
+    code === 'ECONNECTION' ||
+    code === 'ECONNREFUSED' ||
+    code === 'ENOTFOUND' ||
+    code === 'EAI_AGAIN' ||
+    code === 'EPIPE' ||
+    code === 'ECONNRESET' ||
+    code === 'ESOCKET'
+  ) {
+    return { code: 'SMTP_CONNECTION', retryable: true };
+  }
+  return { code: 'SMTP_ERROR', retryable: true };
+}
+
+const SECRET_PATTERN =
+  /(password|passwd|smtp_password|smtp_user|smtp_pass|token|secret|authorization)=([^\s&]+)/gi;
+
+export function redactTransportSecrets(value: string): string {
+  return value.replace(SECRET_PATTERN, '$1=***');
+}
+
+export function smtpLogCode(error: unknown): string {
+  return classifySmtpError(error).code;
+}

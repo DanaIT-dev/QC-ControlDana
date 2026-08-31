@@ -83,7 +83,12 @@ export function prismaWithRlsTransaction(root: PrismaClient): PrismaClient {
             if (typeof arg === 'function') {
               return (arg as TransactionFn)(tx);
             }
-            return Promise.all(arg as Array<Promise<unknown>>);
+            const operations = arg as Array<Promise<unknown>>;
+            const results: unknown[] = [];
+            for (const operation of operations) {
+              results.push(await operation);
+            }
+            return results;
           };
         }
         return Reflect.get(target, prop, receiver) as PrismaClient['$transaction'];

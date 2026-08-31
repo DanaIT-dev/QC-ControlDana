@@ -80,7 +80,7 @@ async function scanAttachment(
           );
     const result = await clamd.scanStream(stream);
     if (result.clean) {
-      await inWorkerTx(() =>
+      const ids = await inWorkerTx(() =>
         finishScan(deps, attachment, {
           type: 'ATTACHMENT_READY',
           action: 'ATTACHMENT_SCAN_PASSED',
@@ -94,9 +94,10 @@ async function scanAttachment(
           audit: { status: 'READY' },
         }),
       );
+      await deps.outboxWriter.enqueue(ids);
       return;
     }
-    await inWorkerTx(() =>
+    const rejectedIds = await inWorkerTx(() =>
       finishScan(deps, attachment, {
         type: 'ATTACHMENT_REJECTED',
         action: 'ATTACHMENT_REJECTED',
@@ -111,10 +112,11 @@ async function scanAttachment(
         audit: { status: 'REJECTED', scanSignature: result.signature },
       }),
     );
+    await deps.outboxWriter.enqueue(rejectedIds);
     await deps.store.deleteExact(attachment.objectKey);
   } catch (error) {
     if (shouldFailScan(attempt)) {
-      await inWorkerTx(() =>
+      const failedIds = await inWorkerTx(() =>
         finishScan(deps, attachment, {
           type: 'ATTACHMENT_SCAN_FAILED',
           action: 'ATTACHMENT_SCAN_FAILED',
@@ -122,6 +124,7 @@ async function scanAttachment(
           audit: { status: 'SCAN_FAILED' },
         }),
       );
+      await deps.outboxWriter.enqueue(failedIds);
       return;
     }
     await inWorkerTx(() =>
@@ -149,8 +152,8 @@ async function finishScan(
     data: Record<string, unknown>;
     audit: Record<string, unknown>;
   },
-): Promise<void> {
-  const outboxIds = await deps.prisma.$transaction(async (tx) => {
+): Promise<string[]> {
+  return deps.prisma.$transaction(async (tx) => {
     await tx.attachment.update({
       where: { id: attachment.id },
       data: input.data as Prisma.AttachmentUpdateInput,
@@ -184,5 +187,4 @@ async function finishScan(
     });
     return ids;
   });
-  await deps.outboxWriter.enqueue(outboxIds);
 }

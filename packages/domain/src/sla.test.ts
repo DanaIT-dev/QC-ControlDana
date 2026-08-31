@@ -18,9 +18,12 @@ import {
 } from './notification-settings';
 import {
   emailJobId,
+  emailMessageId,
   exponentialBackoffMs,
+  classifySmtpError,
   isTerminalAttempt,
   outboxJobId,
+  redactTransportSecrets,
   slaCatchUpJobId,
 } from './outbox';
 import {
@@ -167,6 +170,21 @@ describe('notification projection', () => {
     expect(outboxJobId('a-b')).not.toContain(':');
     expect(emailJobId('a-b')).not.toContain(':');
     expect(slaCatchUpJobId('2026-08-28')).not.toContain(':');
+    expect(emailMessageId('11111111-1111-1111-1111-111111111111', 'sgr-registry@localhost')).toBe(
+      '11111111-1111-1111-1111-111111111111@localhost',
+    );
+    expect(emailMessageId('11111111-1111-1111-1111-111111111111', 'sgr-registry@localhost')).toBe(
+      emailMessageId('11111111-1111-1111-1111-111111111111', 'noreply@localhost'),
+    );
+    expect(classifySmtpError({ responseCode: 450 }).code).toBe('SMTP_4XX');
+    expect(classifySmtpError({ responseCode: 450 }).retryable).toBe(true);
+    expect(classifySmtpError({ responseCode: 550 }).code).toBe('SMTP_5XX');
+    expect(classifySmtpError({ responseCode: 550 }).retryable).toBe(false);
+    expect(classifySmtpError({ code: 'ECONNREFUSED' }).code).toBe('SMTP_CONNECTION');
+    expect(classifySmtpError({ code: 'ETIMEDOUT' }).code).toBe('SMTP_TIMEOUT');
+    expect(redactTransportSecrets('smtp_password=super-secret token=abc')).toBe(
+      'smtp_password=*** token=***',
+    );
     expect(shapeUnreadCount(120)).toEqual({ count: 120, badge: '99+' });
     expect(containsCommercialProposalFields({ amountB: '10' })).toBe(true);
     expect(containsCommercialProposalFields({ body: 'ok' })).toBe(false);

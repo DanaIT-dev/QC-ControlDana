@@ -8,9 +8,16 @@ import type {
   SystemStatusResponse,
 } from '@sgr-registry/contracts';
 import { getPrismaClient } from '@sgr-registry/database';
-import { collectNotificationOps, NOTIFICATION_QUEUE } from '@sgr-registry/jobs';
+import {
+  collectNotificationDbOps,
+  collectNotificationRuntimeOps,
+  NOTIFICATION_QUEUE,
+  probeSmtp,
+} from '@sgr-registry/jobs';
 import type { Queue } from 'bullmq';
+import type { FastifyRequest } from 'fastify';
 import Redis from 'ioredis';
+import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { PrismaService } from '../auth/prisma.tokens';
 import { REDIS_CLIENT } from '../auth/redis.constants';
 
@@ -53,13 +60,22 @@ export class HealthService {
     };
   }
 
-  async getSystemStatus(): Promise<SystemStatusResponse> {
+  async getSystemStatus(
+    user: AuthenticatedUser,
+    request: FastifyRequest,
+  ): Promise<SystemStatusResponse> {
     const ready = await this.getReadiness();
-    const notifications = await collectNotificationOps({
-      prisma: this.prismaService.client,
+    const db = await this.prismaService.withUser(user, request, () =>
+      collectNotificationDbOps({
+        prisma: this.prismaService.client,
+      }),
+    );
+    const runtime = await collectNotificationRuntimeOps({
       queue: this.queue,
       redis: this.redis,
     });
+    const smtp = await probeSmtp({ emailEnabled: db.emailEnabled });
+    const notifications = { ...db, ...runtime, smtp };
     const degraded =
       notifications.smtp.status === 'down' ||
       notifications.outboxPending > 0 ||

@@ -78,6 +78,8 @@ curl -i http://localhost:3001/api/ready
 curl -i http://127.0.0.1:3002/health
 ```
 
+Worker: outbox claim и email finalize — короткие RLS-транзакции с `sgr_set_worker_context`. SMTP (`SMTP_TIMEOUT_MS`, по умолчанию 8000) вне PostgreSQL; сокет закрывается через `destroy`, чтобы не копить `CLOSE_WAIT` на Docker Desktop. PWA Push не включается на этом этапе. Акты создаются только вручную; 1С исключена.
+
 Главная страница web: http://localhost:3000  
 Экран входа: http://localhost:3000/login
 

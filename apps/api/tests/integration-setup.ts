@@ -1,7 +1,9 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { config as loadDotenv } from 'dotenv';
+import { afterAll } from 'vitest';
 import { applyTestDatabaseEnv, assertSafeTestDatabaseUrl } from '@sgr-registry/database';
+import { assertNoPgQueryDeprecationWarning } from '../../../packages/database/tests/pg-warning-guard';
 
 const repoRoot = resolve(import.meta.dirname, '../../..');
 const envFile = existsSync(resolve(repoRoot, '.env'))
@@ -23,3 +25,7 @@ assertSafeTestDatabaseUrl(process.env.DATABASE_URL ?? '');
 assertSafeTestDatabaseUrl(process.env.AUTH_DATABASE_URL ?? '');
 assertSafeTestDatabaseUrl(process.env.WORKER_DATABASE_URL ?? '');
 assertSafeTestDatabaseUrl(process.env.MIGRATION_DATABASE_URL ?? '');
+
+afterAll(() => {
+  assertNoPgQueryDeprecationWarning();
+});
