@@ -32,7 +32,7 @@
 
 `VIEW_REFERENCE_DATA` даёт `RESPONSIBLE_ENGINEER` read-only доступ к объектам и организациям (`GET /api/reference-data/property-objects`, `GET /api/reference-data/organizations`). Мутации справочников (`POST`/`PATCH`/archive/restore) и прочие виды справочников требуют `MANAGE_REFERENCE_DATA` и для этой роли возвращают `403`. `CONTRACTOR_ENGINEER` справочники не получает.
 
-ADMIN и SGR_MANAGER назначают ответственных инженеров объекта через `responsibleEngineerIds` при создании и правке `PropertyObject` (MultiSelect). Архивный объект не принимает новых инженеров; повторное назначение восстанавливает ту же пару (`unassignedAt = null`). Состав пишется в AuditLog как `OBJECT_ENGINEERS_REPLACED`. Инженеры на DefectItem должны входить в активный состав объекта.
+ADMIN и SGR_MANAGER назначают ответственных инженеров объекта через `responsibleEngineerIds` при создании и правке `PropertyObject` (MultiSelect). Новыми можно назначать только активных `RESPONSIBLE_ENGINEER`; ADMIN, SGR_MANAGER, CONTRACTOR и архивные пользователи отклоняются. Архивный объект не принимает новых инженеров. Повторное назначение той же пары реактивирует существующую строку (`unassignedAt = null`, unique `(propertyObjectId, userId)` не создаёт дубль). Уже закреплённый инженер, которого позже архивировали, не блокирует сохранение объекта, пока его не снимут. Состав пишется в AuditLog как `OBJECT_ENGINEERS_REPLACED`. Инженеры на DefectItem должны входить в активный состав объекта. `GET /api/operations/lookups` для `RESPONSIBLE_ENGINEER` отдаёт только закреплённые активные объекты и инженеров из их состава.
 
 ## Создание акта
 

@@ -256,27 +256,8 @@ async function seed(): Promise<void> {
           },
         });
 
-        const existingNorthAssignment = await tx.propertyObjectEngineer.findFirst({
-          where: { propertyObjectId: northPark.id, userId: engineerNorth.id, unassignedAt: null },
-        });
-        if (!existingNorthAssignment) {
-          await tx.propertyObjectEngineer.create({
-            data: { propertyObjectId: northPark.id, userId: engineerNorth.id },
-          });
-        }
-
-        const existingRiverAssignment = await tx.propertyObjectEngineer.findFirst({
-          where: {
-            propertyObjectId: riverQuarter.id,
-            userId: engineerRiver.id,
-            unassignedAt: null,
-          },
-        });
-        if (!existingRiverAssignment) {
-          await tx.propertyObjectEngineer.create({
-            data: { propertyObjectId: riverQuarter.id, userId: engineerRiver.id },
-          });
-        }
+        await ensureActiveObjectEngineer(tx, northPark.id, engineerNorth.id);
+        await ensureActiveObjectEngineer(tx, riverQuarter.id, engineerRiver.id);
 
         await tx.propertyObjectEngineer.updateMany({
           where: {
@@ -1028,6 +1009,20 @@ async function ensureDefectItem(
       })),
     });
   }
+}
+
+async function ensureActiveObjectEngineer(
+  tx: Prisma.TransactionClient,
+  propertyObjectId: string,
+  userId: string,
+) {
+  await tx.propertyObjectEngineer.upsert({
+    where: {
+      propertyObjectId_userId: { propertyObjectId, userId },
+    },
+    create: { propertyObjectId, userId },
+    update: { unassignedAt: null, assignedAt: new Date() },
+  });
 }
 
 async function upsertOrganization(

@@ -1062,4 +1062,305 @@ describe('operations integration', () => {
     expect(rejected.statusCode).toBe(404);
     expect(JSON.stringify(rejected.json())).not.toContain(foreign.object.id);
   });
+
+  it('reactivates object engineer assignments and rejects illegal assignees', async () => {
+    const admin = await createUser('ADMIN');
+    const manager = await createUser('SGR_MANAGER');
+    const engineer = await createUser('RESPONSIBLE_ENGINEER');
+    const otherEngineer = await createUser('RESPONSIBLE_ENGINEER');
+    const contractor = await createUser('CONTRACTOR_ENGINEER');
+    const archived = await createUser('RESPONSIBLE_ENGINEER', { status: 'ARCHIVED' });
+    const adminSession = await login(admin.email);
+    const engineerSession = await login(engineer.email);
+    const { object, customer, liable, defectType } = await catalogs();
+    const unknownFields = await mutate(adminSession, {
+      method: 'PATCH',
+      url: `/api/reference-data/property-objects/${object.id}`,
+      payload: {
+        expectedVersion: object.version,
+        name: object.name,
+        address: object.address,
+        role: 'ADMIN',
+        userId: admin.id,
+      },
+    });
+    expect(unknownFields.statusCode).toBe(400);
+
+    const forbiddenEngineerWrite = await mutate(engineerSession, {
+      method: 'PATCH',
+      url: `/api/reference-data/property-objects/${object.id}`,
+      payload: {
+        expectedVersion: object.version,
+        name: object.name,
+        address: object.address,
+        responsibleEngineerIds: [engineer.id],
+      },
+    });
+    expect(forbiddenEngineerWrite.statusCode).toBe(403);
+
+    for (const illegalId of [admin.id, manager.id, contractor.id, archived.id]) {
+      const rejected = await mutate(adminSession, {
+        method: 'PATCH',
+        url: `/api/reference-data/property-objects/${object.id}`,
+        payload: {
+          expectedVersion: (
+            await prisma.propertyObject.findUniqueOrThrow({ where: { id: object.id } })
+          ).version,
+          name: object.name,
+          address: object.address,
+          responsibleEngineerIds: [illegalId],
+        },
+      });
+      expect(rejected.statusCode).toBe(400);
+    }
+
+    const assigned = await mutate(adminSession, {
+      method: 'PATCH',
+      url: `/api/reference-data/property-objects/${object.id}`,
+      payload: {
+        expectedVersion: (
+          await prisma.propertyObject.findUniqueOrThrow({ where: { id: object.id } })
+        ).version,
+        name: object.name,
+        address: object.address,
+        responsibleEngineerIds: [engineer.id],
+      },
+    });
+    expect(assigned.statusCode).toBe(200);
+    const firstRow = await prisma.propertyObjectEngineer.findFirstOrThrow({
+      where: { propertyObjectId: object.id, userId: engineer.id },
+    });
+    expect(firstRow.unassignedAt).toBeNull();
+
+    const duplicateActive = await mutate(adminSession, {
+      method: 'PATCH',
+      url: `/api/reference-data/property-objects/${object.id}`,
+      payload: {
+        expectedVersion: (assigned.json() as { version: number }).version,
+        name: object.name,
+        address: object.address,
+        responsibleEngineerIds: [engineer.id],
+      },
+    });
+    expect(duplicateActive.statusCode).toBe(200);
+    expect(
+      await prisma.propertyObjectEngineer.count({
+        where: { propertyObjectId: object.id, userId: engineer.id },
+      }),
+    ).toBe(1);
+
+    const created = await mutate(adminSession, {
+      method: 'POST',
+      url: '/api/acts',
+      payload: {
+        formCode: 'S1',
+        objectId: object.id,
+        customerOrganizationId: customer.id,
+        issuedOn: '2026-08-20',
+        defectItems: [
+          {
+            location: 'Кв. назначение',
+            defectTypeId: defectType.id,
+            claimDetails: 'Описание',
+            responsibleEngineerIds: [engineer.id],
+            liableOrganizationIds: [liable.id],
+          },
+        ],
+      },
+      headers: { 'idempotency-key': `assign-lifecycle-${Date.now()}` },
+    });
+    expect(created.statusCode).toBe(201);
+    const actId = (created.json() as { id: string }).id;
+    createdActIds.push(actId);
+    expect((await read(engineerSession, `/api/acts/${actId}`)).statusCode).toBe(200);
+
+    let objectRow = await prisma.propertyObject.findUniqueOrThrow({ where: { id: object.id } });
+    const revoked = await mutate(adminSession, {
+      method: 'PATCH',
+      url: `/api/reference-data/property-objects/${object.id}`,
+      payload: {
+        expectedVersion: objectRow.version,
+        name: object.name,
+        address: object.address,
+        responsibleEngineerIds: [],
+      },
+    });
+    expect(revoked.statusCode).toBe(200);
+    expect(
+      (
+        await prisma.propertyObjectEngineer.findFirstOrThrow({
+          where: { propertyObjectId: object.id, userId: engineer.id },
+        })
+      ).unassignedAt,
+    ).not.toBeNull();
+    const hidden = await read(engineerSession, `/api/acts/${actId}`);
+    expect(hidden.statusCode).toBe(404);
+    expect(JSON.stringify(hidden.json())).not.toContain(actId);
+
+    objectRow = await prisma.propertyObject.findUniqueOrThrow({ where: { id: object.id } });
+    const reassigned = await mutate(adminSession, {
+      method: 'PATCH',
+      url: `/api/reference-data/property-objects/${object.id}`,
+      payload: {
+        expectedVersion: objectRow.version,
+        name: object.name,
+        address: object.address,
+        responsibleEngineerIds: [engineer.id],
+      },
+    });
+    expect(reassigned.statusCode).toBe(200);
+    const afterReassign = await prisma.propertyObjectEngineer.findMany({
+      where: { propertyObjectId: object.id, userId: engineer.id },
+    });
+    expect(afterReassign).toHaveLength(1);
+    expect(afterReassign[0]!.id).toBe(firstRow.id);
+    expect(afterReassign[0]!.unassignedAt).toBeNull();
+    expect((await read(engineerSession, `/api/acts/${actId}`)).statusCode).toBe(200);
+
+    await prisma.user.update({
+      where: { id: engineer.id },
+      data: { status: 'ARCHIVED', archivedAt: new Date() },
+    });
+    objectRow = await prisma.propertyObject.findUniqueOrThrow({ where: { id: object.id } });
+    const keepArchivedAssignee = await mutate(adminSession, {
+      method: 'PATCH',
+      url: `/api/reference-data/property-objects/${object.id}`,
+      payload: {
+        expectedVersion: objectRow.version,
+        name: `${object.name} обновлён`,
+        address: object.address,
+        responsibleEngineerIds: [engineer.id],
+      },
+    });
+    expect(keepArchivedAssignee.statusCode).toBe(200);
+    await prisma.user.update({
+      where: { id: engineer.id },
+      data: { status: 'ACTIVE', archivedAt: null },
+    });
+
+    objectRow = await prisma.propertyObject.findUniqueOrThrow({ where: { id: object.id } });
+    const [firstConcurrent, secondConcurrent] = await Promise.all([
+      mutate(adminSession, {
+        method: 'PATCH',
+        url: `/api/reference-data/property-objects/${object.id}`,
+        payload: {
+          expectedVersion: objectRow.version,
+          name: `${object.name} обновлён`,
+          address: object.address,
+          responsibleEngineerIds: [engineer.id, otherEngineer.id],
+        },
+      }),
+      mutate(adminSession, {
+        method: 'PATCH',
+        url: `/api/reference-data/property-objects/${object.id}`,
+        payload: {
+          expectedVersion: objectRow.version,
+          name: `${object.name} обновлён`,
+          address: object.address,
+          responsibleEngineerIds: [engineer.id, otherEngineer.id],
+        },
+      }),
+    ]);
+    const concurrentCodes = [firstConcurrent.statusCode, secondConcurrent.statusCode].sort();
+    expect(concurrentCodes).toEqual([200, 409]);
+    expect(
+      await prisma.propertyObjectEngineer.count({
+        where: { propertyObjectId: object.id, userId: otherEngineer.id },
+      }),
+    ).toBe(1);
+
+    const audit = await prisma.auditLog.findMany({
+      where: {
+        entityType: 'PROPERTY_OBJECT',
+        entityId: object.id,
+        action: 'OBJECT_ENGINEERS_REPLACED',
+      },
+    });
+    expect(audit.length).toBeGreaterThan(0);
+    expect(JSON.stringify(audit)).not.toMatch(/password|csrf|cookie|authorization/i);
+
+    const lookups = await read(engineerSession, '/api/operations/lookups');
+    const lookupEngineers = (
+      lookups.json() as { responsibleEngineers: Array<{ id: string }> }
+    ).responsibleEngineers.map((item) => item.id);
+    expect(lookupEngineers).toContain(engineer.id);
+    expect(lookupEngineers).toContain(otherEngineer.id);
+    expect(lookupEngineers).not.toContain(contractor.id);
+  });
+
+  it('lets an object engineer read history of a defect assigned to another engineer', async () => {
+    const admin = await createUser('ADMIN');
+    const engineer = await createUser('RESPONSIBLE_ENGINEER');
+    const peer = await createUser('RESPONSIBLE_ENGINEER');
+    const adminSession = await login(admin.email);
+    const engineerSession = await login(engineer.email);
+    const { object, customer, liable, defectType } = await catalogs();
+    const objectRow = await prisma.propertyObject.findUniqueOrThrow({ where: { id: object.id } });
+    const assigned = await mutate(adminSession, {
+      method: 'PATCH',
+      url: `/api/reference-data/property-objects/${object.id}`,
+      payload: {
+        expectedVersion: objectRow.version,
+        name: object.name,
+        address: object.address,
+        responsibleEngineerIds: [engineer.id, peer.id],
+      },
+    });
+    expect(assigned.statusCode).toBe(200);
+    const created = await mutate(adminSession, {
+      method: 'POST',
+      url: '/api/acts',
+      payload: {
+        formCode: 'S1',
+        objectId: object.id,
+        customerOrganizationId: customer.id,
+        issuedOn: '2026-08-21',
+        defectItems: [
+          {
+            location: 'Чужая строка',
+            defectTypeId: defectType.id,
+            claimDetails: 'Видна по объекту',
+            responsibleEngineerIds: [peer.id],
+            liableOrganizationIds: [liable.id],
+          },
+        ],
+      },
+      headers: { 'idempotency-key': `peer-hist-${Date.now()}` },
+    });
+    expect(created.statusCode).toBe(201);
+    const actId = (created.json() as { id: string }).id;
+    createdActIds.push(actId);
+    const detail = await read(engineerSession, `/api/acts/${actId}`);
+    expect(detail.statusCode).toBe(200);
+    const actBody = detail.json() as {
+      version: number;
+      defectItems: Array<{ id: string }>;
+    };
+    const defectId = actBody.defectItems[0]!.id;
+    const added = await mutate(adminSession, {
+      method: 'POST',
+      url: `/api/acts/${actId}/defects`,
+      payload: {
+        expectedActVersion: actBody.version,
+        location: 'Ещё чужая строка',
+        defectTypeId: defectType.id,
+        claimDetails: 'Добавлена позже',
+        responsibleEngineerIds: [peer.id],
+        liableOrganizationIds: [liable.id],
+      },
+    });
+    expect(added.statusCode).toBe(201);
+    const addedId = (added.json() as { id: string }).id;
+    const history = await read(engineerSession, `/api/acts/${actId}/history`);
+    expect(history.statusCode).toBe(200);
+    const body = JSON.stringify(history.json());
+    expect(body).toContain('ACT_CREATED');
+    expect(body).toContain('DEFECT_ADDED');
+    expect(body).toContain(defectId);
+    expect(body).toContain(addedId);
+    expect(body).not.toMatch(/"slot":"B"|"slot":"C"|proposalsBC/);
+    const defectHistory = await read(engineerSession, `/api/defects/${addedId}/history`);
+    expect(defectHistory.statusCode).toBe(200);
+    expect(JSON.stringify(defectHistory.json())).toContain('DEFECT_ADDED');
+  });
 });

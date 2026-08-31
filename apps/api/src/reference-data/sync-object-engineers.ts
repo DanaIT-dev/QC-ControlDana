@@ -15,22 +15,6 @@ export async function syncObjectEngineers(
   },
 ): Promise<void> {
   const nextIds = assertUniqueIds(input.engineerIds, 'responsibleEngineerIds');
-  if (nextIds.length > 0) {
-    const users = await tx.user.findMany({
-      where: { id: { in: nextIds } },
-      select: { id: true, role: true, status: true },
-    });
-    if (users.length !== nextIds.length) {
-      throw new ValidationError('responsibleEngineerIds', 'Инженер не найден');
-    }
-    if (users.some((row) => row.status !== 'ACTIVE' || row.role !== ASSIGNABLE_ENGINEER_ROLE)) {
-      throw new ValidationError(
-        'responsibleEngineerIds',
-        'Назначить можно только активного ответственного инженера',
-      );
-    }
-  }
-
   const current = await tx.propertyObjectEngineer.findMany({
     where: { propertyObjectId: input.objectId },
   });
@@ -47,6 +31,22 @@ export async function syncObjectEngineers(
     );
   }
 
+  if (toAdd.length > 0) {
+    const users = await tx.user.findMany({
+      where: { id: { in: toAdd } },
+      select: { id: true, role: true, status: true },
+    });
+    if (users.length !== toAdd.length) {
+      throw new ValidationError('responsibleEngineerIds', 'Инженер не найден');
+    }
+    if (users.some((row) => row.status !== 'ACTIVE' || row.role !== ASSIGNABLE_ENGINEER_ROLE)) {
+      throw new ValidationError(
+        'responsibleEngineerIds',
+        'Назначить можно только активного ответственного инженера',
+      );
+    }
+  }
+
   if (toAdd.length === 0 && toRemove.length === 0) {
     return;
   }
@@ -54,27 +54,26 @@ export async function syncObjectEngineers(
   const now = new Date();
   const assignedByUserId = input.ctx.actor?.id ?? null;
   for (const userId of toAdd) {
-    const existing = current.find((row) => row.userId === userId);
-    if (existing) {
-      await tx.propertyObjectEngineer.update({
-        where: { id: existing.id },
-        data: {
-          unassignedAt: null,
-          assignedAt: now,
-          assignedByUserId,
-        },
-      });
-    } else {
-      await tx.propertyObjectEngineer.create({
-        data: {
-          id: randomUUID(),
+    await tx.propertyObjectEngineer.upsert({
+      where: {
+        propertyObjectId_userId: {
           propertyObjectId: input.objectId,
           userId,
-          assignedAt: now,
-          assignedByUserId,
         },
-      });
-    }
+      },
+      create: {
+        id: randomUUID(),
+        propertyObjectId: input.objectId,
+        userId,
+        assignedAt: now,
+        assignedByUserId,
+      },
+      update: {
+        unassignedAt: null,
+        assignedAt: now,
+        assignedByUserId,
+      },
+    });
   }
   if (toRemove.length > 0) {
     await tx.propertyObjectEngineer.updateMany({

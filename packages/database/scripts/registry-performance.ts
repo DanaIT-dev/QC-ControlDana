@@ -31,6 +31,16 @@ async function main(): Promise<void> {
     const object = await prisma.propertyObject.create({
       data: { name: `${MARKER} объект`, address: `${MARKER} адрес` },
     });
+    const engineer = await prisma.user.create({
+      data: {
+        fullName: `${MARKER} инженер`,
+        email: `perf.engineer.${Date.now()}@example.sgr.local`,
+        role: 'RESPONSIBLE_ENGINEER',
+      },
+    });
+    await prisma.propertyObjectEngineer.create({
+      data: { propertyObjectId: object.id, userId: engineer.id },
+    });
     const customer = await prisma.organization.create({
       data: {
         officialName: `${MARKER} заказчик`,
@@ -91,9 +101,9 @@ async function main(): Promise<void> {
       SELECT di.id
       FROM defect_items di
       INNER JOIN acts a ON a.id = di."actId"
-      INNER JOIN property_objects po ON po.id = a."objectId"
       INNER JOIN property_object_engineers poe
-        ON poe."propertyObjectId" = po.id
+        ON poe."propertyObjectId" = a."objectId"
+       AND poe."userId" = '${engineer.id}'::uuid
        AND poe."unassignedAt" IS NULL
       WHERE a.status <> 'CANCELLED'
       ORDER BY di."effectiveDeadline" ASC NULLS LAST, a."officialNumber" ASC, di.id ASC
@@ -108,6 +118,45 @@ async function main(): Promise<void> {
         'Object-scope query plan did not use a Limit; pagination may be loading all rows',
       );
     }
+    if (!/property_object_engineers/.test(objectPlan)) {
+      throw new Error('Object-scope query plan did not use property_object_engineers');
+    }
+
+    const sampleAct = await prisma.act.findFirstOrThrow({
+      where: { officialNumber: { startsWith: `${MARKER}-` } },
+      select: { id: true },
+    });
+    const directAct = await prisma.$queryRawUnsafe<Array<{ 'QUERY PLAN': string }>>(
+      `
+      EXPLAIN (ANALYZE, BUFFERS)
+      SELECT a.id
+      FROM acts a
+      INNER JOIN property_object_engineers poe
+        ON poe."propertyObjectId" = a."objectId"
+       AND poe."userId" = '${engineer.id}'::uuid
+       AND poe."unassignedAt" IS NULL
+      WHERE a.id = '${sampleAct.id}'::uuid
+      `,
+    );
+    const directPlan = directAct.map((row) => row['QUERY PLAN']).join('\n');
+    console.log('--- object-scope direct act ---');
+    console.log(directPlan);
+
+    const summary = await prisma.$queryRawUnsafe<Array<{ 'QUERY PLAN': string }>>(
+      `
+      EXPLAIN (ANALYZE, BUFFERS)
+      SELECT count(*)
+      FROM defect_items di
+      INNER JOIN acts a ON a.id = di."actId"
+      INNER JOIN property_object_engineers poe
+        ON poe."propertyObjectId" = a."objectId"
+       AND poe."userId" = '${engineer.id}'::uuid
+       AND poe."unassignedAt" IS NULL
+      WHERE a.status <> 'CANCELLED'
+      `,
+    );
+    console.log('--- object-scope summary count ---');
+    console.log(summary.map((row) => row['QUERY PLAN']).join('\n'));
   } finally {
     await cleanup(prisma);
     await prisma.$disconnect();
@@ -138,6 +187,7 @@ async function cleanup(prisma: ReturnType<typeof createPrismaClient>): Promise<v
   await prisma.organization.deleteMany({ where: { officialName: `${MARKER} заказчик` } });
   await prisma.propertyObject.deleteMany({ where: { name: `${MARKER} объект` } });
   await prisma.defectType.deleteMany({ where: { code: 'PERF_LOAD' } });
+  await prisma.user.deleteMany({ where: { fullName: `${MARKER} инженер` } });
 }
 
 main().catch((error: unknown) => {

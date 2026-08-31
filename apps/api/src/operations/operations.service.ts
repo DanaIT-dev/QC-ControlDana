@@ -128,6 +128,9 @@ export class OperationsService {
         orderBy: { fullName: 'asc' },
       }),
     ]);
+    const assignedEngineerIds = new Set(
+      objects.flatMap((object) => object.engineers.map((row) => row.userId)),
+    );
     return {
       propertyObjects: objects.map((object) => ({
         id: object.id,
@@ -139,7 +142,9 @@ export class OperationsService {
       liableOrganizations: liable,
       alternativeContractors: alternatives,
       defectTypes,
-      responsibleEngineers: engineers,
+      responsibleEngineers: scope.objectScoped
+        ? engineers.filter((engineer) => assignedEngineerIds.has(engineer.id))
+        : engineers,
       canViewLookups: true,
       actorRole: user.role,
     };

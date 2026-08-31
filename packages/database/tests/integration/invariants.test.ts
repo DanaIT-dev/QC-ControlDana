@@ -364,4 +364,38 @@ describe('database invariants', () => {
       }),
     ).rejects.toMatchObject({ code: 'P2002' });
   });
+
+  it('reactivates the same object–engineer pair instead of inserting a duplicate', async () => {
+    const object = await prisma.propertyObject.create({
+      data: { name: `reassign-obj-${randomUUID()}`, address: 'addr' },
+    });
+    const engineer = await prisma.user.create({
+      data: {
+        fullName: 'Повторный инженер',
+        email: `reassign-eng-${randomUUID()}@example.sgr.local`,
+        role: 'RESPONSIBLE_ENGINEER',
+      },
+    });
+    const row = await prisma.propertyObjectEngineer.create({
+      data: { propertyObjectId: object.id, userId: engineer.id },
+    });
+    await prisma.propertyObjectEngineer.update({
+      where: { id: row.id },
+      data: { unassignedAt: new Date() },
+    });
+    const reactivated = await prisma.propertyObjectEngineer.upsert({
+      where: {
+        propertyObjectId_userId: { propertyObjectId: object.id, userId: engineer.id },
+      },
+      create: { propertyObjectId: object.id, userId: engineer.id },
+      update: { unassignedAt: null, assignedAt: new Date() },
+    });
+    expect(reactivated.id).toBe(row.id);
+    expect(reactivated.unassignedAt).toBeNull();
+    expect(
+      await prisma.propertyObjectEngineer.count({
+        where: { propertyObjectId: object.id, userId: engineer.id },
+      }),
+    ).toBe(1);
+  });
 });
