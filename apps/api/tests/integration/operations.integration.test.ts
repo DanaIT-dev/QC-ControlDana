@@ -6,6 +6,7 @@ import { loadConfig } from '@sgr-registry/config';
 import {
   createOwnerPrismaClient,
   disconnectPrismaClient,
+  upsertUserCredentials,
   type PrismaClient,
 } from '@sgr-registry/database';
 import { CSRF_HEADER_NAME, SESSION_COOKIE_NAME } from '@sgr-registry/domain';
@@ -63,11 +64,11 @@ async function createUser(
       email,
       role,
       status: extras.status ?? 'ACTIVE',
-      passwordHash,
       mustChangePassword: extras.mustChangePassword ?? false,
       archivedAt: extras.status === 'ARCHIVED' ? new Date() : null,
     },
   });
+  await upsertUserCredentials(prisma, { userId: user.id, passwordHash });
   createdUserIds.push(user.id);
   return user;
 }
@@ -251,8 +252,11 @@ describe('operations integration', () => {
     };
     createdUserIds.push(createdBody.user.id);
     expect(createdBody.temporaryPassword.length).toBeGreaterThanOrEqual(12);
-    const stored = await prisma.user.findUniqueOrThrow({ where: { id: createdBody.user.id } });
-    expect(stored.passwordHash).not.toBe(createdBody.temporaryPassword);
+    const stored = await prisma.user.findUniqueOrThrow({
+      where: { id: createdBody.user.id },
+      include: { credentials: true },
+    });
+    expect(stored.credentials?.passwordHash).not.toBe(createdBody.temporaryPassword);
     expect(stored.mustChangePassword).toBe(true);
     const logs = await prisma.auditLog.findMany({ where: { entityId: createdBody.user.id } });
     expect(JSON.stringify(logs)).not.toMatch(

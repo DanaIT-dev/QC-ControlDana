@@ -56,3 +56,29 @@ export async function insertOutboxEventRow(
       ${payload}::jsonb
     )`;
 }
+
+export async function upsertSlaClockRow(
+  tx: RawWriter,
+  data: {
+    id?: string | null;
+    defectItemId: string;
+    kind: 'GENERAL' | 'THIRD_PARTY';
+    deadline: Date | null;
+    cycle: number;
+    state: string;
+    satisfiedAt: Date | null;
+    version: number;
+  },
+): Promise<void> {
+  await tx.$executeRaw`
+    SELECT public.sgr_upsert_sla_clock(
+      ${data.id ?? null}::uuid,
+      ${data.defectItemId}::uuid,
+      CAST(${data.kind} AS public."SlaClockKind"),
+      ${data.deadline}::timestamptz,
+      ${data.cycle}::int,
+      CAST(${data.state} AS public."SlaClockState"),
+      ${data.satisfiedAt}::timestamptz,
+      ${data.version}::int
+    )`;
+}

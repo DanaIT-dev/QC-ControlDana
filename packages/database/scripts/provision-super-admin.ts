@@ -10,7 +10,12 @@ import {
   normalizeUserEmail,
   normalizeUserFullName,
 } from '@sgr-registry/domain';
-import { createOwnerPrismaClient, databaseNameOf, insertAuditLogRow } from '../src/index';
+import {
+  createOwnerPrismaClient,
+  databaseNameOf,
+  insertAuditLogRow,
+  upsertUserCredentials,
+} from '../src/index';
 
 const repoRoot = resolve(__dirname, '../../..');
 const envFile = existsSync(resolve(repoRoot, '.env'))
@@ -126,9 +131,7 @@ async function main(): Promise<void> {
           where: { id: sameEmail.id },
           data: {
             fullName,
-            passwordHash,
             mustChangePassword: false,
-            passwordChangedAt: now,
             sessionVersion: { increment: 1 },
             version: { increment: 1 },
           },
@@ -139,11 +142,14 @@ async function main(): Promise<void> {
             email,
             role: 'SUPER_ADMIN',
             status: 'ACTIVE',
-            passwordHash,
             mustChangePassword: false,
-            passwordChangedAt: now,
           },
         });
+    await upsertUserCredentials(owner, {
+      userId: upserted.id,
+      passwordHash,
+      passwordChangedAt: now,
+    });
 
     await insertAuditLogRow(owner, {
       actorUserId: null,

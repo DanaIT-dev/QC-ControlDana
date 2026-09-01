@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import argon2 from 'argon2';
 import type { PrismaClient } from '@prisma/client';
 import { assertPasswordPolicy } from '@sgr-registry/domain';
+import { upsertUserCredentials } from './user-credentials';
 
 export const TEST_SUPER_ADMIN_EMAIL = 'super.admin@example.sgr.local';
 export const TEST_SUPER_ADMIN_NAME = 'Суперадминистратор теста';
@@ -33,11 +34,14 @@ export async function ensureTestSuperAdmin(options: {
         role: 'SUPER_ADMIN',
         status: 'ACTIVE',
         archivedAt: null,
-        passwordHash,
         mustChangePassword: false,
-        passwordChangedAt: now,
         sessionVersion: { increment: 1 },
       },
+    });
+    await upsertUserCredentials(options.owner, {
+      userId: updated.id,
+      passwordHash,
+      passwordChangedAt: now,
     });
     return { id: updated.id, email: updated.email };
   }
@@ -48,10 +52,13 @@ export async function ensureTestSuperAdmin(options: {
       email,
       role: 'SUPER_ADMIN',
       status: 'ACTIVE',
-      passwordHash,
       mustChangePassword: false,
-      passwordChangedAt: now,
     },
+  });
+  await upsertUserCredentials(options.owner, {
+    userId: created.id,
+    passwordHash,
+    passwordChangedAt: now,
   });
   return { id: created.id, email: created.email };
 }

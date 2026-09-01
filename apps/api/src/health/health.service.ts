@@ -1,6 +1,6 @@
 import { InjectQueue } from '@nestjs/bullmq';
 import { Inject, Injectable } from '@nestjs/common';
-import { loadConfig } from '@sgr-registry/config';
+import { loadConfig, redisTlsOptions } from '@sgr-registry/config';
 import type {
   ComponentStatus,
   HealthResponse,
@@ -120,6 +120,7 @@ export class HealthService {
   private async checkRedis(redisUrl: string): Promise<ComponentStatus> {
     const started = Date.now();
     const redis = new Redis(redisUrl, {
+      ...redisTlsOptions(redisUrl),
       maxRetriesPerRequest: 1,
       connectTimeout: 2000,
       lazyConnect: true,

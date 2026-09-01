@@ -6,6 +6,7 @@ import { loadConfig } from '@sgr-registry/config';
 import {
   createOwnerPrismaClient,
   disconnectPrismaClient,
+  upsertUserCredentials,
   type PrismaClient,
 } from '@sgr-registry/database';
 import { CSRF_HEADER_NAME, SESSION_COOKIE_NAME, capabilitiesForRole } from '@sgr-registry/domain';
@@ -61,11 +62,11 @@ async function createUser(role: UserRole, extras: { status?: 'ACTIVE' | 'ARCHIVE
       email,
       role,
       status: extras.status ?? 'ACTIVE',
-      passwordHash,
       mustChangePassword: false,
       archivedAt: extras.status === 'ARCHIVED' ? new Date() : null,
     },
   });
+  await upsertUserCredentials(prisma, { userId: user.id, passwordHash });
   createdUserIds.push(user.id);
   return user;
 }

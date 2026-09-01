@@ -18,7 +18,7 @@
 
 `SUPER_ADMIN` в seed не создаётся. В test/e2e допускается синтетическая fixture `super.admin@example.sgr.local` через `ensureTestSuperAdmin`, без записи пароля в Git.
 
-Повторный seed не создаёт пользователей заново и не меняет `passwordHash`, если текущий хеш по-прежнему соответствует `SEED_DEMO_PASSWORD`.
+Повторный seed не создаёт пользователей заново и не меняет `user_credentials.passwordHash`, если текущий хеш по-прежнему соответствует `SEED_DEMO_PASSWORD`.
 
 После входа `SUPER_ADMIN` перенаправляется на `/super-admin`. Остальные роли — на `/registry` (или `/change-password`, если `mustChangePassword`).
 
@@ -30,7 +30,7 @@
 
 - хеш Argon2id;
 - исходный пароль не сохраняется;
-- `passwordHash` не возвращается API и недоступен `SELECT` для `sgr_app` / `sgr_worker`; читает его только auth-компонент (`sgr_auth`);
+- `passwordHash` хранится только в `user_credentials` и недоступен `sgr_app` / `sgr_worker` (ни SELECT, ни INSERT/UPDATE). Читает и меняет хеш только auth-компонент (`sgr_auth`);
 - при создании пароля: 12–128 символов, заглавная, строчная, цифра и специальный символ;
 - слишком длинное значение отклоняется до Argon2;
 - на входе пароль не нормализуется (нет trim/lowercase/Unicode NFC);

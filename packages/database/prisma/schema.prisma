@@ -82,8 +82,6 @@ model User {
   fullName            String
   email               String     @unique
   phone               String?
-  passwordHash        String?
-  passwordChangedAt   DateTime?  @db.Timestamptz(3)
   mustChangePassword  Boolean    @default(false)
   sessionVersion      Int        @default(1)
   lastLoginAt         DateTime?  @db.Timestamptz(3)
@@ -94,6 +92,8 @@ model User {
   createdAt           DateTime   @default(now()) @db.Timestamptz(3)
   updatedAt           DateTime   @updatedAt @db.Timestamptz(3)
   archivedAt          DateTime?  @db.Timestamptz(3)
+
+  credentials                    UserCredential?
 
   objectAssignments              PropertyObjectEngineer[]
   objectEngineerAssignmentsMade  PropertyObjectEngineer[] @relation("ObjectEngineerAssignedBy")
@@ -110,6 +110,18 @@ model User {
   @@index([role, status])
   @@index([status, createdAt])
   @@map("users")
+}
+
+model UserCredential {
+  userId            String    @id @db.Uuid
+  passwordHash      String
+  passwordChangedAt DateTime? @db.Timestamptz(3)
+  createdAt         DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime  @updatedAt @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_credentials")
 }
 
 model PropertyObject {

@@ -9,6 +9,7 @@ import {
   createOwnerPrismaClient,
   disconnectPrismaClient,
   Prisma,
+  upsertUserCredentials,
   type PrismaClient,
 } from '@sgr-registry/database';
 import { CSRF_HEADER_NAME, SESSION_COOKIE_NAME } from '@sgr-registry/domain';
@@ -64,8 +65,9 @@ async function createUser(role: UserRole) {
   const email = `att.${role.toLowerCase()}.${Date.now()}.${Math.random().toString(16).slice(2)}@example.sgr.local`;
   const passwordHash = await hashArgon2id(DEMO_PASSWORD, { memoryCost: 4096, timeCost: 1 });
   const user = await prisma.user.create({
-    data: { fullName: `Вложения ${role}`, email, role, status: 'ACTIVE', passwordHash },
+    data: { fullName: `Вложения ${role}`, email, role, status: 'ACTIVE' },
   });
+  await upsertUserCredentials(prisma, { userId: user.id, passwordHash });
   createdUserIds.push(user.id);
   return user;
 }
@@ -319,6 +321,9 @@ describe('attachments integration', () => {
     expect(body.status).toBe('ready');
     expect(body.components.minio.status).toBe('up');
     expect(body.components.clamav.status).toBe('up');
+    expect(JSON.stringify(body)).not.toMatch(
+      /redis:\/\/|rediss:\/\/|sgr_api|sgr_worker|local-development-only/,
+    );
   });
 
   it('uploads a PDF through the stream path, scans CLEAN, and serves READY content', async () => {

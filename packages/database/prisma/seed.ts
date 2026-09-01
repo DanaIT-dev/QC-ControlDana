@@ -12,7 +12,7 @@ import {
   normalizeUnp,
 } from '@sgr-registry/domain';
 import argon2 from 'argon2';
-import { allocateActNumber, createOwnerPrismaClient } from '../src/index';
+import { allocateActNumber, createOwnerPrismaClient, upsertUserCredentials } from '../src/index';
 
 const repoRoot = resolve(__dirname, '../../..');
 const envFile = existsSync(resolve(repoRoot, '.env'))
@@ -112,13 +112,14 @@ async function seed(): Promise<void> {
   if (demoPassword) {
     const existing = await prisma.user.findMany({
       where: { email: { in: DEMO_USERS.map((user) => normalizeEmail(user.email)) } },
+      include: { credentials: true },
     });
     for (const spec of DEMO_USERS) {
       const email = normalizeEmail(spec.email);
       const user = existing.find((item) => item.email === email);
-      if (user?.passwordHash) {
+      if (user?.credentials?.passwordHash) {
         try {
-          if (await argon2.verify(user.passwordHash, demoPassword)) {
+          if (await argon2.verify(user.credentials.passwordHash, demoPassword)) {
             continue;
           }
         } catch {
@@ -216,9 +217,14 @@ async function seed(): Promise<void> {
             status: 'ARCHIVED',
             archivedAt: new Date('2026-01-15T12:00:00.000Z'),
             mustChangePassword: false,
-            passwordHash: preparedDemoPasswordHash,
           },
         });
+        if (preparedDemoPasswordHash) {
+          await upsertUserCredentials(tx, {
+            userId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            passwordHash: preparedDemoPasswordHash,
+          });
+        }
 
         const northPark = await tx.propertyObject.upsert({
           where: { id: '11111111-1111-4111-8111-111111111111' },
@@ -1110,13 +1116,16 @@ async function upsertDemoUser(
     return user;
   }
 
+  const existingCredentials = await tx.userCredential.findUnique({ where: { userId: user.id } });
+  await upsertUserCredentials(tx, {
+    userId: user.id,
+    passwordHash: input.passwordHash,
+  });
   return tx.user.update({
     where: { id: user.id },
     data: {
-      passwordHash: input.passwordHash,
-      passwordChangedAt: new Date(),
       mustChangePassword: false,
-      ...(user.passwordHash ? { sessionVersion: { increment: 1 } } : {}),
+      ...(existingCredentials ? { sessionVersion: { increment: 1 } } : {}),
     },
   });
 }

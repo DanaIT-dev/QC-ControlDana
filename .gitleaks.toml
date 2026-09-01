@@ -12,6 +12,10 @@ paths = [
   '''(.*)/test-results/.*''',
   '''(.*)/\.env\.example$''',
   '''(.*)/infra/docker/compose\.yaml$''',
+  '''(.*)/infra/docker/compose\.production\.yaml$''',
+  '''(.*)/infra/docker/redis/acl-entrypoint\.sh$''',
+  '''(.*)/infra/docker/secrets/.*''',
+  '''(.*)/scripts/dev/sync-redis-secrets\.mjs$''',
   '''(.*)/docs/security/.*''',
   '''(.*)/\.gitleaks\.toml$''',
 ]
@@ -19,4 +23,5 @@ regexes = [
   '''Dana-SGR-Demo-2026!''',
   '''sgr_registry_dev_password''',
   '''sgr_minio_dev_password''',
+  '''local-development-only''',
 ]

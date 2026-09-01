@@ -1,6 +1,6 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
-import { loadConfig } from '@sgr-registry/config';
+import { loadConfig, redisTlsOptions } from '@sgr-registry/config';
 import { resolveAttachmentQueueName, resolveNotificationQueueName } from '@sgr-registry/domain';
 
 @Module({
@@ -11,6 +11,7 @@ import { resolveAttachmentQueueName, resolveNotificationQueueName } from '@sgr-r
         return {
           connection: {
             url: config.REDIS_URL,
+            ...redisTlsOptions(config.REDIS_URL),
             maxRetriesPerRequest: null,
           },
         };

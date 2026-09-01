@@ -39,10 +39,27 @@ describe('infrastructure compose published ports', () => {
     }
     expect(yaml).toMatch(/127\.0\.0\.1:\$\{POSTGRES_PORT:-5432}:5432/);
     expect(yaml).toMatch(/127\.0\.0\.1:\$\{REDIS_PORT:-6379}:6379/);
+    expect(yaml).toMatch(/REDIS_API_PASSWORD_FILE/);
+    expect(yaml).not.toMatch(/REDIS_PASSWORD:\s*\$\{/);
+    expect(yaml).not.toMatch(/REDISCLI_AUTH:\s*\$\{/);
     expect(yaml).toMatch(/127\.0\.0\.1:\$\{MINIO_API_PORT:-9000}:9000/);
     expect(yaml).toMatch(/127\.0\.0\.1:\$\{MINIO_CONSOLE_PORT:-9001}:9001/);
     expect(yaml).toMatch(/127\.0\.0\.1:\$\{CLAMD_PORT:-3310}:3310/);
     expect(yaml).toMatch(/127\.0\.0\.1:\$\{MAILPIT_SMTP_PORT:-1025}:1025/);
     expect(yaml).toMatch(/127\.0\.0\.1:\$\{MAILPIT_UI_PORT:-8025}:8025/);
+  });
+
+  it('does not publish Redis in the production compose template', () => {
+    const productionPath = resolve(
+      import.meta.dirname,
+      '../../../../infra/docker/compose.production.yaml',
+    );
+    const yaml = readFileSync(productionPath, 'utf8');
+    expect(yaml).toMatch(/^\s+redis:/m);
+    expect(yaml).not.toMatch(/^\s+ports:\s*$/m);
+    expect(yaml).not.toMatch(/0\.0\.0\.0/);
+    expect(yaml).not.toMatch(/local-development-only/);
+    expect(yaml).not.toMatch(/requirepass/);
+    expect(yaml).toMatch(/acl-entrypoint\.sh/);
   });
 });

@@ -7,6 +7,8 @@ node_modules/
 .env.local
 .env.*.local
 !.env.example
+infra/docker/secrets/*
+!infra/docker/secrets/.gitkeep
 
 # Build outputs
 dist/

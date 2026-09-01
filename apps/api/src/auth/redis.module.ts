@@ -1,5 +1,5 @@
 import { Global, Inject, Injectable, Module, type OnModuleDestroy } from '@nestjs/common';
-import { loadConfig } from '@sgr-registry/config';
+import { loadConfig, redisTlsOptions } from '@sgr-registry/config';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from './redis.constants';
 
@@ -20,6 +20,7 @@ class RedisShutdown implements OnModuleDestroy {
       useFactory: (): Redis => {
         const config = loadConfig();
         return new Redis(config.REDIS_URL, {
+          ...redisTlsOptions(config.REDIS_URL),
           maxRetriesPerRequest: 1,
           enableReadyCheck: true,
           lazyConnect: false,

@@ -4,7 +4,7 @@
 
 1. Установить Node.js 24 (`nvm use` или эквивалент по `.nvmrc`).
 2. Включить pnpm через Corepack: `corepack enable && corepack prepare pnpm@11.24.0 --activate`. Если `pnpm` нет в `PATH`, используйте `corepack pnpm` или `~/.local/bin/pnpm`.
-3. Скопировать `.env.example` в `.env`.
+3. Скопировать `.env.example` в `.env`. Локальный Redis требует AUTH (`REDIS_PASSWORD=local-development-only` — вымышленное значение; в production запрещено). `pnpm infra:up` записывает gitignored Docker secret files и не кладёт пароль в environment контейнера.
 4. Установить зависимости: `pnpm install`.
 5. Сгенерировать Prisma Client: `pnpm db:generate`.
 
@@ -33,7 +33,7 @@ docker compose -f infra/docker/compose.yaml --env-file .env up -d --force-recrea
 ```
 
 ```bash
-docker compose -f infra/docker/compose.yaml --env-file .env up -d
+pnpm infra:up
 pnpm db:roles:provision
 pnpm db:migrate
 # также примените миграции к test-базе (тот же migrator URL с именем *_test)
@@ -46,10 +46,11 @@ pnpm db:seed
 
 Внутренний чат акта не требует SMTP: Mailpit можно не открывать, чтобы проверить `@` упоминания. Worker по-прежнему нужен для остальных уведомлений и SLA.
 
-Порты PostgreSQL, Redis, MinIO, Mailpit и ClamAV публикуются только на `127.0.0.1`. Проверка:
+Порты PostgreSQL, Redis, MinIO, Mailpit и ClamAV публикуются только на `127.0.0.1`. Redis локально требует ACL. Production-шаблон не публикует Redis. Проверка:
 
 ```bash
 node scripts/security/check-docker-exposure.mjs
+node scripts/security/validate-production-compose.mjs
 ```
 
 Инструментальный SAST/DAST описан в [SECURITY_AUDIT.md](../security/SECURITY_AUDIT.md). Команды:

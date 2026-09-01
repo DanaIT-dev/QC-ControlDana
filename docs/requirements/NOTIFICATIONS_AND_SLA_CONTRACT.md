@@ -28,7 +28,7 @@ THIRD_PARTY не заменяет GENERAL.
 
 ## SlaClock и cycle
 
-Таблица `sla_clocks`, уникальность `(defectItemId, kind)`.
+Таблица `sla_clocks`, уникальность `(defectItemId, kind)`. Runtime `sgr_app` / `sgr_worker` не имеют GRANT INSERT/UPDATE/DELETE: запись только через `sgr_upsert_sla_clock` после `sgr_can_write_sla_clock` (worker — оба kind; staff — оба; RESPONSIBLE — GENERAL assigned object; contractor — THIRD_PARTY; SUPER_ADMIN / AUTH — нет). Прямой SQL не шире этой видимости.
 
 Cycle увеличивается, когда:
 

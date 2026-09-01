@@ -24,6 +24,7 @@ assertSafeTestDatabaseUrl(migratorUrl);
 
 const owner = createOwnerPrismaClient(migratorUrl);
 const appPrisma = createPrismaClient(appUrl);
+const workerPrisma = createPrismaClient(workerUrl);
 
 const MARKER = `rls-${randomUUID().slice(0, 8)}`;
 
@@ -253,12 +254,14 @@ describe('PostgreSQL RLS', () => {
             `${MARKER}.other@example.sgr.local`,
             `${MARKER}.contractor@example.sgr.local`,
             `${MARKER}.super@example.sgr.local`,
+            `rls-sla-${MARKER}.sa@example.sgr.local`,
           ],
         },
       },
     });
     await owner.$disconnect();
     await appPrisma.$disconnect();
+    await workerPrisma.$disconnect();
   });
 
   it('returns no protected rows without verified context', async () => {
@@ -764,6 +767,39 @@ describe('PostgreSQL RLS', () => {
     expect(hashSelect.error).toBeTruthy();
     expect(hashSelect.rows).toHaveLength(0);
 
+    const credentialsSelect = await sql(
+      appUrl,
+      'SELECT "passwordHash" FROM user_credentials LIMIT 1',
+    );
+    expect(credentialsSelect.error).toBeTruthy();
+    expect(credentialsSelect.rows).toHaveLength(0);
+    const appStar = await sql(appUrl, 'SELECT * FROM users LIMIT 1');
+    expect(JSON.stringify(appStar.rows)).not.toMatch(/passwordHash/);
+    const appCredStar = await sql(appUrl, 'SELECT * FROM user_credentials LIMIT 1');
+    expect(appCredStar.error).toBeTruthy();
+    const workerHash = await sql(workerUrl, 'SELECT "passwordHash" FROM user_credentials LIMIT 1');
+    expect(workerHash.error).toBeTruthy();
+    const authHash = await sql(authUrl, 'SELECT "passwordHash" FROM user_credentials LIMIT 1');
+    expect(authHash.error).toBeUndefined();
+    const contractorCreds = await withAuthenticatedDbContext({
+      prisma: appPrisma,
+      secret,
+      user: { id: contractorId, sessionVersion: 1 },
+      callback: async (tx) => {
+        try {
+          await tx.$executeRaw`
+            SELECT public.sgr_upsert_user_credentials(${adminId}::uuid, 'not-a-real-hash')
+          `;
+          return 'updated';
+        } catch {
+          return 'denied';
+        }
+      },
+    });
+    expect(contractorCreds).toBe('denied');
+    const noContextCreds = await sql(appUrl, 'SELECT * FROM user_credentials');
+    expect(noContextCreds.error || noContextCreds.rows.length === 0).toBeTruthy();
+
     await expect(
       withAuthenticatedDbContext({
         prisma: appPrisma,
@@ -797,5 +833,311 @@ describe('PostgreSQL RLS', () => {
     expect((await owner.user.findUniqueOrThrow({ where: { id: managerId } })).role).toBe(
       'SGR_MANAGER',
     );
+  });
+
+  it('scopes sla_clocks writes to object visibility and worker workflow', async () => {
+    const sentinel = `rls-sla-${MARKER}`;
+    await owner.propertyObjectEngineer.create({
+      data: {
+        propertyObjectId: otherObjectId,
+        userId: otherResponsibleId,
+        assignedByUserId: adminId,
+      },
+    });
+    const clockA = await owner.slaClock.create({
+      data: {
+        defectItemId: defectId,
+        kind: 'GENERAL',
+        state: 'NORMAL',
+        deadline: new Date('2026-09-15T12:00:00.000Z'),
+      },
+    });
+    const clockB = await owner.slaClock.create({
+      data: {
+        defectItemId: otherDefectId,
+        kind: 'GENERAL',
+        state: 'NORMAL',
+        deadline: new Date('2026-09-16T12:00:00.000Z'),
+      },
+    });
+    try {
+      const visible = await withAuthenticatedDbContext({
+        prisma: appPrisma,
+        secret,
+        user: { id: responsibleId, sessionVersion: 1 },
+        callback: (tx) => tx.slaClock.findMany({ where: { id: { in: [clockA.id, clockB.id] } } }),
+      });
+      expect(visible.map((row) => row.id)).toEqual([clockA.id]);
+
+      const hidden = await withAuthenticatedDbContext({
+        prisma: appPrisma,
+        secret,
+        user: { id: responsibleId, sessionVersion: 1 },
+        callback: async (tx) => {
+          try {
+            await tx.slaClock.update({
+              where: { id: clockB.id },
+              data: { state: 'OVERDUE' },
+            });
+            return 'updated';
+          } catch {
+            return 'denied';
+          }
+        },
+      });
+      expect(hidden).toBe('denied');
+
+      const insertB = await withAuthenticatedDbContext({
+        prisma: appPrisma,
+        secret,
+        user: { id: responsibleId, sessionVersion: 1 },
+        callback: async (tx) => {
+          try {
+            await tx.$executeRaw`
+              SELECT public.sgr_upsert_sla_clock(
+                ${null}::uuid,
+                ${otherDefectId}::uuid,
+                'THIRD_PARTY'::public."SlaClockKind",
+                now(),
+                1,
+                'NORMAL'::public."SlaClockState",
+                null,
+                1
+              )
+            `;
+            return 'inserted';
+          } catch {
+            return 'denied';
+          }
+        },
+      });
+      expect(insertB).toBe('denied');
+
+      const move = await withAuthenticatedDbContext({
+        prisma: appPrisma,
+        secret,
+        user: { id: responsibleId, sessionVersion: 1 },
+        callback: async (tx) => {
+          try {
+            await tx.$executeRaw`
+              UPDATE sla_clocks SET "defectItemId" = ${otherDefectId}::uuid WHERE id = ${clockA.id}::uuid
+            `;
+            return 'moved';
+          } catch {
+            return 'denied';
+          }
+        },
+      });
+      expect(move).toBe('denied');
+
+      const deleted = await withAuthenticatedDbContext({
+        prisma: appPrisma,
+        secret,
+        user: { id: responsibleId, sessionVersion: 1 },
+        callback: async (tx) => {
+          try {
+            await tx.slaClock.delete({ where: { id: clockB.id } });
+            return 'deleted';
+          } catch {
+            return 'denied';
+          }
+        },
+      });
+      expect(deleted).toBe('denied');
+
+      const contractorWrite = await withAuthenticatedDbContext({
+        prisma: appPrisma,
+        secret,
+        user: { id: contractorId, sessionVersion: 1 },
+        callback: async (tx) => {
+          try {
+            await tx.$executeRaw`
+              UPDATE sla_clocks SET state = 'OVERDUE' WHERE id = ${clockA.id}::uuid
+            `;
+            return 'updated';
+          } catch {
+            return 'denied';
+          }
+        },
+      });
+      expect(contractorWrite).toBe('denied');
+
+      const contractorGeneral = await withAuthenticatedDbContext({
+        prisma: appPrisma,
+        secret,
+        user: { id: contractorId, sessionVersion: 1 },
+        callback: async (tx) => {
+          try {
+            await tx.$executeRaw`
+              SELECT public.sgr_upsert_sla_clock(
+                ${null}::uuid,
+                ${defectId}::uuid,
+                'GENERAL'::public."SlaClockKind",
+                now(),
+                1,
+                'NORMAL'::public."SlaClockState",
+                null,
+                1
+              )
+            `;
+            return 'inserted';
+          } catch {
+            return 'denied';
+          }
+        },
+      });
+      expect(contractorGeneral).toBe('denied');
+
+      const superAdmin = await owner.user.create({
+        data: {
+          fullName: `${sentinel} sa`,
+          email: `${sentinel}.sa@example.sgr.local`,
+          role: 'SUPER_ADMIN',
+          sessionVersion: 1,
+        },
+      });
+      try {
+        const saSelect = await withAuthenticatedDbContext({
+          prisma: appPrisma,
+          secret,
+          user: { id: superAdmin.id, sessionVersion: 1 },
+          callback: (tx) => tx.slaClock.findMany({ where: { id: clockA.id } }),
+        });
+        expect(saSelect).toHaveLength(0);
+        const saWrite = await withAuthenticatedDbContext({
+          prisma: appPrisma,
+          secret,
+          user: { id: superAdmin.id, sessionVersion: 1 },
+          callback: async (tx) => {
+            try {
+              await tx.$executeRaw`
+                SELECT public.sgr_upsert_sla_clock(
+                  ${clockA.id}::uuid,
+                  ${defectId}::uuid,
+                  'GENERAL'::public."SlaClockKind",
+                  now(),
+                  9,
+                  'OVERDUE'::public."SlaClockState",
+                  null,
+                  9
+                )
+              `;
+              return 'updated';
+            } catch {
+              return 'denied';
+            }
+          },
+        });
+        expect(saWrite).toBe('denied');
+      } finally {
+        await owner.user.delete({ where: { id: superAdmin.id } });
+      }
+
+      const authSla = await sql(authUrl, 'SELECT * FROM sla_clocks LIMIT 1');
+      expect(authSla.error || authSla.rows.length === 0).toBeTruthy();
+
+      const workerOk = await withWorkerDbContext({
+        prisma: workerPrisma,
+        secret,
+        callback: async (tx) => {
+          await tx.$executeRaw`
+            SELECT public.sgr_upsert_sla_clock(
+              ${clockA.id}::uuid,
+              ${defectId}::uuid,
+              'GENERAL'::public."SlaClockKind",
+              now(),
+              2,
+              'WARNING'::public."SlaClockState",
+              null,
+              2
+            )
+          `;
+          return 'ok';
+        },
+      });
+      expect(workerOk).toBe('ok');
+
+      const bulk = await withAuthenticatedDbContext({
+        prisma: appPrisma,
+        secret,
+        user: { id: responsibleId, sessionVersion: 1 },
+        callback: async (tx) => {
+          try {
+            return await tx.slaClock.updateMany({
+              where: { id: { in: [clockA.id, clockB.id] } },
+              data: { state: 'OVERDUE' },
+            });
+          } catch {
+            return { count: 0 };
+          }
+        },
+      });
+      expect(bulk.count).toBe(0);
+      expect((await owner.slaClock.findUniqueOrThrow({ where: { id: clockB.id } })).state).toBe(
+        'NORMAL',
+      );
+
+      const noContext = await sql(appUrl, `UPDATE sla_clocks SET cycle = 9 WHERE id = $1`, [
+        clockB.id,
+      ]);
+      expect(noContext.error || (noContext.rows?.length ?? 0) === 0).toBeTruthy();
+      expect((await owner.slaClock.findUniqueOrThrow({ where: { id: clockB.id } })).cycle).toBe(1);
+
+      const forgedPool = new Pool({ connectionString: postgresUrlWithoutSchema(appUrl), max: 1 });
+      const forgedClient = await forgedPool.connect();
+      try {
+        const forgedToken = signUserRlsContext(
+          { userId: responsibleId, sessionVersion: 1, nonce: randomUUID() },
+          'x'.repeat(32),
+        );
+        let forgedResult = 'denied';
+        try {
+          await forgedClient.query('SELECT public.sgr_set_request_context($1)', [forgedToken]);
+          forgedResult = 'context-accepted';
+        } catch {
+          try {
+            await forgedClient.query(
+              `SELECT public.sgr_upsert_sla_clock($1::uuid, $2::uuid, 'GENERAL'::public."SlaClockKind", now(), 1, 'NORMAL'::public."SlaClockState", null, 1)`,
+              [clockA.id, defectId],
+            );
+            forgedResult = 'upserted';
+          } catch {
+            forgedResult = 'denied';
+          }
+        }
+        expect(forgedResult).toBe('denied');
+      } finally {
+        forgedClient.release();
+        await forgedPool.end();
+      }
+
+      const authUpsert = await sql(
+        authUrl,
+        `SELECT public.sgr_upsert_sla_clock($1::uuid, $2::uuid, 'GENERAL'::public."SlaClockKind", now(), 1, 'NORMAL'::public."SlaClockState", null, 1)`,
+        [clockA.id, defectId],
+      );
+      expect(authUpsert.error).toBeTruthy();
+
+      await owner.propertyObjectEngineer.updateMany({
+        where: { propertyObjectId: objectId, userId: responsibleId },
+        data: { unassignedAt: new Date() },
+      });
+      const afterRevoke = await withAuthenticatedDbContext({
+        prisma: appPrisma,
+        secret,
+        user: { id: responsibleId, sessionVersion: 1 },
+        callback: (tx) => tx.slaClock.findMany({ where: { id: clockA.id } }),
+      });
+      expect(afterRevoke).toHaveLength(0);
+      await owner.propertyObjectEngineer.updateMany({
+        where: { propertyObjectId: objectId, userId: responsibleId },
+        data: { unassignedAt: null },
+      });
+    } finally {
+      await owner.slaClock.deleteMany({ where: { id: { in: [clockA.id, clockB.id] } } });
+      await owner.propertyObjectEngineer.deleteMany({
+        where: { propertyObjectId: otherObjectId, userId: otherResponsibleId },
+      });
+    }
   });
 });

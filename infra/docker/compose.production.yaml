@@ -1,0 +1,48 @@
+# Production template. Copy to the deployment host and inject secrets via
+# Docker secrets or the orchestrator. Do not put real Redis passwords here.
+#
+# Redis:
+# - no host ports (not published on the host)
+# - protected-mode yes
+# - default user disabled
+# - ACL users sgr_api / sgr_worker from secret files
+# - reachable only on the internal compose/overlay network
+
+services:
+  redis:
+    image: redis:7-alpine
+    command: ['/usr/local/bin/sgr-redis-acl-entrypoint.sh']
+    environment:
+      REDIS_API_PASSWORD_FILE: /run/secrets/redis_api_password
+      REDIS_WORKER_PASSWORD_FILE: /run/secrets/redis_worker_password
+    secrets:
+      - redis_api_password
+      - redis_worker_password
+    volumes:
+      - ./redis/acl-entrypoint.sh:/usr/local/bin/sgr-redis-acl-entrypoint.sh:ro
+      - sgr_registry_redis:/data
+    networks:
+      - sgr_internal
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'REDISCLI_AUTH="$$(cat /run/secrets/redis_api_password)" redis-cli --user sgr_api ping | grep -q PONG',
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+secrets:
+  redis_api_password:
+    file: ./secrets/redis_api_password
+  redis_worker_password:
+    file: ./secrets/redis_worker_password
+
+networks:
+  sgr_internal:
+    driver: bridge
+
+volumes:
+  sgr_registry_redis:

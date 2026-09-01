@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { loadConfig, MissingConfigurationError } from '@sgr-registry/config';
+import { loadConfig, MissingConfigurationError, redisTlsOptions } from '@sgr-registry/config';
 import { sessionCookieOptions, sessionCookieSecure } from '../../src/auth/cookie';
 
 function productionEnv(overrides: Record<string, string> = {}) {
@@ -10,7 +10,8 @@ function productionEnv(overrides: Record<string, string> = {}) {
     WORKER_DATABASE_URL: 'postgresql://sgr_worker_user:sgr@localhost:5432/sgr_registry',
     MIGRATION_DATABASE_URL: 'postgresql://sgr_migrator:sgr@localhost:5432/sgr_registry',
     RLS_CONTEXT_SECRET: 'production-rls-context-secret-value-32',
-    REDIS_URL: 'redis://localhost:6379',
+    REDIS_URL: 'redis://sgr_api:prod-redis-api-not-dev@127.0.0.1:6379/0',
+    WORKER_REDIS_URL: 'redis://sgr_worker:prod-redis-worker-not-dev@127.0.0.1:6379/0',
     S3_ENDPOINT: 'https://minio.example.local',
     S3_REGION: 'us-east-1',
     S3_ACCESS_KEY: 'key',
@@ -68,5 +69,72 @@ describe('production session cookie policy', () => {
         productionEnv({ MIGRATION_DATABASE_URL: 'postgresql://sgr_registry:x@localhost:5432/sgr' }),
       ),
     ).toThrow(MissingConfigurationError);
+  });
+
+  it('refuses production Redis without ACL credentials or with the development password', () => {
+    expect(() => loadConfig(productionEnv({ REDIS_URL: 'redis://127.0.0.1:6379' }))).toThrow(
+      MissingConfigurationError,
+    );
+    expect(() =>
+      loadConfig(
+        productionEnv({
+          REDIS_URL: 'redis://sgr_api:local-development-only@127.0.0.1:6379/0',
+        }),
+      ),
+    ).toThrow(MissingConfigurationError);
+    expect(() =>
+      loadConfig(
+        productionEnv({
+          REDIS_URL: 'redis://sgr_worker:prod-redis-worker-not-dev@127.0.0.1:6379/0',
+        }),
+      ),
+    ).toThrow(MissingConfigurationError);
+    try {
+      loadConfig(productionEnv({ REDIS_URL: 'redis://127.0.0.1:6379' }));
+      throw new Error('expected MissingConfigurationError');
+    } catch (error) {
+      expect(error).toBeInstanceOf(MissingConfigurationError);
+      const message = error instanceof Error ? error.message : '';
+      expect(message).toContain('REDIS_URL');
+      expect(message).not.toMatch(/prod-redis|local-development-only|password=/i);
+    }
+    const config = loadConfig(productionEnv());
+    expect(config.REDIS_URL).toContain('sgr_api');
+    expect(config.WORKER_REDIS_URL).toContain('sgr_worker');
+  });
+
+  it('refuses mixing runtime database roles and public Redis without TLS', () => {
+    expect(() =>
+      loadConfig(
+        productionEnv({ DATABASE_URL: 'postgresql://sgr_auth_user:sgr@localhost:5432/sgr' }),
+      ),
+    ).toThrow(MissingConfigurationError);
+    expect(() =>
+      loadConfig(
+        productionEnv({ AUTH_DATABASE_URL: 'postgresql://sgr_app_user:sgr@localhost:5432/sgr' }),
+      ),
+    ).toThrow(MissingConfigurationError);
+    expect(() =>
+      loadConfig(
+        productionEnv({
+          WORKER_DATABASE_URL: 'postgresql://sgr_owner:sgr@localhost:5432/sgr',
+        }),
+      ),
+    ).toThrow(MissingConfigurationError);
+    expect(() =>
+      loadConfig(
+        productionEnv({
+          REDIS_URL: 'redis://sgr_api:prod-redis-api-not-dev@redis.cloud.example:6379/0',
+        }),
+      ),
+    ).toThrow(MissingConfigurationError);
+    const tls = loadConfig(
+      productionEnv({
+        REDIS_URL: 'rediss://sgr_api:prod-redis-api-not-dev@redis.cloud.example:6379/0',
+      }),
+    );
+    expect(tls.REDIS_URL.startsWith('rediss://')).toBe(true);
+    expect(redisTlsOptions(tls.REDIS_URL)).toEqual({ tls: { rejectUnauthorized: true } });
+    expect(redisTlsOptions('redis://sgr_api:x@127.0.0.1:6379/0')).toEqual({});
   });
 });

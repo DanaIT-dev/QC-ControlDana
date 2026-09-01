@@ -6,6 +6,7 @@ import { loadConfig } from '@sgr-registry/config';
 import {
   createOwnerPrismaClient,
   disconnectPrismaClient,
+  upsertUserCredentials,
   type PrismaClient,
 } from '@sgr-registry/database';
 import {
@@ -84,12 +85,12 @@ async function createUser(role: UserRole, status: 'ACTIVE' | 'ARCHIVED' = 'ACTIV
       email,
       role,
       status,
-      passwordHash,
       archivedAt: status === 'ARCHIVED' ? new Date() : null,
     },
   });
+  await upsertUserCredentials(prisma, { userId: user.id, passwordHash });
   createdUserIds.push(user.id);
-  return user;
+  return { ...user, passwordHash };
 }
 
 async function login(email: string, password: string) {

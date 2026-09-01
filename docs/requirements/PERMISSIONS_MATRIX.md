@@ -52,4 +52,4 @@
 
 Capability без доступа к строке недостаточна: RESPONSIBLE с COMPLETE_DEFECT получает безопасный `404` на акт/дефект чужого объекта. Отсутствие capability → `403`. Завершённый дефект не редактирует RESPONSIBLE; ADMIN и SGR_MANAGER — только с подтверждением и причиной.
 
-PostgreSQL RLS дублирует эту матрицу как второй уровень (объектный scope, слот A vs B/C, запрет истории подрядчику, неизменяемый AuditLog, пустой бизнес-доступ SUPER_ADMIN). Подробности: [RLS_POLICY_MATRIX.md](../security/RLS_POLICY_MATRIX.md).
+PostgreSQL RLS дублирует эту матрицу как второй уровень (объектный scope, слот A vs B/C, запрет истории подрядчику, неизменяемый AuditLog, пустой бизнес-доступ SUPER_ADMIN). Хеш пароля не входит в user directory и недоступен `ADMIN`/`SUPER_ADMIN`. Подробности: [RLS_POLICY_MATRIX.md](../security/RLS_POLICY_MATRIX.md).

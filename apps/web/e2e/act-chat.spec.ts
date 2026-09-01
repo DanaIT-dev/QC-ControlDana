@@ -182,6 +182,8 @@ test.describe('act discussion chat', () => {
       const send = page.getByRole('button', { name: 'Отправить' });
       await expect(draft).toBeVisible();
       await expect(send).toBeVisible();
+      await draft.scrollIntoViewIfNeeded();
+      await send.scrollIntoViewIfNeeded();
       const sendBox = await send.boundingBox();
       expect((sendBox?.height ?? 0) >= 40).toBe(true);
       await draft.fill(`@Дм`);

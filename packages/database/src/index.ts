@@ -36,4 +36,9 @@ export {
   TEST_SUPER_ADMIN_EMAIL,
   TEST_SUPER_ADMIN_NAME,
 } from './test-super-admin';
-export { insertAuditLogRow, insertOutboxEventRow } from './rls-writes';
+export {
+  upsertUserCredentials,
+  upsertUserCredentialsViaDefiner,
+  createUserWithPassword,
+} from './user-credentials';
+export { insertAuditLogRow, insertOutboxEventRow, upsertSlaClockRow } from './rls-writes';

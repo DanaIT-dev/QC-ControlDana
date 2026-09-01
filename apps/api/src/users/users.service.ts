@@ -16,7 +16,7 @@ import {
   normalizeUserFullName,
   roleLabel,
 } from '@sgr-registry/domain';
-import type { Prisma } from '@sgr-registry/database';
+import { upsertUserCredentialsViaDefiner, type Prisma } from '@sgr-registry/database';
 import type { FastifyRequest } from 'fastify';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { generateTemporaryPassword } from '../auth/crypto';
@@ -106,12 +106,11 @@ export class UsersService {
             email,
             role: input.role,
             status: 'ACTIVE',
-            passwordHash,
             mustChangePassword: true,
-            passwordChangedAt: new Date(),
           },
           select: USER_SELECT,
         });
+        await upsertUserCredentialsViaDefiner(tx, { userId: created.id, passwordHash });
         await writeAuditLog(tx, {
           ...ctx,
           action: 'USER_CREATED',
@@ -306,9 +305,7 @@ export class UsersService {
       const updated = await tx.user.updateMany({
         where: { id: userId, version: input.expectedVersion },
         data: {
-          passwordHash,
           mustChangePassword: true,
-          passwordChangedAt: new Date(),
           sessionVersion: { increment: 1 },
           version: { increment: 1 },
         },
@@ -317,6 +314,7 @@ export class UsersService {
         throw new StaleWriteError();
       }
       const fresh = await tx.user.findUniqueOrThrow({ where: { id: userId }, select: USER_SELECT });
+      await upsertUserCredentialsViaDefiner(tx, { userId, passwordHash });
       await writeAuditLog(tx, {
         ...ctx,
         action: 'USER_PASSWORD_RESET',

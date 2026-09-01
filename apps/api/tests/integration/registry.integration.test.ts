@@ -8,6 +8,7 @@ import {
   createOwnerPrismaClient,
   disconnectPrismaClient,
   Prisma,
+  upsertUserCredentials,
   type PrismaClient,
 } from '@sgr-registry/database';
 import Redis from 'ioredis';
@@ -56,14 +57,15 @@ async function inject(opts: {
 
 async function createUser(role: UserRole) {
   const email = `registry.${role.toLowerCase()}.${Date.now()}.${Math.random().toString(16).slice(2)}@example.sgr.local`;
+  const passwordHash = await hashArgon2id(DEMO_PASSWORD, { memoryCost: 4096, timeCost: 1 });
   const user = await prisma.user.create({
     data: {
       fullName: `Реестр ${role}`,
       email,
       role,
-      passwordHash: await hashArgon2id(DEMO_PASSWORD, { memoryCost: 4096, timeCost: 1 }),
     },
   });
+  await upsertUserCredentials(prisma, { userId: user.id, passwordHash });
   createdUserIds.push(user.id);
   return user;
 }

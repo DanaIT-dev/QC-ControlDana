@@ -22,4 +22,4 @@
 
 B/C коммерческие поля не возвращаются RESPONSIBLE_ENGINEER ни в одном канале, включая прямой SQL под runtime-ролью.
 
-PostgreSQL RLS: отдельные роли migrator/API/auth/worker, `FORCE ROW LEVEL SECURITY`, HMAC transaction-local context. См. [RLS_OPERATIONS.md](../security/RLS_OPERATIONS.md).
+PostgreSQL RLS: отдельные роли migrator/API/auth/worker, `FORCE ROW LEVEL SECURITY`, HMAC transaction-local context. См. [RLS_OPERATIONS.md](../security/RLS_OPERATIONS.md). Хеши паролей — таблица `user_credentials` (GRANT только `sgr_auth`). Запись `sla_clocks` для `sgr_app` только через `sgr_upsert_sla_clock` в пределах видимости связанного дефекта. Redis production всегда с AUTH и без публикации порта.

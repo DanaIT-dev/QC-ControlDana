@@ -1,5 +1,5 @@
 import { createServer, type Server } from 'node:http';
-import { loadConfig } from '@sgr-registry/config';
+import { loadConfig, redisTlsOptions } from '@sgr-registry/config';
 import {
   getPrismaClient,
   prismaWithRlsTransaction,
@@ -42,6 +42,7 @@ export interface WorkerRuntime {
 function bullmqConnection(redisUrl: string): ConnectionOptions {
   return {
     url: redisUrl,
+    ...redisTlsOptions(redisUrl),
     maxRetriesPerRequest: null,
   };
 }
@@ -85,13 +86,16 @@ export async function startWorkerRuntime(
   options: StartWorkerRuntimeOptions = {},
 ): Promise<WorkerRuntime> {
   const config = loadConfig();
-  const connection = bullmqConnection(config.REDIS_URL);
+  const connection = bullmqConnection(config.WORKER_REDIS_URL);
   const rootPrisma = getPrismaClient(config.WORKER_DATABASE_URL);
   const prisma = prismaWithRlsTransaction(rootPrisma);
   const secret = config.RLS_CONTEXT_SECRET;
   const withWorker = <T>(fn: () => Promise<T>): Promise<T> =>
     withWorkerDbContext({ prisma: rootPrisma, secret, callback: fn });
-  const heartbeatRedis = new Redis(config.REDIS_URL, { maxRetriesPerRequest: 1 });
+  const heartbeatRedis = new Redis(config.WORKER_REDIS_URL, {
+    ...redisTlsOptions(config.WORKER_REDIS_URL),
+    maxRetriesPerRequest: 1,
+  });
   const notificationQueue = new Queue(resolveNotificationQueueName(), { connection });
   const attachmentQueue = new Queue(resolveAttachmentQueueName(), { connection });
   const maintenanceQueue = new Queue(resolveMaintenanceQueueName(), { connection });

@@ -14,7 +14,7 @@
 - `packages/contracts` — общие DTO и перечисления без зависимости от UI.
 - `packages/typescript-config`, `packages/eslint-config` — общее качество кода.
 
-Локальная инфраструктура в `infra/docker/compose.yaml`: PostgreSQL 18, Redis, MinIO, ClamAV, Mailpit.
+Локальная инфраструктура в `infra/docker/compose.yaml`: PostgreSQL 18, Redis 7 с ACL, MinIO, ClamAV, Mailpit. Production-шаблон Redis: `infra/docker/compose.production.yaml` (без publish портов).
 
 ## Границы модулей и зависимости
 
@@ -41,7 +41,8 @@ config → (нет внутренних пакетов)
 Docker Compose поднимает:
 
 - PostgreSQL 18 с named volume и отдельной test-базой `sgr_registry_test`;
-- Redis для сессий, ограничения перебора пароля, очередей и проверки готовности;
+- Redis для сессий, ограничения перебора пароля, очередей и проверки готовности (локально и в production — с ACL AUTH; production не публикует порт Redis);
+- PostgreSQL: `sgr_app` не читает `user_credentials.passwordHash`; login/смена пароля идут через `sgr_auth`;
 - MinIO как приватное S3-совместимое хранилище вложений;
 - ClamAV (`clamd` на localhost:3310) для антивирусной проверки перед статусом READY; образ закреплён по digest, index включает `linux/arm64`.
 - Mailpit (SMTP 127.0.0.1:1025, UI 127.0.0.1:8025) только для development/test; образ закреплён по digest, index включает `linux/arm64`. Production SMTP задаётся env.

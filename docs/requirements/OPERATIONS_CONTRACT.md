@@ -16,7 +16,7 @@
 - Публичной регистрации нет. Создаёт только ADMIN, и только роли `SGR_MANAGER`, `RESPONSIBLE_ENGINEER`, `CONTRACTOR_ENGINEER`.
 - `ADMIN` и `SUPER_ADMIN` нельзя передать в users DTO. Назначение и снятие `ADMIN` — только `SUPER_ADMIN` через `/api/super-admin/admins/:userId`.
 - Email нормализуется и уникален без учёта регистра.
-- Пароль хранится только как Argon2 hash. `sgr_app` / `sgr_worker` не читают `users.passwordHash`.
+- Пароль хранится только как Argon2 hash в `user_credentials`. `sgr_app` / `sgr_worker` не читают и не меняют хеш.
 - Временный пароль генерируется на сервере, показывается ADMIN один раз, в AuditLog не попадает.
 - `mustChangePassword = true` после создания и сброса. До смены пароля доступны только смена пароля, logout и необходимые auth endpoints.
 - Архивный пользователь не входит и не предлагается в новых назначениях. Физического удаления нет.

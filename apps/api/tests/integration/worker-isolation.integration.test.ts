@@ -9,6 +9,7 @@ import type { UserRole } from '@sgr-registry/contracts';
 import {
   createOwnerPrismaClient,
   disconnectPrismaClient,
+  upsertUserCredentials,
   type PrismaClient,
 } from '@sgr-registry/database';
 import {
@@ -75,9 +76,9 @@ async function createUser(role: UserRole) {
       email,
       role,
       status: 'ACTIVE',
-      passwordHash,
     },
   });
+  await upsertUserCredentials(prisma, { userId: user.id, passwordHash });
   createdUserIds.push(user.id);
   return user;
 }

@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { config as loadDotenv } from 'dotenv';
 import { z } from 'zod';
+import { REDIS_API_ACL_USER, REDIS_WORKER_ACL_USER, redisUrlIssues } from './redis';
 
 const BOOTSTRAP_DB_USERS = new Set(['sgr_registry', 'postgres']);
 
@@ -69,6 +70,14 @@ const envSchema = z
         (value) => value.startsWith('redis://') || value.startsWith('rediss://'),
         'REDIS_URL must be a Redis connection string',
       ),
+    WORKER_REDIS_URL: z
+      .string()
+      .min(1)
+      .refine(
+        (value) => value.startsWith('redis://') || value.startsWith('rediss://'),
+        'WORKER_REDIS_URL must be a Redis connection string',
+      )
+      .optional(),
     S3_ENDPOINT: z.url('S3_ENDPOINT must be a URL'),
     S3_REGION: z.string().min(1),
     S3_ACCESS_KEY: z.string().min(1, 'S3_ACCESS_KEY is required'),
@@ -184,6 +193,32 @@ const envSchema = z
         });
       }
     }
+    const production = value.NODE_ENV === 'production';
+    const redisApiIssues = redisUrlIssues(value.REDIS_URL, {
+      production,
+      expectedUsername: production ? REDIS_API_ACL_USER : undefined,
+      name: 'REDIS_URL',
+    });
+    for (const message of redisApiIssues) {
+      ctx.addIssue({ code: 'custom', path: ['REDIS_URL'], message });
+    }
+    if (production && !value.WORKER_REDIS_URL) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['WORKER_REDIS_URL'],
+        message: 'WORKER_REDIS_URL is required in production',
+      });
+    }
+    if (value.WORKER_REDIS_URL) {
+      const workerIssues = redisUrlIssues(value.WORKER_REDIS_URL, {
+        production,
+        expectedUsername: production ? REDIS_WORKER_ACL_USER : undefined,
+        name: 'WORKER_REDIS_URL',
+      });
+      for (const message of workerIssues) {
+        ctx.addIssue({ code: 'custom', path: ['WORKER_REDIS_URL'], message });
+      }
+    }
     if (value.NODE_ENV === 'production' && !value.PUBLIC_APP_URL.startsWith('https://')) {
       ctx.addIssue({
         code: 'custom',
@@ -216,7 +251,9 @@ const envSchema = z
     }
   });
 
-export type AppConfig = z.infer<typeof envSchema>;
+export type AppConfig = Omit<z.infer<typeof envSchema>, 'WORKER_REDIS_URL'> & {
+  WORKER_REDIS_URL: string;
+};
 
 export class MissingConfigurationError extends Error {
   readonly missingKeys: string[];
@@ -247,7 +284,11 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
       .join('; ');
     throw new MissingConfigurationError(keys, details);
   }
-  return result.data;
+  const parsed = result.data;
+  return {
+    ...parsed,
+    WORKER_REDIS_URL: parsed.WORKER_REDIS_URL ?? parsed.REDIS_URL,
+  };
 }
 
 export function getConfig(): AppConfig {

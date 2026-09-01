@@ -25,12 +25,24 @@ services:
   redis:
     image: redis:7-alpine
     container_name: sgr-registry-redis
+    command: ['/usr/local/bin/sgr-redis-acl-entrypoint.sh']
+    environment:
+      REDIS_API_PASSWORD_FILE: /run/secrets/redis_api_password
+      REDIS_WORKER_PASSWORD_FILE: /run/secrets/redis_worker_password
+    secrets:
+      - redis_api_password
+      - redis_worker_password
     ports:
       - '127.0.0.1:${REDIS_PORT:-6379}:6379'
     volumes:
+      - ./redis/acl-entrypoint.sh:/usr/local/bin/sgr-redis-acl-entrypoint.sh:ro
       - sgr_registry_redis:/data
     healthcheck:
-      test: ['CMD', 'redis-cli', 'ping']
+      test:
+        [
+          'CMD-SHELL',
+          'REDISCLI_AUTH="$$(cat /run/secrets/redis_api_password)" redis-cli --user sgr_api ping | grep -q PONG',
+        ]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -92,6 +104,12 @@ services:
       timeout: 5s
       retries: 10
     restart: unless-stopped
+
+secrets:
+  redis_api_password:
+    file: ./secrets/redis_api_password
+  redis_worker_password:
+    file: ./secrets/redis_worker_password
 
 volumes:
   sgr_registry_pgdata:

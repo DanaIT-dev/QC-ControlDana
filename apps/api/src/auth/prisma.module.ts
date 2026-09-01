@@ -14,8 +14,7 @@ import { RlsContextInterceptor } from './rls-context.interceptor';
     },
     {
       provide: AUTH_PRISMA_CLIENT,
-      useFactory: () =>
-        getPrismaClient(loadConfig().AUTH_DATABASE_URL, { omitUserPasswordHash: false }),
+      useFactory: () => getPrismaClient(loadConfig().AUTH_DATABASE_URL),
     },
     PrismaService,
     {

@@ -6,6 +6,7 @@ import { loadConfig } from '@sgr-registry/config';
 import {
   createOwnerPrismaClient,
   disconnectPrismaClient,
+  upsertUserCredentials,
   type PrismaClient,
 } from '@sgr-registry/database';
 import { CSRF_HEADER_NAME, SESSION_COOKIE_NAME } from '@sgr-registry/domain';
@@ -55,8 +56,9 @@ async function createUser(role: 'ADMIN' | 'RESPONSIBLE_ENGINEER') {
   const email = `sec.${role.toLowerCase()}.${Date.now()}.${Math.random().toString(16).slice(2)}@example.sgr.local`;
   const passwordHash = await hashArgon2id(DEMO_PASSWORD, { memoryCost: 4096, timeCost: 1 });
   const user = await prisma.user.create({
-    data: { fullName: `Sec ${role}`, email, role, status: 'ACTIVE', passwordHash },
+    data: { fullName: `Sec ${role}`, email, role, status: 'ACTIVE' },
   });
+  await upsertUserCredentials(prisma, { userId: user.id, passwordHash });
   createdUserIds.push(user.id);
   return user;
 }

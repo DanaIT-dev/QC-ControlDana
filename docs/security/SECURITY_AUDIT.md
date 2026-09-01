@@ -76,16 +76,19 @@ Open product issues that require a code fix before declaring the app unsafe: **C
 
 ### Remediated in this commit
 
-| Severity | CWE / OWASP                      | Component                        | Status |
-| -------- | -------------------------------- | -------------------------------- | ------ |
-| High     | CWE-863 / A01                    | Attachment RLS writes            | Fixed  |
-| High     | CWE-863 / A01                    | Contractor `defect_items` UPDATE | Fixed  |
-| Medium   | CWE-307 / A07                    | Login rate limit email∧IP only   | Fixed  |
-| Medium   | CWE-770 / A04                    | JSON bodyLimit on login          | Fixed  |
-| Medium   | CWE-1284 / A04                   | Login email unbounded            | Fixed  |
-| Medium   | CWE-352 / A01 (defense in depth) | Missing Origin allowed           | Fixed  |
-| Medium   | CWE-22 / A10                     | Next.js BFF `..` path confusion  | Fixed  |
-| Low      | CWE-693 / A05                    | Missing Permissions-Policy       | Fixed  |
+| Severity | CWE / OWASP                      | Component                                  | Status |
+| -------- | -------------------------------- | ------------------------------------------ | ------ |
+| High     | CWE-863 / A01                    | Attachment RLS writes                      | Fixed  |
+| High     | CWE-863 / A01                    | Contractor `defect_items` UPDATE           | Fixed  |
+| Medium   | CWE-307 / A07                    | Login rate limit email∧IP only             | Fixed  |
+| Medium   | CWE-770 / A04                    | JSON bodyLimit on login                    | Fixed  |
+| Medium   | CWE-1284 / A04                   | Login email unbounded                      | Fixed  |
+| Medium   | CWE-352 / A01 (defense in depth) | Missing Origin allowed                     | Fixed  |
+| Medium   | CWE-22 / A10                     | Next.js BFF `..` path confusion            | Fixed  |
+| Low      | CWE-693 / A05                    | Missing Permissions-Policy                 | Fixed  |
+| Medium   | CWE-306 / A07                    | Redis without AUTH                         | Fixed  |
+| High     | CWE-200 / A01                    | `users.passwordHash` readable by `sgr_app` | Fixed  |
+| Medium   | CWE-863 / A01                    | `sla_clocks` write wider than object scope | Fixed  |
 
 Attachment INSERT/UPDATE/DELETE for `sgr_app` now uses `sgr_attachment_visible` (same object/slot predicate as SELECT). Responsible cannot mutate proposal B/C rows via SQL. CONTRACTOR_ENGINEER UPDATE on `defect_items` is limited by trigger `sgr_guard_contractor_defect_update` to `thirdPartyDeadline` plus bookkeeping columns.
 
@@ -120,15 +123,15 @@ Semgrep script-tag warnings in `act-chat.integration.test.ts`: test payloads, no
 
 4. **Local compose OS CVEs** on postgres/minio/clamav/mailpit images. Loopback publish only; not production app images. Owner: platform.
 
-5. **Redis without AUTH on localhost.** Loopback-only publish. Production must use authenticated Redis.
+5. **Local Redis is published on loopback** so host-run API/worker can connect. Production compose does not publish Redis. Passwords are gitignored Docker secret files, not container `Env` / redis-server argv.
 
 6. **Cookie `SameSite=Lax`.** Required for email notification top-level GET. CSRF remains mandatory on mutations.
 
 7. **Web CSP `style-src 'unsafe-inline'`.** Required for Next.js / Tailwind / shadcn. Script policy is nonce-based without production `unsafe-eval`.
 
-8. **`users` SELECT at RLS** is any verified context; API serializers omit `passwordHash`. Column-level REVOKE would break the shared Prisma client used by auth. Residual: compromised `sgr_app` SQL can read hashes. Control: no `passwordHash` in HTTP, `sgr_auth` for login verify.
+8. **Developer workstation holds local Redis secret files** under gitignored `infra/docker/secrets/`. They must never be committed. Production uses orchestrator secrets.
 
-9. **`sla_clocks` writes for `sgr_app`.** API `syncSlaClocks` runs inside the user transaction (including contractor third-party deadline updates) and must update GENERAL clocks. HTTP still scopes reads. Residual: direct SQL write broader than SELECT.
+9. **BullMQ requires Redis `EVAL`/`EVALSHA`.** Runtime ACL includes `+@scripting` and `+config|get` for BullMQ Lua; `CONFIG SET`, `FLUSHALL`, `FLUSHDB`, `SHUTDOWN`, `DEBUG`, `MODULE` remain denied.
 
 10. **`TRUST_PROXY`.** Default false. If enabled without a proxy that overwrites `X-Forwarded-For`, login IP limits can be spoofed.
 

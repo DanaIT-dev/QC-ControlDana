@@ -4,13 +4,13 @@ RLS — второй уровень защиты. Guards, capabilities, DTO `.st
 
 ## Роли
 
-| Роль           | LOGIN        | Назначение                                                                           |
-| -------------- | ------------ | ------------------------------------------------------------------------------------ |
-| `sgr_owner`    | нет          | Владелец schema/tables/functions. `BYPASSRLS` только здесь. Не используется runtime. |
-| `sgr_app`      | нет (группа) | API. Член: `sgr_app_user` (`DATABASE_URL`).                                          |
-| `sgr_auth`     | нет (группа) | `users` + `INSERT`/`SELECT` login-audit (`USER`/`SESSION`). Член: `sgr_auth_user`.   |
-| `sgr_worker`   | нет (группа) | Outbox, scan, SLA, email; `SELECT` audit только своих SYSTEM-действий.               |
-| `sgr_migrator` | да           | Член `sgr_owner`. Только `MIGRATION_DATABASE_URL` и seed.                            |
+| Роль           | LOGIN        | Назначение                                                                                                         |
+| -------------- | ------------ | ------------------------------------------------------------------------------------------------------------------ |
+| `sgr_owner`    | нет          | Владелец schema/tables/functions. `BYPASSRLS` только здесь. Не используется runtime.                               |
+| `sgr_app`      | нет (группа) | API. Член: `sgr_app_user` (`DATABASE_URL`).                                                                        |
+| `sgr_auth`     | нет (группа) | `users` (без хеша) + `user_credentials` + `INSERT`/`SELECT` login-audit (`USER`/`SESSION`). Член: `sgr_auth_user`. |
+| `sgr_worker`   | нет (группа) | Outbox, scan, SLA, email; `SELECT` audit только своих SYSTEM-действий.                                             |
+| `sgr_migrator` | да           | Член `sgr_owner`. Только `MIGRATION_DATABASE_URL` и seed.                                                          |
 
 Runtime-роли: `NOSUPERUSER`, `NOBYPASSRLS`, `NOCREATEDB`, `NOCREATEROLE`. Не являются членами друг друга. Не могут `SET ROLE sgr_owner`.
 
@@ -39,6 +39,8 @@ API открывает interactive Prisma transaction, первой операц
 Секрет хранится в `sgr_rls_secrets` без GRANT runtime. Ошибки функции: `RLS context rejected` / `28000`, без текста секрета.
 
 Prisma `INSERT ... RETURNING` требует SELECT-политику на новую строку. Чтобы CONTRACTOR не читал `audit_logs`, а не-ADMIN не читал `outbox_events`, запись идёт через `sgr_insert_audit_log` / `sgr_insert_outbox_event` (`SECURITY DEFINER`, `session_user` ∈ runtime-ролей, без GRANT PUBLIC).
+
+Хеши паролей физически отделены: таблица `user_credentials` (владелец `sgr_owner`, GRANT только `sgr_auth`). `sgr_app` и `sgr_worker` не SELECT/INSERT/UPDATE хеш. Создание и сброс пароля в API идут через `sgr_upsert_user_credentials` (ADMIN + verified context, без возврата hash). Запись `sla_clocks` — `sgr_upsert_sla_clock`; прямой INSERT/UPDATE/DELETE у runtime отозван.
 
 ## Rotation `RLS_CONTEXT_SECRET`
 

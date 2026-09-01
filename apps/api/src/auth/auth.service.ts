@@ -104,10 +104,14 @@ export class AuthService {
       throw unavailableOrRethrow(error);
     }
 
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+      include: { credentials: { select: { passwordHash: true } } },
+    });
     const dummyHash = await this.getDummyHash();
+    const storedHash = user?.credentials?.passwordHash;
 
-    if (!user || !user.passwordHash || user.status === 'ARCHIVED') {
+    if (!user || !storedHash || user.status === 'ARCHIVED') {
       await this.hasher.verify(dummyHash, password);
       await this.recordFailedLogin({
         email,
@@ -119,7 +123,7 @@ export class AuthService {
       throw invalidCredentials();
     }
 
-    const passwordMatches = await this.hasher.verify(user.passwordHash, password);
+    const passwordMatches = await this.hasher.verify(storedHash, password);
     if (!passwordMatches) {
       await this.recordFailedLogin({
         email,
@@ -300,25 +304,43 @@ export class AuthService {
     if (!parsed.success) {
       throw new BadRequestException('Некорректные данные');
     }
-    const stored = await this.prisma.user.findUnique({ where: { id: user.id } });
-    if (!stored?.passwordHash) {
+    const stored = await this.prisma.user.findUnique({
+      where: { id: user.id },
+      include: { credentials: { select: { passwordHash: true } } },
+    });
+    if (!stored?.credentials?.passwordHash) {
       throw new UnauthorizedException('Требуется авторизация');
     }
-    const matches = await this.hasher.verify(stored.passwordHash, parsed.data.currentPassword);
+    const matches = await this.hasher.verify(
+      stored.credentials.passwordHash,
+      parsed.data.currentPassword,
+    );
     if (!matches) {
       throw new BadRequestException('Неверный текущий пароль');
     }
     assertPasswordPolicy(parsed.data.newPassword);
     const passwordHash = await this.hasher.hash(parsed.data.newPassword);
-    const updated = await this.prisma.user.update({
-      where: { id: user.id },
-      data: {
-        passwordHash,
-        mustChangePassword: false,
-        passwordChangedAt: new Date(),
-        sessionVersion: { increment: 1 },
-        version: { increment: 1 },
-      },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await tx.userCredential.upsert({
+        where: { userId: user.id },
+        create: {
+          userId: user.id,
+          passwordHash,
+          passwordChangedAt: new Date(),
+        },
+        update: {
+          passwordHash,
+          passwordChangedAt: new Date(),
+        },
+      });
+      return tx.user.update({
+        where: { id: user.id },
+        data: {
+          mustChangePassword: false,
+          sessionVersion: { increment: 1 },
+          version: { increment: 1 },
+        },
+      });
     });
     try {
       await this.sessions.deleteAllForUser(user.id);

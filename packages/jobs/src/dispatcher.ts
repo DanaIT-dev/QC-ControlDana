@@ -3,7 +3,7 @@ import { createConnection, isIP, type Socket } from 'node:net';
 import { connect as tlsConnect } from 'node:tls';
 import { Logger } from '@nestjs/common';
 import type { Job, Queue } from 'bullmq';
-import { loadConfig, type AppConfig } from '@sgr-registry/config';
+import { loadConfig, redisTlsOptions, type AppConfig } from '@sgr-registry/config';
 import type { PrismaClient } from '@sgr-registry/database';
 import { Prisma, insertOutboxEventRow } from '@sgr-registry/database';
 import {
@@ -133,7 +133,10 @@ export class NotificationDispatcher {
   async evaluateDaily(): Promise<void> {
     const businessDate = calendarDateInTimeZone(new Date());
     const lockKey = resolveSlaEvaluationLockKey(businessDate);
-    const lockRedis = new Redis(loadConfig().REDIS_URL, { maxRetriesPerRequest: 1 });
+    const lockRedis = new Redis(loadConfig().WORKER_REDIS_URL, {
+      ...redisTlsOptions(loadConfig().WORKER_REDIS_URL),
+      maxRetriesPerRequest: 1,
+    });
     try {
       const locked = await lockRedis.set(lockKey, String(process.pid), 'EX', 180, 'NX');
       if (locked !== 'OK') {
