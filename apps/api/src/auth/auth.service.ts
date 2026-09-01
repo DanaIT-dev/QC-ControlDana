@@ -34,7 +34,7 @@ import { AUTH_PRISMA_CLIENT } from './prisma.tokens';
 import type { PrismaClient } from '@sgr-registry/database';
 import { RedisUnavailableError } from './redis.constants';
 import { clientIp } from './request-meta';
-import { RedisSessionStore } from './redis-session.store';
+import { isLoginRateLimited, RedisSessionStore } from './redis-session.store';
 import type { StoredSession } from './session-store';
 import { toJsonValue } from '../common/audit-writer';
 
@@ -78,7 +78,14 @@ export class AuthService {
 
     try {
       const failures = await this.sessions.peekLoginFailures(email, ip);
-      if (failures >= config.AUTH_LOGIN_MAX_FAILURES) {
+      if (
+        isLoginRateLimited(
+          failures.emailCount,
+          failures.ipCount,
+          config.AUTH_LOGIN_MAX_FAILURES,
+          config.AUTH_LOGIN_IP_MAX_FAILURES,
+        )
+      ) {
         await this.writeAudit({
           actorUserId: null,
           action: 'LOGIN_RATE_LIMITED',
@@ -415,6 +422,7 @@ export class AuthService {
         input.email,
         input.ip,
         config.AUTH_LOGIN_MAX_FAILURES,
+        config.AUTH_LOGIN_IP_MAX_FAILURES,
         config.AUTH_LOGIN_WINDOW_SECONDS,
       );
     } catch (error) {

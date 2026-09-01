@@ -3,7 +3,7 @@
  * Authenticated DAST harness against local Web/API only.
  * Complements OWASP ZAP baseline: role matrix, XSS/SQLi probes, IDOR, CSRF, download.
  */
-import { writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const WEB = process.env.WEB_ORIGIN ?? 'http://localhost:3000';
@@ -74,6 +74,8 @@ const unauthRoutes = [
   '/api/system-status',
   '/api/attachments/11111111-1111-4111-8111-111111111111',
   '/api/attachments/11111111-1111-4111-8111-111111111111/content',
+  '/api/acts/11111111-1111-4111-8111-111111111111/chat',
+  '/api/acts/11111111-1111-4111-8111-111111111111/chat/mention-candidates',
 ];
 for (const path of unauthRoutes) {
   const response = await fetch(`${API}${path}`);
@@ -89,6 +91,11 @@ await record(
     /base-uri 'none'/.test(healthCsp) &&
     /form-action 'none'/.test(healthCsp),
   healthCsp,
+);
+await record(
+  'api-permissions-policy',
+  /camera=\(\)/.test(health.headers.get('permissions-policy') ?? ''),
+  health.headers.get('permissions-policy'),
 );
 await record(
   'api-nosniff',
@@ -111,6 +118,11 @@ await record(
   'web-frame-options',
   (loginPage.headers.get('x-frame-options') ?? '').toLowerCase() === 'deny',
   loginPage.headers.get('x-frame-options'),
+);
+await record(
+  'web-permissions-policy',
+  /camera=\(\)/.test(loginPage.headers.get('permissions-policy') ?? ''),
+  loginPage.headers.get('permissions-policy'),
 );
 
 const openRedirect = await fetch(`${WEB}/login?next=https://evil.example`, { redirect: 'manual' });
@@ -164,19 +176,33 @@ await record(
   `status ${methodConfusion.status}`,
 );
 
+const missingOrigin = await fetch(`${API}/api/auth/login`, {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ email: ACCOUNTS[0].email, password: PASSWORD }),
+});
+await record(
+  'login-missing-origin',
+  missingOrigin.status === 403,
+  `status ${missingOrigin.status}`,
+);
+
+const unknownField = await fetch(`${API}/api/auth/login`, {
+  method: 'POST',
+  headers: { 'content-type': 'application/json', origin: WEB.replace(/\/$/, '') },
+  body: JSON.stringify({ email: ACCOUNTS[0].email, password: PASSWORD, role: 'ADMIN' }),
+});
+await record('login-strict-dto', unknownField.status === 400, `status ${unknownField.status}`);
+
 const oversized = await fetch(`${API}/api/auth/login`, {
   method: 'POST',
   headers: { 'content-type': 'application/json', origin: WEB.replace(/\/$/, '') },
   body: JSON.stringify({
-    email: `${'a'.repeat(20_000)}@example.sgr.local`,
-    password: 'x'.repeat(20_000),
+    email: 'oversize@example.sgr.local',
+    password: 'x'.repeat(70_000),
   }),
 });
-await record(
-  'oversized-login',
-  [400, 401, 413].includes(oversized.status),
-  `status ${oversized.status}`,
-);
+await record('oversized-login', oversized.status === 413, `status ${oversized.status}`);
 
 let adminActId = null;
 
@@ -295,13 +321,49 @@ if (adminActId) {
       !/proposalsBC/.test(detailText),
     `status ${detail.status}`,
   );
+
+  const contractor = await login(
+    ACCOUNTS.find((item) => item.role === 'CONTRACTOR_ENGINEER').email,
+  );
+  const chat = await fetch(`${API}/api/acts/${adminActId}/chat`, {
+    headers: cookieHeader(contractor),
+  });
+  const chatText = await chat.text();
+  await record(
+    'contractor-chat-forbidden',
+    chat.status === 403 && !/"body"\s*:/.test(chatText),
+    `status ${chat.status}`,
+  );
+  const tamper = await fetch(`${API}/api/acts/${adminActId}/chat`, {
+    method: 'POST',
+    headers: {
+      ...cookieHeader(contractor),
+      'content-type': 'application/json',
+      'x-csrf-token': contractor.csrfToken,
+    },
+    body: JSON.stringify({
+      body: 'probe',
+      clientMessageId: '11111111-1111-4111-8111-111111111111',
+      authorId: '11111111-1111-4111-8111-111111111111',
+    }),
+  });
+  const tamperText = await tamper.text();
+  await record(
+    'contractor-chat-author-tamper',
+    [400, 403].includes(tamper.status) && !/"id"\s*:\s*"/.test(tamperText),
+    `status ${tamper.status}`,
+  );
 } else {
   await record('responsible-act-detail-idor-or-bc', true, 'no seeded act id in admin registry');
+  await record('contractor-chat-forbidden', true, 'no seeded act id');
+  await record('contractor-chat-author-tamper', true, 'no seeded act id');
 }
 
 const failed = findings.filter((item) => !item.ok);
+const reportDir = resolve(process.cwd(), 'test-results/security-audit');
+mkdirSync(reportDir, { recursive: true });
 writeFileSync(
-  resolve(process.cwd(), 'test-results/security/dast-authenticated.json'),
+  resolve(reportDir, 'dast-authenticated.json'),
   JSON.stringify({ web: WEB, api: API, findings, failed: failed.length }, null, 2),
 );
 if (failed.length > 0) {

@@ -29,6 +29,7 @@ test.describe('web security headers and role surfaces', () => {
     expect(csp).toMatch(/frame-ancestors 'none'/);
     expect(headers['x-frame-options']?.toLowerCase()).toBe('deny');
     expect(headers['x-content-type-options']).toBe('nosniff');
+    expect(headers['permissions-policy'] ?? '').toMatch(/camera=\(\)/);
     await expect(page.getByRole('heading', { name: 'Реестр дефектных актов' })).toBeVisible();
     expect(errors).toEqual([]);
   });

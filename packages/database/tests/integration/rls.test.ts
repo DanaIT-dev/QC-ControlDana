@@ -215,6 +215,7 @@ describe('PostgreSQL RLS', () => {
     const ids = (...values: string[]) => values.filter((value) => value.length > 0);
     const proposalIds = ids(proposalAId, proposalBId);
     if (proposalIds.length > 0) {
+      await owner.attachment.deleteMany({ where: { proposalId: { in: proposalIds } } });
       await owner.proposal.deleteMany({ where: { id: { in: proposalIds } } });
     }
     if (otherDefectId) {
@@ -567,6 +568,75 @@ describe('PostgreSQL RLS', () => {
       created.id,
     ]);
     expect(workerChat.error).toBeTruthy();
+  });
+
+  it('blocks contractor SQL updates of non-deadline fields and B/C attachment writes by responsible', async () => {
+    await expect(
+      withAuthenticatedDbContext({
+        prisma: appPrisma,
+        secret,
+        user: { id: contractorId, sessionVersion: 1 },
+        callback: (tx) =>
+          tx.defectItem.update({
+            where: { id: defectId },
+            data: { status: 'COMPLETED' },
+          }),
+      }),
+    ).rejects.toThrow();
+    const thirdParty = await withAuthenticatedDbContext({
+      prisma: appPrisma,
+      secret,
+      user: { id: contractorId, sessionVersion: 1 },
+      callback: (tx) =>
+        tx.defectItem.update({
+          where: { id: defectId },
+          data: { thirdPartyDeadline: new Date('2026-12-01T12:00:00.000Z') },
+        }),
+    });
+    expect(thirdParty.id).toBe(defectId);
+
+    const hidden = await owner.attachment.create({
+      data: {
+        proposalId: proposalBId,
+        originalFilename: 'bc.pdf',
+        safeDisplayName: 'bc.pdf',
+        objectKey: null,
+        bucket: 'sgr-rls-audit',
+        sizeBytes: 12,
+        declaredMimeType: 'application/pdf',
+        detectedMimeType: 'application/pdf',
+        sha256: `rls-bc-${randomUUID()}`,
+        category: 'PROPOSAL_DOCUMENT',
+        status: 'READY',
+        uploadedById: adminId,
+      },
+    });
+    try {
+      const updated = await withAuthenticatedDbContext({
+        prisma: appPrisma,
+        secret,
+        user: { id: responsibleId, sessionVersion: 1 },
+        callback: (tx) =>
+          tx.attachment.updateMany({
+            where: { id: hidden.id },
+            data: { archiveReason: 'tamper' },
+          }),
+      });
+      expect(updated.count).toBe(0);
+      const staffUpdated = await withAuthenticatedDbContext({
+        prisma: appPrisma,
+        secret,
+        user: { id: adminId, sessionVersion: 1 },
+        callback: (tx) =>
+          tx.attachment.updateMany({
+            where: { id: hidden.id },
+            data: { archiveReason: 'audit' },
+          }),
+      });
+      expect(staffUpdated.count).toBe(1);
+    } finally {
+      await owner.attachment.deleteMany({ where: { id: hidden.id } });
+    }
   });
 
   it('rolls back chat rows together with mentions and does not leak RLS context', async () => {

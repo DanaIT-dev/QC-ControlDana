@@ -4,7 +4,8 @@ import type Redis from 'ioredis';
 import {
   REDIS_CLIENT,
   RedisUnavailableError,
-  loginFailuresKey,
+  loginFailuresEmailKey,
+  loginFailuresIpKey,
   sessionKey,
   userSessionsKey,
 } from './redis.constants';
@@ -82,16 +83,21 @@ export class RedisSessionStore implements SessionStore {
     }
   }
 
-  async peekLoginFailures(email: string, ip: string): Promise<number> {
+  async peekLoginFailures(
+    email: string,
+    ip: string,
+  ): Promise<{ emailCount: number; ipCount: number }> {
     const config = loadConfig();
-    const key = loginFailuresKey(config.REDIS_KEY_PREFIX, email, ip);
+    const prefix = config.REDIS_KEY_PREFIX;
     try {
-      const raw = await this.redis.get(key);
-      if (!raw) {
-        return 0;
-      }
-      const count = Number.parseInt(raw, 10);
-      return Number.isFinite(count) ? count : 0;
+      const [emailRaw, ipRaw] = await this.redis.mget(
+        loginFailuresEmailKey(prefix, email),
+        loginFailuresIpKey(prefix, ip),
+      );
+      return {
+        emailCount: parseFailureCount(emailRaw),
+        ipCount: parseFailureCount(ipRaw),
+      };
     } catch {
       throw new RedisUnavailableError();
     }
@@ -100,35 +106,51 @@ export class RedisSessionStore implements SessionStore {
   async incrementLoginFailures(
     email: string,
     ip: string,
-    limit: number,
+    emailLimit: number,
+    ipLimit: number,
     windowSeconds: number,
   ): Promise<LoginRateLimitState> {
     const config = loadConfig();
-    const key = loginFailuresKey(config.REDIS_KEY_PREFIX, email, ip);
+    const prefix = config.REDIS_KEY_PREFIX;
+    const emailKey = loginFailuresEmailKey(prefix, email);
+    const ipKey = loginFailuresIpKey(prefix, ip);
     try {
-      const count = await this.redis.incr(key);
-      if (count === 1) {
-        await this.redis.expire(key, windowSeconds);
+      const emailCount = await this.redis.incr(emailKey);
+      if (emailCount === 1) {
+        await this.redis.expire(emailKey, windowSeconds);
       }
-      const ttl = await this.redis.ttl(key);
+      const ipCount = await this.redis.incr(ipKey);
+      if (ipCount === 1) {
+        await this.redis.expire(ipKey, windowSeconds);
+      }
+      const ttl = await this.redis.ttl(emailKey);
       return {
-        count,
+        count: emailCount,
         ttlSeconds: ttl > 0 ? ttl : windowSeconds,
-        limited: count > limit,
+        limited: isLoginRateLimited(emailCount, ipCount, emailLimit, ipLimit),
       };
     } catch {
       throw new RedisUnavailableError();
     }
   }
 
-  async resetLoginFailures(email: string, ip: string): Promise<void> {
+  async resetLoginFailures(email: string, _ip: string): Promise<void> {
     const config = loadConfig();
     try {
-      await this.redis.del(loginFailuresKey(config.REDIS_KEY_PREFIX, email, ip));
+      await this.redis.del(loginFailuresEmailKey(config.REDIS_KEY_PREFIX, email));
     } catch {
       throw new RedisUnavailableError();
     }
   }
+}
+
+export function isLoginRateLimited(
+  emailCount: number,
+  ipCount: number,
+  emailLimit: number,
+  ipLimit: number,
+): boolean {
+  return emailCount >= emailLimit || ipCount >= ipLimit;
 }
 
 export function nextLoginFailureState(
@@ -142,6 +164,14 @@ export function nextLoginFailureState(
     ttlSeconds: windowSeconds,
     limited: count > limit,
   };
+}
+
+function parseFailureCount(raw: string | null | undefined): number {
+  if (!raw) {
+    return 0;
+  }
+  const count = Number.parseInt(raw, 10);
+  return Number.isFinite(count) ? count : 0;
 }
 
 function userSessionIndexTtlSeconds(session: StoredSession, ttlSeconds: number): number {

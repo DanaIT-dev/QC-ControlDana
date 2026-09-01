@@ -4,6 +4,11 @@ import helmet from '@fastify/helmet';
 import multipart from '@fastify/multipart';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import type { AppConfig } from '@sgr-registry/config';
+import {
+  JSON_BODY_MAX_BYTES,
+  PERMISSIONS_POLICY,
+  isMultipartUploadRoute,
+} from './common/http-limits';
 
 export async function configureHttpApp(
   app: NestFastifyApplication,
@@ -39,11 +44,24 @@ export async function configureHttpApp(
   app.setGlobalPrefix('api');
 
   const fastify = app.getHttpAdapter().getInstance();
+  const uploadBodyLimit = config.ATTACHMENT_MAX_BYTES + 1024 * 1024;
+  fastify.addHook('onRoute', (routeOptions) => {
+    const url = routeOptions.url ?? '';
+    routeOptions.bodyLimit = isMultipartUploadRoute(url) ? uploadBodyLimit : JSON_BODY_MAX_BYTES;
+  });
   fastify.addHook('onRequest', async (request, reply) => {
     const header = request.headers['x-request-id'];
     const requestId =
       typeof header === 'string' && /^[A-Za-z0-9._-]{1,128}$/.test(header) ? header : randomUUID();
     Object.assign(request, { requestId });
     reply.header('x-request-id', requestId);
+    reply.header('Permissions-Policy', PERMISSIONS_POLICY);
+    const contentType = request.headers['content-type'] ?? '';
+    if (!contentType.includes('multipart/form-data')) {
+      const length = Number(request.headers['content-length'] ?? 0);
+      if (Number.isFinite(length) && length > JSON_BODY_MAX_BYTES) {
+        return reply.code(413).send({ statusCode: 413, message: 'Payload Too Large' });
+      }
+    }
   });
 }

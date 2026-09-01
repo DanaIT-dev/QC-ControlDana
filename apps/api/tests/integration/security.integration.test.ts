@@ -213,4 +213,54 @@ describe('API security harness', () => {
     expect(notifications.statusCode).toBe(200);
     expect(JSON.stringify(notifications.json())).not.toMatch(/proposalsBC|"slot":"B"/);
   });
+
+  it('rejects login without Origin/Referer, unknown fields, and oversize JSON bodies', async () => {
+    const instance = app.getHttpAdapter().getInstance();
+    const missingOrigin = await instance.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { email: 'missing-origin@example.sgr.local', password: DEMO_PASSWORD },
+      headers: { 'content-type': 'application/json' },
+    });
+    expect(missingOrigin.statusCode).toBe(403);
+
+    const refererOnly = await instance.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { email: 'referer-only@example.sgr.local', password: DEMO_PASSWORD },
+      headers: {
+        'content-type': 'application/json',
+        referer: `${loadConfig().WEB_ORIGIN}/login`,
+      },
+    });
+    expect([400, 401]).toContain(refererOnly.statusCode);
+
+    const unknownField = await inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: {
+        email: 'strict@example.sgr.local',
+        password: DEMO_PASSWORD,
+        role: 'ADMIN',
+      },
+    });
+    expect(unknownField.statusCode).toBe(400);
+
+    const oversizedBody = `{"email":"oversize@example.sgr.local","password":"${'x'.repeat(70_000)}"}`;
+    const oversized = await instance.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      headers: {
+        origin: loadConfig().WEB_ORIGIN,
+        'content-type': 'application/json',
+        'content-length': String(Buffer.byteLength(oversizedBody)),
+      },
+      payload: oversizedBody,
+    });
+    expect(oversized.statusCode).toBe(413);
+    expect(oversized.headers.location).toBeUndefined();
+
+    const health = await inject({ method: 'GET', url: '/api/health' });
+    expect(String(health.headers['permissions-policy'] ?? '')).toMatch(/camera=\(\)/);
+  });
 });

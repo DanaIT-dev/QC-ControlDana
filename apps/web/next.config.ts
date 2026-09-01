@@ -1,6 +1,7 @@
 import { resolve } from 'node:path';
 import { loadEnvConfig } from '@next/env';
 import type { NextConfig } from 'next';
+import { PERMISSIONS_POLICY, PRODUCTION_HSTS } from './lib/security-headers';
 
 loadEnvConfig(resolve(import.meta.dirname, '../..'));
 
@@ -8,16 +9,21 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   transpilePackages: ['@sgr-registry/contracts', '@sgr-registry/domain'],
   async headers() {
+    const securityHeaders = [
+      { key: 'X-Content-Type-Options', value: 'nosniff' },
+      { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+      { key: 'X-Frame-Options', value: 'DENY' },
+      { key: 'X-DNS-Prefetch-Control', value: 'off' },
+      { key: 'Content-Security-Policy', value: "frame-ancestors 'none'" },
+      { key: 'Permissions-Policy', value: PERMISSIONS_POLICY },
+    ];
+    if (process.env.NODE_ENV === 'production') {
+      securityHeaders.push({ key: 'Strict-Transport-Security', value: PRODUCTION_HSTS });
+    }
     return [
       {
         source: '/:path*',
-        headers: [
-          { key: 'X-Content-Type-Options', value: 'nosniff' },
-          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-          { key: 'X-Frame-Options', value: 'DENY' },
-          { key: 'X-DNS-Prefetch-Control', value: 'off' },
-          { key: 'Content-Security-Policy', value: "frame-ancestors 'none'" },
-        ],
+        headers: securityHeaders,
       },
     ];
   },

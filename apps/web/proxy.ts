@@ -1,16 +1,22 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { buildWebContentSecurityPolicy } from './lib/csp';
+import { PERMISSIONS_POLICY, PRODUCTION_HSTS } from './lib/security-headers';
 
 const SESSION_COOKIE_NAME = 'sgr_session';
 
 function applySecurityHeaders(response: NextResponse, nonce: string): NextResponse {
+  const isDevelopment = process.env.NODE_ENV !== 'production';
   const csp = buildWebContentSecurityPolicy({
     nonce,
-    isDevelopment: process.env.NODE_ENV !== 'production',
+    isDevelopment,
   });
   response.headers.set('Content-Security-Policy', csp);
   response.headers.set('X-Frame-Options', 'DENY');
+  response.headers.set('Permissions-Policy', PERMISSIONS_POLICY);
+  if (!isDevelopment) {
+    response.headers.set('Strict-Transport-Security', PRODUCTION_HSTS);
+  }
   return response;
 }
 

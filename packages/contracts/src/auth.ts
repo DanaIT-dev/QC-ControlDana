@@ -1,10 +1,12 @@
 import { z } from 'zod';
 import type { UserRole } from './enums';
 
-export const loginRequestSchema = z.object({
-  email: z.string().min(1),
-  password: z.string().min(1).max(128),
-});
+export const loginRequestSchema = z
+  .object({
+    email: z.string().min(1).max(254),
+    password: z.string().min(1).max(128),
+  })
+  .strict();
 
 export type LoginRequest = z.infer<typeof loginRequestSchema>;
 

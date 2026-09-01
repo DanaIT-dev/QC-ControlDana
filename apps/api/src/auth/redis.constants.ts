@@ -15,6 +15,10 @@ export function userSessionsKey(prefix: string, userId: string): string {
   return `${prefix}:user-sess:${userId}`;
 }
 
-export function loginFailuresKey(prefix: string, email: string, ip: string): string {
-  return `${prefix}:login-fail:${email}:${ip}`;
+export function loginFailuresEmailKey(prefix: string, email: string): string {
+  return `${prefix}:login-fail:email:${email}`;
+}
+
+export function loginFailuresIpKey(prefix: string, ip: string): string {
+  return `${prefix}:login-fail:ip:${ip}`;
 }

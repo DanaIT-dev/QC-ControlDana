@@ -50,15 +50,15 @@ pnpm db:seed
 node scripts/security/check-docker-exposure.mjs
 ```
 
-Инструментальный SAST/DAST (Semgrep, Gitleaks, pnpm audit, Trivy, OWASP ZAP) описан в [SECURITY_AUDIT_2026-08-28.md](../security/SECURITY_AUDIT_2026-08-28.md). Команды:
+Инструментальный SAST/DAST описан в [SECURITY_AUDIT.md](../security/SECURITY_AUDIT.md). Команды:
 
 ```bash
 bash scripts/security/run-sast.sh
-# при запущенных web/api/worker на localhost:
-bash scripts/security/run-dast.sh
+# изолированная disposable-БД, Redis /15, отдельный MinIO bucket, loopback-only:
+bash scripts/security/run-isolated-dast.sh
 ```
 
-Отчёты пишутся в gitignored `test-results/security/`. Не коммитить scanner cache и сырые отчёты.
+Отчёты пишутся в gitignored `test-results/security-audit/`. Не коммитить scanner cache и сырые отчёты.
 
 Остановка:
 

@@ -18,7 +18,7 @@ const repoRoot = resolve(__dirname, '../../..');
 const envFile = existsSync(resolve(repoRoot, '.env'))
   ? resolve(repoRoot, '.env')
   : resolve(repoRoot, '.env.example');
-loadDotenv({ path: envFile, override: true });
+loadDotenv({ path: envFile, override: process.env.SGR_KEEP_PROCESS_ENV !== '1' });
 
 const DEFECT_TYPES = [
   { code: 'SEWER', name: 'Дефекты канализации', sortOrder: 1 },

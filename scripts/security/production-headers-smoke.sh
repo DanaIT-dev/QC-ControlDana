@@ -31,4 +31,6 @@ if echo "$csp_headers" | grep -qi "unsafe-eval"; then
   exit 1
 fi
 
+echo "$api_headers" | grep -qi "permissions-policy:"
+echo "$web_headers" | grep -qi "permissions-policy:"
 echo "production security headers OK"

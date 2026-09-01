@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 # shellcheck disable=SC1091
 source "$ROOT/scripts/security/scanners.env"
-OUT="$ROOT/test-results/security"
+OUT="$ROOT/test-results/security-audit"
 mkdir -p "$OUT"
 
 WEB_ORIGIN="${WEB_ORIGIN:-http://127.0.0.1:3000}"
@@ -39,29 +39,39 @@ mkdir -p "$SITEMAP_DIR"
 SITEMAP="$SITEMAP_DIR/zap-unauth-sitemap.html"
 python3 - "$SITEMAP" <<'PY'
 from pathlib import Path
+from urllib.parse import urlparse
+import os
 import sys
+
 out = Path(sys.argv[1])
+web = urlparse(os.environ.get("WEB_ORIGIN", "http://127.0.0.1:3000"))
+api = urlparse(os.environ.get("API_ORIGIN", "http://127.0.0.1:3001"))
+web_port = web.port or (443 if web.scheme == "https" else 80)
+api_port = api.port or (443 if api.scheme == "https" else 80)
+web_base = f"http://host.docker.internal:{web_port}"
+api_base = f"http://host.docker.internal:{api_port}"
 links = [
-    "http://host.docker.internal:3000/",
-    "http://host.docker.internal:3000/login",
-    "http://host.docker.internal:3000/registry",
-    "http://host.docker.internal:3000/notifications",
-    "http://host.docker.internal:3000/deadlines",
-    "http://host.docker.internal:3000/system-status",
-    "http://host.docker.internal:3000/acts/new",
-    "http://host.docker.internal:3000/login?next=https://evil.example",
-    "http://host.docker.internal:3001/api/health",
-    "http://host.docker.internal:3001/api/ready",
-    "http://host.docker.internal:3001/api/auth/login",
-    "http://host.docker.internal:3001/api/registry/defects",
-    "http://host.docker.internal:3001/api/notifications",
-    "http://host.docker.internal:3001/api/sla/items",
-    "http://host.docker.internal:3001/api/system-status",
-    "http://host.docker.internal:3001/api/attachments/11111111-1111-4111-8111-111111111111",
-    "http://host.docker.internal:3001/api/attachments/11111111-1111-4111-8111-111111111111/content",
-    "http://host.docker.internal:3001/api/attachments/..%2f..%2fetc%2fpasswd",
-    "http://host.docker.internal:3001/api/registry/defects?search=%3Cscript%3Ealert(1)%3C/script%3E",
-    "http://host.docker.internal:3001/api/registry/defects?search=%27%20OR%201%3D1%20--",
+    f"{web_base}/",
+    f"{web_base}/login",
+    f"{web_base}/registry",
+    f"{web_base}/notifications",
+    f"{web_base}/deadlines",
+    f"{web_base}/system-status",
+    f"{web_base}/acts/new",
+    f"{web_base}/login?next=https://evil.example",
+    f"{api_base}/api/health",
+    f"{api_base}/api/ready",
+    f"{api_base}/api/auth/login",
+    f"{api_base}/api/registry/defects",
+    f"{api_base}/api/notifications",
+    f"{api_base}/api/sla/items",
+    f"{api_base}/api/system-status",
+    f"{api_base}/api/attachments/11111111-1111-4111-8111-111111111111",
+    f"{api_base}/api/acts/11111111-1111-4111-8111-111111111111/chat",
+    f"{api_base}/api/acts/11111111-1111-4111-8111-111111111111/chat/mention-candidates",
+    f"{api_base}/api/attachments/..%2f..%2fetc%2fpasswd",
+    f"{api_base}/api/registry/defects?search=%3Cscript%3Ealert(1)%3C/script%3E",
+    f"{api_base}/api/registry/defects?search=%27%20OR%201%3D1%20--",
 ]
 items = "\n".join(f'      <li><a href="{url}">{url}</a></li>' for url in links)
 out.write_text(

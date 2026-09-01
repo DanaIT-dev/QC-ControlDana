@@ -7,7 +7,7 @@
 - CSRF на mutation-запросах, `mustChangePassword` блокирует остальной API
 - cookie сессии: idle 12 часов, absolute 7 дней, SameSite=Lax, Secure в production
 - Helmet CSP на JSON API (`default-src 'none'`); Next.js CSP с `frame-ancestors 'none'` и без `unsafe-eval` в production
-- инструментальный аудит 2026-08-28: [SECURITY_AUDIT_2026-08-28.md](../security/SECURITY_AUDIT_2026-08-28.md)
+- инструментальный аудит 2026-09-01: [SECURITY_AUDIT.md](../security/SECURITY_AUDIT.md); предыдущий прогон 2026-08-28: [SECURITY_AUDIT_2026-08-28.md](../security/SECURITY_AUDIT_2026-08-28.md)
 - capability проверяется на сервере
 - вне scope запись уведомления неотличима от отсутствия (404)
 - HTML писем экранируется, subject без CRLF

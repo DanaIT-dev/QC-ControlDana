@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 # shellcheck disable=SC1091
 source "$ROOT/scripts/security/scanners.env"
-OUT="$ROOT/test-results/security"
+OUT="$ROOT/test-results/security-audit"
 TRIVY_CACHE="${TRIVY_CACHE:-$HOME/.cache/trivy}"
 mkdir -p "$OUT" "$TRIVY_CACHE"
 
@@ -23,7 +23,7 @@ docker run --rm --platform linux/arm64 \
     --config p/security-audit \
     --metrics off \
     --json \
-    --output /src/test-results/security/semgrep.json \
+    --output /src/test-results/security-audit/semgrep.json \
     /src || true
 
 echo "==> Gitleaks working tree (redacted)"
@@ -34,7 +34,7 @@ docker run --rm --platform linux/arm64 \
   detect --no-git --source /repo --redact --no-banner \
     --config /repo/.gitleaks.toml \
     --report-format json \
-    --report-path /repo/test-results/security/gitleaks-workdir.json
+    --report-path /repo/test-results/security-audit/gitleaks-workdir.json
 echo "==> Gitleaks full git history (redacted)"
 docker run --rm --platform linux/arm64 \
   -v "$ROOT:/repo" \
@@ -42,7 +42,7 @@ docker run --rm --platform linux/arm64 \
   detect --source /repo --log-opts="--all" --redact --no-banner \
     --config /repo/.gitleaks.toml \
     --report-format json \
-    --report-path /repo/test-results/security/gitleaks-history.json
+    --report-path /repo/test-results/security-audit/gitleaks-history.json
 set -e
 
 echo "==> pnpm audit (production)"

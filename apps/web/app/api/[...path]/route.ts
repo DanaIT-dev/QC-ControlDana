@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { buildUpstreamApiUrl } from '../../../lib/api-proxy-url';
 
 const HOP_BY_HOP = new Set([
   'connection',
@@ -24,10 +25,12 @@ async function proxy(
   context: { params: Promise<{ path: string[] }> },
 ): Promise<NextResponse> {
   const { path } = await context.params;
-  const upstreamUrl = new URL(`${apiBaseUrl()}/api/${path.join('/')}`);
-  request.nextUrl.searchParams.forEach((value, key) => {
-    upstreamUrl.searchParams.set(key, value);
-  });
+  let upstreamUrl: URL;
+  try {
+    upstreamUrl = buildUpstreamApiUrl(apiBaseUrl(), path, request.nextUrl.searchParams);
+  } catch {
+    return NextResponse.json({ message: 'Некорректный запрос' }, { status: 400 });
+  }
 
   const headers = new Headers();
   request.headers.forEach((value, key) => {

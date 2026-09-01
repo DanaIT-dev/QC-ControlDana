@@ -67,7 +67,7 @@
 
 ## Ограничение перебора
 
-Ключ: нормализованный email + IP. Не более 5 неуспешных попыток за 15 минут (`AUTH_LOGIN_MAX_FAILURES`, `AUTH_LOGIN_WINDOW_SECONDS`). Успешный вход сбрасывает счётчик. После лимита — 429 с общим сообщением. `X-Forwarded-For` учитывается только при `TRUST_PROXY=true`.
+Ключ: отдельные счётчики по нормализованному email и по IP (`AUTH_LOGIN_MAX_FAILURES`, `AUTH_LOGIN_IP_MAX_FAILURES`, `AUTH_LOGIN_WINDOW_SECONDS`). Успешный вход сбрасывает счётчик аккаунта. После любого из лимитов — 429 с общим сообщением. Мутации браузера требуют `Origin === WEB_ORIGIN` либо `Referer` с тем же origin. `X-Forwarded-For` учитывается только при `TRUST_PROXY=true` за доверенным прокси, который перезаписывает заголовок.
 
 ## Роли и capabilities
 

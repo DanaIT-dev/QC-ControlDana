@@ -98,6 +98,7 @@ const envSchema = z
       .positive()
       .default(7 * 24 * 60 * 60),
     AUTH_LOGIN_MAX_FAILURES: z.coerce.number().int().positive().default(5),
+    AUTH_LOGIN_IP_MAX_FAILURES: z.coerce.number().int().positive().default(25),
     AUTH_LOGIN_WINDOW_SECONDS: z.coerce
       .number()
       .int()

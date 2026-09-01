@@ -14,8 +14,23 @@ export function clientIp(request: FastifyRequest, trustProxy: boolean): string {
 }
 
 export function isAllowedOrigin(origin: string | undefined, webOrigin: string): boolean {
-  if (!origin) {
-    return true;
+  return Boolean(origin) && origin === webOrigin;
+}
+
+export function isAllowedBrowserSource(
+  origin: string | undefined,
+  referer: string | undefined,
+  webOrigin: string,
+): boolean {
+  if (origin) {
+    return origin === webOrigin;
   }
-  return origin === webOrigin;
+  if (!referer) {
+    return false;
+  }
+  try {
+    return new URL(referer).origin === webOrigin;
+  } catch {
+    return false;
+  }
 }

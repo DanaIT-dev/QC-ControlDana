@@ -180,7 +180,7 @@ describe('AuthService login secrets and dummy verify', () => {
       get: vi.fn(),
       delete: vi.fn(),
       deleteAllForUser: vi.fn(),
-      peekLoginFailures: vi.fn().mockResolvedValue(0),
+      peekLoginFailures: vi.fn().mockResolvedValue({ emailCount: 0, ipCount: 0 }),
       incrementLoginFailures: vi
         .fn()
         .mockResolvedValue({ count: 1, ttlSeconds: 30, limited: false }),
