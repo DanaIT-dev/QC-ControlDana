@@ -264,7 +264,7 @@ async function main(): Promise<void> {
     );
     const targets = databases.rows
       .map((row) => row.datname)
-      .filter((name) => name === 'sgr_registry' || name.endsWith('_test'));
+      .filter((name) => name === 'sgr_registry' || name.endsWith('_test') || name.endsWith('_e2e'));
 
     for (const datname of targets) {
       const dbUrl = new URL(adminUrl);

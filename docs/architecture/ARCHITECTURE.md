@@ -40,7 +40,8 @@ config → (нет внутренних пакетов)
 
 Docker Compose поднимает:
 
-- PostgreSQL 18 с named volume и отдельной test-базой `sgr_registry_test`;
+- PostgreSQL 18 с named volume, development-базой `sgr_registry`, integration-базой `sgr_registry_test` и Playwright-базой `sgr_registry_e2e`;
+
 - Redis для сессий, ограничения перебора пароля, очередей и проверки готовности (локально и в production — с ACL AUTH; production не публикует порт Redis);
 - PostgreSQL: `sgr_app` не читает `user_credentials.passwordHash`; login/смена пароля идут через `sgr_auth`;
 - MinIO как приватное S3-совместимое хранилище вложений;
@@ -49,7 +50,7 @@ Docker Compose поднимает:
 
 Порты инфраструктуры публикуются только на loopback (`127.0.0.1:HOST:CONTAINER`). Приложения внутри Docker ходят по service names, процессы на host — через localhost. Mailpit UI/SMTP и ClamAV также только на localhost.
 
-Тестовый bucket `sgr-attachments-test` и база `*_test` отделены от development. Integration-тесты отказываются работать с bucket без суффикса `-test`.
+Тестовый bucket `sgr-attachments-test` и база `*_test` отделены от development. Integration-тесты отказываются работать с bucket без суффикса `-test`. Playwright использует `sgr-attachments-e2e` и `sgr_registry_e2e`.
 
 ## Уведомления и контроль сроков
 
@@ -65,7 +66,7 @@ Docker Compose поднимает:
 
 Список, count, summary, filter-options и карточка акта используют прикладной `RegistryAccessScope` (Guards, capabilities, Prisma `where`) и второй уровень — PostgreSQL RLS (`FORCE ROW LEVEL SECURITY`, verified HMAC-контекст, отдельные runtime-роли). Коммерческие поля B/C скрываются и serializer’ом, и row policy / slot predicate: RESPONSIBLE_ENGINEER не читает B/C даже прямым SQL под `sgr_app`. Пагинация выполняется в PostgreSQL (`skip`/`take`). Для сортировки по `effectiveDeadline` используется generated stored column `COALESCE(claimDeadline, plannedDeadline)`.
 
-Роли БД, provisioning и rotation секрета: [RLS_OPERATIONS.md](../security/RLS_OPERATIONS.md), матрица: [RLS_POLICY_MATRIX.md](../security/RLS_POLICY_MATRIX.md). `SUPER_ADMIN` не входит в `sgr_is_staff()` / `sgr_is_admin()`: бизнес-таблицы пусты, назначение ADMIN только через `sgr_grant_admin` / `sgr_revoke_admin`, учётка создаётся командой `pnpm super-admin:provision`.
+Роли БД, provisioning и rotation секрета: [RLS_OPERATIONS.md](../security/RLS_OPERATIONS.md), матрица: [RLS_POLICY_MATRIX.md](../security/RLS_POLICY_MATRIX.md). `SUPER_ADMIN` не входит в `sgr_is_staff()` / `sgr_is_admin()`: бизнес-таблицы пусты, назначение ADMIN только через `sgr_grant_admin` / `sgr_revoke_admin`, учётка создаётся командой `pnpm super-admin:provision` (одна транзакция, TTY-пароль).
 
 Интерактивная Prisma-транзакция запроса держит одно PostgreSQL-соединение. Параллельный `Promise.all` и вложенные `include` сериализуются на этом client (не глобальным mutex): иначе `pg@9` отвергнет второй `client.query()`. Разные HTTP-запросы по-прежнему параллельны на разных соединениях пула. RLS-контекст transaction-local; после commit/rollback client не покидает транзакцию и не переносится в ALS.
 

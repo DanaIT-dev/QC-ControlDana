@@ -18,6 +18,7 @@ const EXTRA_MIGRATIONS = [
   '20260901150000_user_credentials',
   '20260901150100_sla_clock_write_scope',
   '20260901150200_user_credentials_definer',
+  '20260901160000_active_super_admin_catalog',
 ];
 const migrationsDir = resolve(repoRoot, 'packages/database/prisma/migrations');
 const stashDir = resolve(repoRoot, 'tmp/hidden-isolation-migrations');

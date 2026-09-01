@@ -8,6 +8,7 @@ description = "Documented local-only demo placeholders, never production credent
 paths = [
   '''(.*)/node_modules/.*''',
   '''(.*)/\.next/.*''',
+  '''(.*)/\.next-e2e/.*''',
   '''(.*)/dist/.*''',
   '''(.*)/test-results/.*''',
   '''(.*)/\.env\.example$''',

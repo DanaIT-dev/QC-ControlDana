@@ -61,5 +61,12 @@ describe('infrastructure compose published ports', () => {
     expect(yaml).not.toMatch(/local-development-only/);
     expect(yaml).not.toMatch(/requirepass/);
     expect(yaml).toMatch(/acl-entrypoint\.sh/);
+    const acl = readFileSync(
+      resolve(import.meta.dirname, '../../../../infra/docker/redis/acl-entrypoint.sh'),
+      'utf8',
+    );
+    expect(acl).toMatch(/~sgr-e2e:\*/);
+    expect(acl).toMatch(/~sgr-test:\*/);
+    expect(acl).toMatch(/-FLUSHALL/);
   });
 });

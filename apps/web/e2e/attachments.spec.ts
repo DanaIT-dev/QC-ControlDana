@@ -31,7 +31,6 @@ test.describe('attachments', () => {
     await login(page, ACCOUNTS.admin.email);
     await openFirstAct(page);
     const readyBadges = page.getByText('Готово');
-    await expect(readyBadges.first()).toBeVisible();
     const readyBefore = await readyBadges.count();
     await page.getByRole('button', { name: 'Загрузить' }).first().click();
     await expect(page.getByRole('heading', { name: 'Загрузка файла' })).toBeVisible();

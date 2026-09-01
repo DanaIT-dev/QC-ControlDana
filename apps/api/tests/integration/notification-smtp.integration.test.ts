@@ -98,7 +98,7 @@ async function startFakeSmtp(options: {
 }
 
 async function waitForSmtpGreeting(host: string, port: number): Promise<void> {
-  const deadline = Date.now() + 20_000;
+  const deadline = Date.now() + 40_000;
   let lastError: unknown = new Error('Mailpit SMTP is not ready');
   while (Date.now() < deadline) {
     try {
@@ -106,8 +106,8 @@ async function waitForSmtpGreeting(host: string, port: number): Promise<void> {
         const socket = createConnection({ host, port, family: 4 });
         const timer = setTimeout(() => {
           socket.destroy();
-          reject(new Error('smtp greeting timeout'));
-        }, 2_000);
+          reject(new Error(`smtp greeting timeout on ${host}:${port}`));
+        }, 8_000);
         socket.once('data', (chunk) => {
           clearTimeout(timer);
           const text = chunk.toString('utf8');
@@ -443,16 +443,24 @@ describe('notification worker SMTP lifecycle', () => {
   }, 60_000);
 
   it('sets worker RLS context on each short claim/finalize transaction', async () => {
-    const { delivery } = await createDeliveryFixture();
-    const secret = loadConfig().RLS_CONTEXT_SECRET;
-    const workerDispatcher = new NotificationDispatcher(
-      prismaWithRlsTransaction(workerPrisma),
-      queue,
-      (fn) => withWorkerDbContext({ prisma: workerPrisma, secret, callback: fn }),
-    );
-    await workerDispatcher.deliver(delivery.id);
-    const row = await prisma.emailDelivery.findUniqueOrThrow({ where: { id: delivery.id } });
-    expect(row.status).toBe('SENT');
+    const smtp = await startFakeSmtp({});
+    process.env.SMTP_HOST = smtp.host;
+    process.env.SMTP_PORT = String(smtp.port);
+    process.env.SMTP_TIMEOUT_MS = '8000';
+    try {
+      const { delivery } = await createDeliveryFixture();
+      const secret = loadConfig().RLS_CONTEXT_SECRET;
+      const workerDispatcher = new NotificationDispatcher(
+        prismaWithRlsTransaction(workerPrisma),
+        queue,
+        (fn) => withWorkerDbContext({ prisma: workerPrisma, secret, callback: fn }),
+      );
+      await workerDispatcher.deliver(delivery.id);
+      const row = await prisma.emailDelivery.findUniqueOrThrow({ where: { id: delivery.id } });
+      expect(row.status).toBe('SENT');
+    } finally {
+      await smtp.close();
+    }
   });
 
   it('processes a backlog of 100 queued deliveries and recovers after restart', async () => {

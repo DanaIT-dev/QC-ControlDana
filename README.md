@@ -40,27 +40,27 @@ pnpm dev
 
 ## Корневые команды
 
-| Команда                        | Назначение                                                             |
-| ------------------------------ | ---------------------------------------------------------------------- |
-| `pnpm dev`                     | Web, API и worker                                                      |
-| `pnpm build`                   | Production-сборка пакетов и приложений                                 |
-| `pnpm lint`                    | ESLint                                                                 |
-| `pnpm typecheck`               | TypeScript                                                             |
-| `pnpm test`                    | Unit-тесты                                                             |
-| `pnpm test:integration`        | Integration-тесты только против `*_test` базы                          |
-| `pnpm test:e2e`                | Playwright (Chromium): вход, реестр, операции, вложения, визуальный QA |
-| `pnpm test:attachments:stream` | Streaming/RSS против test bucket MinIO                                 |
-| `pnpm test:sla:performance`    | 100k DefectItem, cursor evaluator, без массовой email-отправки         |
-| `pnpm format:check`            | Проверка Prettier                                                      |
-| `pnpm db:generate`             | Prisma Client                                                          |
-| `pnpm db:migrate`              | `prisma migrate deploy`                                                |
-| `pnpm db:seed`                 | Демонстрационные данные                                                |
+| Команда                        | Назначение                                                     |
+| ------------------------------ | -------------------------------------------------------------- |
+| `pnpm dev`                     | Web, API и worker                                              |
+| `pnpm build`                   | Production-сборка пакетов и приложений                         |
+| `pnpm lint`                    | ESLint                                                         |
+| `pnpm typecheck`               | TypeScript                                                     |
+| `pnpm test`                    | Unit-тесты                                                     |
+| `pnpm test:integration`        | Integration-тесты только против `*_test` базы                  |
+| `pnpm test:e2e`                | Playwright: только `sgr_registry_e2e`, не development          |
+| `pnpm test:attachments:stream` | Streaming/RSS против test bucket MinIO                         |
+| `pnpm test:sla:performance`    | 100k DefectItem, cursor evaluator, без массовой email-отправки |
+| `pnpm format:check`            | Проверка Prettier                                              |
+| `pnpm db:generate`             | Prisma Client                                                  |
+| `pnpm db:migrate`              | `prisma migrate deploy`                                        |
+| `pnpm db:seed`                 | Демонстрационные данные                                        |
 
 ## Переменные окружения
 
 Скопируйте `.env.example` в `.env`. Приложение проверяет обязательные значения при старте API и worker и сообщает о недостающих ключах, не печатая секреты.
 
-`pnpm test:integration` использует `TEST_DATABASE_URL`. Имя базы должно заканчиваться на `_test`. Development и production URL отвергаются явным сообщением, тесты не пропускаются молча.
+`pnpm test:integration` использует `TEST_DATABASE_URL`. Имя базы должно заканчиваться на `_test`. Development и production URL отвергаются явным сообщением, тесты не пропускаются молча. Playwright изолирован в `sgr_registry_e2e`.
 
 ## Документация
 

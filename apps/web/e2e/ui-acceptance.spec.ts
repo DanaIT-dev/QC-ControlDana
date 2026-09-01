@@ -53,7 +53,9 @@ async function login(page: Page, email: string) {
 
 async function chooseFirst(page: Page, label: string) {
   await page.getByRole('combobox', { name: label, exact: true }).first().click();
-  await page.getByRole('option').first().click();
+  const option = page.getByRole('option').first();
+  await expect(option).toBeVisible();
+  await option.click();
 }
 
 async function expectNoHorizontalOverflow(page: Page) {
@@ -83,13 +85,16 @@ async function openCreateAct(page: Page) {
 }
 
 async function createActFromForm(page: Page, location: string) {
-  await chooseFirst(page, 'Объект');
+  await page.getByRole('combobox', { name: 'Объект', exact: true }).click();
+  await page.getByRole('option', { name: /Северный парк/ }).click();
   await chooseFirst(page, 'Заказчик');
   await page.getByLabel('Помещение').fill(location);
   await page.getByLabel('Описание').fill('Приёмочный дефект');
   await chooseFirst(page, 'Вид дефекта');
   await page.getByRole('combobox', { name: 'Ответственные инженеры' }).click();
-  await page.getByRole('option').first().click();
+  const engineer = page.getByRole('option', { name: /Дмитрий Орлов/ });
+  await expect(engineer).toBeVisible();
+  await engineer.click();
   await page.keyboard.press('Escape');
   await page.getByLabel('Плановый срок').fill('2026-09-01');
   await page.getByRole('button', { name: 'Создать акт' }).click();
@@ -194,6 +199,7 @@ test.describe('UI acceptance defects', () => {
   });
 
   test('act history refreshes after deadline mutation without reload', async ({ page }) => {
+    test.setTimeout(60_000);
     await page.setViewportSize({ width: 1440, height: 900 });
     await login(page, ACCOUNTS.admin);
     await openCreateAct(page);

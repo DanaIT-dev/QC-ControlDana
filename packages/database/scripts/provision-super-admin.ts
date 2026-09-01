@@ -3,7 +3,6 @@ import { resolve } from 'node:path';
 import { stdin, stdout } from 'node:process';
 import { createInterface } from 'node:readline';
 import { config as loadDotenv } from 'dotenv';
-import argon2 from 'argon2';
 import { loadConfig } from '@sgr-registry/config';
 import {
   assertPasswordPolicy,
@@ -13,8 +12,9 @@ import {
 import {
   createOwnerPrismaClient,
   databaseNameOf,
-  insertAuditLogRow,
-  upsertUserCredentials,
+  listActiveSuperAdmins,
+  provisionSuperAdmin,
+  revokeUserRedisSessions,
 } from '../src/index';
 
 const repoRoot = resolve(__dirname, '../../..');
@@ -36,8 +36,8 @@ function hasFlag(name: string): boolean {
 async function prompt(question: string): Promise<string> {
   const rl = createInterface({ input: stdin, output: stdout });
   try {
-    return await new Promise((resolve) => {
-      rl.question(question, (answer) => resolve(answer));
+    return await new Promise((resolvePrompt) => {
+      rl.question(question, (answer) => resolvePrompt(answer));
     });
   } finally {
     rl.close();
@@ -53,13 +53,13 @@ async function promptHidden(question: string): Promise<string> {
   const previousRaw = stdin.isRaw;
   stdin.setRawMode(true);
   stdin.resume();
-  return new Promise((resolve, reject) => {
+  return new Promise((resolveHidden, reject) => {
     const onData = (buffer: Buffer) => {
       const char = buffer.toString('utf8');
       if (char === '\n' || char === '\r') {
         cleanup();
         stdout.write('\n');
-        resolve(chunks.join(''));
+        resolveHidden(chunks.join(''));
         return;
       }
       if (char === '\u0003') {
@@ -108,66 +108,51 @@ async function main(): Promise<void> {
 
   const owner = createOwnerPrismaClient(config.MIGRATION_DATABASE_URL);
   try {
-    const active = await owner.user.findMany({
-      where: { role: 'SUPER_ADMIN', status: 'ACTIVE' },
-    });
-    const sameEmail = active.find((row) => row.email === email);
-    if (active.length > 0 && !sameEmail && !replace) {
-      throw new Error(
-        'An active SUPER_ADMIN already exists. Re-run with --replace after confirmation.',
-      );
+    const active = await listActiveSuperAdmins(owner);
+    if (active.length > 1) {
+      throw new Error('Unexpected number of active SUPER_ADMIN rows; refusing to continue.');
     }
-    if (active.length > 0 && !sameEmail && replace) {
-      await owner.user.updateMany({
-        where: { role: 'SUPER_ADMIN', status: 'ACTIVE' },
-        data: { status: 'ARCHIVED', archivedAt: new Date(), sessionVersion: { increment: 1 } },
-      });
+    const current = active[0];
+    let replaceConfirmEmail: string | undefined;
+    if (current && current.email !== email) {
+      if (!replace) {
+        throw new Error(
+          'An active SUPER_ADMIN already exists. Re-run with --replace after confirmation.',
+        );
+      }
+      if (!stdin.isTTY) {
+        throw new Error('Replacement confirmation must be entered from an interactive terminal');
+      }
+      stdout.write(`Active SUPER_ADMIN to archive: ${current.email}\n`);
+      const typed = (await prompt('Type that email to confirm replacement: ')).trim().toLowerCase();
+      if (typed !== current.email) {
+        throw new Error('Replacement confirmation does not match the active SUPER_ADMIN email.');
+      }
+      replaceConfirmEmail = current.email;
     }
 
-    const passwordHash = await argon2.hash(password, { type: argon2.argon2id });
-    const now = new Date();
-    const upserted = sameEmail
-      ? await owner.user.update({
-          where: { id: sameEmail.id },
-          data: {
-            fullName,
-            mustChangePassword: false,
-            sessionVersion: { increment: 1 },
-            version: { increment: 1 },
-          },
-        })
-      : await owner.user.create({
-          data: {
-            fullName,
-            email,
-            role: 'SUPER_ADMIN',
-            status: 'ACTIVE',
-            mustChangePassword: false,
-          },
+    const result = await provisionSuperAdmin({
+      owner,
+      email,
+      fullName,
+      password,
+      replace,
+      replaceConfirmEmail,
+    });
+    if (result.replacedUserId) {
+      try {
+        await revokeUserRedisSessions({
+          redisUrl: config.REDIS_URL,
+          prefix: config.REDIS_KEY_PREFIX,
+          userId: result.replacedUserId,
         });
-    await upsertUserCredentials(owner, {
-      userId: upserted.id,
-      passwordHash,
-      passwordChangedAt: now,
-    });
-
-    await insertAuditLogRow(owner, {
-      actorUserId: null,
-      actorName: 'system',
-      action: 'SUPER_ADMIN_PROVISIONED',
-      entityType: 'USER',
-      entityId: upserted.id,
-      parentEntityType: null,
-      parentEntityId: null,
-      oldValue: null,
-      newValue: { email: upserted.email, role: 'SUPER_ADMIN' },
-      reason: sameEmail ? 'password-rotated' : replace ? 'replaced' : 'created',
-      source: 'SYSTEM',
-      occurredAt: now,
-      ipAddress: null,
-      requestId: null,
-    });
-    stdout.write(`SUPER_ADMIN ready for ${upserted.email}\n`);
+      } catch {
+        stdout.write(
+          'SUPER_ADMIN replaced; Redis session revoke incomplete. sessionVersion bump still applies.\n',
+        );
+      }
+    }
+    stdout.write(`SUPER_ADMIN ready for ${result.email}\n`);
   } finally {
     await owner.$disconnect();
   }

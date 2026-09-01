@@ -13,7 +13,12 @@ import {
   assertPasswordPolicy,
 } from '@sgr-registry/domain';
 import argon2 from 'argon2';
-import { allocateActNumber, createOwnerPrismaClient, upsertUserCredentials } from '../src/index';
+import {
+  allocateActNumber,
+  assertE2eDatabaseTarget,
+  createOwnerPrismaClient,
+  upsertUserCredentials,
+} from '../src/index';
 
 const repoRoot = resolve(__dirname, '../../..');
 const envFile = existsSync(resolve(repoRoot, '.env'))
@@ -94,6 +99,10 @@ const DEMO_USERS = [
 ] as const;
 
 async function seed(): Promise<void> {
+  if (process.env.SGR_REQUIRE_E2E_TARGET === '1') {
+    assertE2eDatabaseTarget(process.env);
+  }
+
   const databaseUrl = process.env.MIGRATION_DATABASE_URL ?? process.env.DATABASE_URL;
   if (!databaseUrl) {
     throw new Error('MIGRATION_DATABASE_URL is required to seed the database');

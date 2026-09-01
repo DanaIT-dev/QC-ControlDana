@@ -2,7 +2,11 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { config as loadDotenv } from 'dotenv';
 import { loadConfig } from '@sgr-registry/config';
-import { createOwnerPrismaClient, ensureTestSuperAdmin } from '../src/index';
+import {
+  assertE2eDatabaseTarget,
+  createOwnerPrismaClient,
+  ensureTestSuperAdmin,
+} from '../src/index';
 
 const repoRoot = resolve(__dirname, '../../..');
 const envFile = existsSync(resolve(repoRoot, '.env'))
@@ -11,6 +15,7 @@ const envFile = existsSync(resolve(repoRoot, '.env'))
 loadDotenv({ path: envFile, override: false });
 
 async function main(): Promise<void> {
+  assertE2eDatabaseTarget(process.env);
   const password = process.env.SEED_DEMO_PASSWORD;
   if (!password) {
     throw new Error('SEED_DEMO_PASSWORD is required to create the synthetic test SUPER_ADMIN');
@@ -18,7 +23,7 @@ async function main(): Promise<void> {
   const config = loadConfig();
   const owner = createOwnerPrismaClient(config.MIGRATION_DATABASE_URL);
   try {
-    const user = await ensureTestSuperAdmin({ owner, password });
+    const user = await ensureTestSuperAdmin({ owner, password, env: process.env });
     process.stdout.write(`${user.email}\n`);
   } finally {
     await owner.$disconnect();

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { e2eApiOrigin } from './e2e-origins';
 
 const DEMO_PASSWORD = 'Dana-SGR-Demo-2026!';
 
@@ -74,7 +75,7 @@ test.describe('role-aware registry', () => {
     const cookies = await page.context().cookies();
     const cookieHeader = cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join('; ');
     const foreign = await request.get(
-      `http://localhost:3001/api/acts/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb02`,
+      `${e2eApiOrigin()}/api/acts/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb02`,
       { headers: { cookie: cookieHeader } },
     );
     expect(foreign.status()).toBe(404);

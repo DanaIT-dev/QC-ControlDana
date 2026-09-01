@@ -37,6 +37,7 @@ pnpm infra:up
 pnpm db:roles:provision
 pnpm db:migrate
 # также примените миграции к test-базе (тот же migrator URL с именем *_test)
+# Playwright сам создаёт и удаляет sgr_registry_e2e; development не reset-ьте
 pnpm db:seed
 # SUPER_ADMIN не входит в seed. Локальное создание:
 # SGR_SUPER_ADMIN_PROVISION_CONFIRM=<имя БД> pnpm super-admin:provision
@@ -88,7 +89,7 @@ Worker: outbox claim и email finalize — короткие RLS-транзакц
 Главная страница web: http://localhost:3000  
 Экран входа: http://localhost:3000/login
 
-Демо-учётки и локальный пароль описаны в [AUTHENTICATION.md](../requirements/AUTHENTICATION.md). `SEED_DEMO_PASSWORD` задаётся только в `.env` и не коммитится. `SUPER_ADMIN` создаётся только `pnpm super-admin:provision`: пароль вводится masked TTY, не аргументом CLI и не через `.env`. Для базы без суффикса `_test` и для `NODE_ENV=production` нужно `SGR_SUPER_ADMIN_PROVISION_CONFIRM` равное имени целевой БД. По умолчанию активен один SUPER_ADMIN.
+Демо-учётки и локальный пароль описаны в [AUTHENTICATION.md](../requirements/AUTHENTICATION.md). `SEED_DEMO_PASSWORD` задаётся только в `.env` и не коммитится. `SUPER_ADMIN` создаётся только `pnpm super-admin:provision`: пароль вводится masked TTY (8–128 символов), не аргументом CLI, не через `.env` и не из файла. Для базы без суффикса `_test` и для `NODE_ENV=production` нужно `SGR_SUPER_ADMIN_PROVISION_CONFIRM` равное имени целевой БД. Проверка существующего SUPER_ADMIN идёт через `sgr_active_super_admins()` (owner/migrator), чтобы RLS не дал ложный «записи нет». Создание, credentials, Argon2id-хеш, `sessionVersion` и `SUPER_ADMIN_PROVISIONED` выполняются в одной транзакции с advisory lock. `--replace` атомарно архивирует только подтверждённый email (повторный ввод email в TTY); при ошибке откатывается всё, включая прежнюю активную запись. Redis-сессии заменённой учётки отзываются только после commit. По умолчанию активен один SUPER_ADMIN.
 
 ## Тесты
 
@@ -103,7 +104,11 @@ pnpm test:sla:performance
 
 `pnpm test:registry:performance` создаёт ≥ 100 000 строк только в `sgr_registry_test`, снимает `EXPLAIN ANALYZE` типового list-запроса и удаляет performance-данные. Development-база не используется.
 
-Integration-тесты требуют `TEST_DATABASE_URL` с именем базы, оканчивающимся на `_test`. Если URL отсутствует или указывает на development/production базу, команда завершается с ошибкой и не пропускает тесты.
+Development-база `sgr_registry` не является тестовой. Integration-тесты требуют `TEST_DATABASE_URL` с именем `*_test` (`sgr_registry_test`). Playwright/`pnpm test:e2e` работает только с `sgr_registry_e2e` (Redis logical DB 14, prefix `sgr-e2e`, MinIO `sgr-attachments-e2e`, порты 3200/3201/3202). Параллельный запуск integration и Playwright не пересекается по БД, Redis namespace и bucket. Fixture-скрипты завершаются ошибкой до записи, если цель не `sgr_registry_e2e`. После прогона синтетические данные удаляются только из E2E-среды; development не очищается.
+
+Если URL отсутствует или указывает на development/production базу, integration-команда завершается с ошибкой и не пропускает тесты.
+
+Playwright: [e2e README](../../apps/web/e2e/README.md). `reuseExistingServer` выключен: suite не подключается к `pnpm dev`.
 
 ## Качество
 

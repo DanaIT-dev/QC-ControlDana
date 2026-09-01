@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { e2eApiOrigin } from './e2e-origins';
 
 const DEMO_PASSWORD = 'Dana-SGR-Demo-2026!';
 const ACCOUNTS = {
@@ -93,7 +94,7 @@ test.describe('history access by role', () => {
 
     const cookies = await page.context().cookies();
     const cookieHeader = cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join('; ');
-    const history = await request.get(`http://localhost:3001/api/acts/${actId}/history`, {
+    const history = await request.get(`${e2eApiOrigin()}/api/acts/${actId}/history`, {
       headers: { cookie: cookieHeader },
     });
     expect(history.status()).toBe(403);

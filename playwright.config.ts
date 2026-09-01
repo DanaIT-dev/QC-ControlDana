@@ -1,4 +1,12 @@
 import { defineConfig, devices } from '@playwright/test';
+import { assertE2eDatabaseTarget } from './packages/database/src/e2e-target';
+
+assertE2eDatabaseTarget(process.env);
+
+const webOrigin = process.env.WEB_ORIGIN ?? 'http://127.0.0.1:3200';
+const apiOrigin = process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:3201';
+const workerHealth = `http://127.0.0.1:${process.env.WORKER_HEALTH_PORT ?? '3202'}/health`;
+const pathPrefix = 'export PATH="$HOME/.local/bin:$PATH" && ';
 
 export default defineConfig({
   testDir: './apps/web/e2e',
@@ -6,27 +14,31 @@ export default defineConfig({
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
   workers: 1,
+  timeout: 60_000,
+  expect: { timeout: 15_000 },
   use: {
-    baseURL: process.env.WEB_ORIGIN ?? 'http://localhost:3000',
+    baseURL: webOrigin,
     trace: 'on-first-retry',
+    actionTimeout: 15_000,
+    navigationTimeout: 30_000,
   },
   webServer: [
     {
-      command: 'export PATH="$HOME/.local/bin:$PATH" && pnpm --filter @sgr-registry/api dev',
-      url: 'http://localhost:3001/api/health',
-      reuseExistingServer: true,
+      command: `${pathPrefix}pnpm --filter @sgr-registry/api dev`,
+      url: `${apiOrigin}/api/health`,
+      reuseExistingServer: false,
       timeout: 120_000,
     },
     {
-      command: 'export PATH="$HOME/.local/bin:$PATH" && pnpm --filter @sgr-registry/worker dev',
-      url: 'http://127.0.0.1:3002/health',
-      reuseExistingServer: true,
+      command: `${pathPrefix}pnpm --filter @sgr-registry/worker dev`,
+      url: workerHealth,
+      reuseExistingServer: false,
       timeout: 120_000,
     },
     {
-      command: 'export PATH="$HOME/.local/bin:$PATH" && pnpm --filter @sgr-registry/web dev',
-      url: 'http://localhost:3000/login',
-      reuseExistingServer: true,
+      command: `${pathPrefix}pnpm --filter @sgr-registry/web exec -- next dev --port ${process.env.WEB_PORT ?? '3200'} -H 127.0.0.1`,
+      url: `${webOrigin}/login`,
+      reuseExistingServer: false,
       timeout: 120_000,
     },
   ],

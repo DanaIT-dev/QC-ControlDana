@@ -64,6 +64,8 @@ SELECT * FROM pg_policies WHERE schemaname = 'public';
 
 Пустой SELECT без контекста — ожидаемый deny-by-default, не «сломалась база». Не запускать `SET ROLE sgr_owner` и не отключать RLS с runtime-ролей.
 
+Диагностика активных SUPER_ADMIN: `SELECT email, status FROM public.sgr_active_super_admins()` от migrator/owner (SECURITY DEFINER, без `passwordHash`). Прямой `SELECT` от `sgr_migrator` без `SET ROLE sgr_owner` пуст из‑за FORCE RLS и не должен использоваться как «записи нет». Runtime `sgr_app` / `sgr_worker` / `sgr_auth` не имеют EXECUTE на эту функцию.
+
 ## Troubleshooting
 
 `Calling client.query() when the client is already executing a query` (pg@9): на одном transaction-bound соединении ушли параллельные queries (типично Prisma `include` to-many или `Promise.all` до сериализации client). Не фильтровать warning в логах и не понижать `pg`. Проверить, что runtime идёт через `createPrismaClient` / `getPrismaClient`.

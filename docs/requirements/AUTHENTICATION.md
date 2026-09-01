@@ -16,7 +16,7 @@
 | `elena.krylova@example.sgr.local`   | `RESPONSIBLE_ENGINEER` | Ответственный инженер            |
 | `igor.panteleev@example.sgr.local`  | `CONTRACTOR_ENGINEER`  | Инженер по работе с подрядчиками |
 
-`SUPER_ADMIN` в seed не создаётся. В test/e2e допускается синтетическая fixture `super.admin@example.sgr.local` через `ensureTestSuperAdmin`, без записи пароля в Git.
+`SUPER_ADMIN` в seed не создаётся. Синтетическая fixture `super.admin@example.sgr.local` создаётся только в Playwright-базе `sgr_registry_e2e` через `ensureTestSuperAdmin` после `assertE2eDatabaseTarget()`. Development (`sgr_registry`) и integration (`sgr_registry_test`) этим скриптом не трогаются; пароль fixture не записывается в Git.
 
 Повторный seed не создаёт пользователей заново и не меняет `user_credentials.passwordHash`, если текущий хеш по-прежнему соответствует `SEED_DEMO_PASSWORD`.
 
@@ -24,7 +24,7 @@
 
 ## SUPER_ADMIN
 
-Роль изолирована: не wildcard, не иерархия «выше ADMIN». Единственная бизнес-capability — `MANAGE_ADMIN_GRANTS` (назначить или снять обычный `ADMIN`). Создание учётки — только локальная команда `pnpm super-admin:provision` (masked TTY-пароль, для non-test цели требуется `SGR_SUPER_ADMIN_PROVISION_CONFIRM=<имя БД>`). Публичный API, панель пользователей и seed production не создают `SUPER_ADMIN`.
+Роль изолирована: не wildcard, не иерархия «выше ADMIN». Единственная бизнес-capability — `MANAGE_ADMIN_GRANTS` (назначить или снять обычный `ADMIN`). Создание учётки — только локальная команда `pnpm super-admin:provision` (masked TTY-пароль, 8–128 символов, для non-test цели требуется `SGR_SUPER_ADMIN_PROVISION_CONFIRM=<имя БД>`). `--replace` атомарно архивирует только подтверждённый в TTY email прежнего SUPER_ADMIN; пароль проверяется до первой записи в БД. Наличие активной записи диагностируется через `sgr_active_super_admins()` (SECURITY DEFINER, без `passwordHash`), чтобы RLS migrator/runtime не скрыл строку. Публичный API, панель пользователей и seed production не создают `SUPER_ADMIN`.
 
 ## Пароль
 
@@ -53,7 +53,7 @@
 
 В Redis хранится SHA-256 идентификатора, не исходное значение cookie.
 
-Ключи (префикс по умолчанию `sgr`, в тестах `sgr-test`):
+Ключи (префикс по умолчанию `sgr`, в integration `sgr-test`, в Playwright `sgr-e2e`):
 
 - `sgr:sess:{sha256}` — данные сессии: `userId`, `sessionVersion`, `csrfToken`, `createdAt`, `lastActivityAt`, `absoluteExpiresAt`;
 - `sgr:user-sess:{userId}` — индекс сессий пользователя для logout-all и блокировки;
@@ -103,7 +103,7 @@ pnpm test:integration
 pnpm test:e2e
 ```
 
-Integration-тесты используют `TEST_DATABASE_URL` (имя `*_test`) и раздельные `DATABASE_URL` / `AUTH_DATABASE_URL` / `WORKER_DATABASE_URL` / `MIGRATION_DATABASE_URL`, перенаправленные на test-базу. Playwright поднимает Chromium и проверяет вход, роли, logout и вёрстку 390 px.
+Integration-тесты используют `TEST_DATABASE_URL` (имя `*_test`) и раздельные `DATABASE_URL` / `AUTH_DATABASE_URL` / `WORKER_DATABASE_URL` / `MIGRATION_DATABASE_URL`, перенаправленные на test-базу. Playwright использует отдельную базу `sgr_registry_e2e`, Redis DB 14 / `sgr-e2e`, bucket `sgr-attachments-e2e` и не подключается к процессам `pnpm dev`.
 
 API ходит в PostgreSQL как `sgr_app_user`, login/session/password — как `sgr_auth_user`. Секрет RLS (`RLS_CONTEXT_SECRET`) не доступен AUTH и не читается из таблицы runtime-ролями. См. [RLS_OPERATIONS.md](../security/RLS_OPERATIONS.md).
 

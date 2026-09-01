@@ -5,8 +5,9 @@ export function buildWebContentSecurityPolicy(input: {
   const scriptSrc = input.isDevelopment
     ? `'self' 'nonce-${input.nonce}' 'strict-dynamic' 'unsafe-eval'`
     : `'self' 'nonce-${input.nonce}' 'strict-dynamic'`;
+  const webPort = process.env.WEB_PORT || '3000';
   const connectSrc = input.isDevelopment
-    ? `'self' ws://127.0.0.1:3000 ws://localhost:3000 wss://127.0.0.1:3000 wss://localhost:3000`
+    ? `'self' ws://127.0.0.1:${webPort} ws://localhost:${webPort} wss://127.0.0.1:${webPort} wss://localhost:${webPort}`
     : `'self'`;
   return [
     "default-src 'self'",

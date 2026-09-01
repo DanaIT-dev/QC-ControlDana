@@ -19,6 +19,8 @@ describe('web content security policy', () => {
     const policy = buildWebContentSecurityPolicy({ nonce: 'devnonce', isDevelopment: true });
     expect(policy).toContain('unsafe-eval');
     expect(policy).toContain('ws://localhost:3000');
+    const isolated = buildWebContentSecurityPolicy({ nonce: 'devnonce', isDevelopment: true });
+    expect(isolated).toContain(`ws://localhost:${process.env.WEB_PORT || '3000'}`);
     expect(isProductionScriptCsp(policy)).toBe(false);
   });
 });

@@ -301,6 +301,9 @@ importers:
 
   packages/database:
     dependencies:
+      '@aws-sdk/client-s3':
+        specifier: ^3.1119.0
+        version: 3.1119.0
       '@prisma/adapter-pg':
         specifier: 7.10.0
         version: 7.10.0
@@ -313,6 +316,9 @@ importers:
       argon2:
         specifier: ^0.44.0
         version: 0.44.0
+      ioredis:
+        specifier: ^5.8.2
+        version: 5.11.1
       pg:
         specifier: ^8.16.3
         version: 8.23.0

@@ -39,6 +39,7 @@ async function decoratePoolClient(client: PoolClient, assumeOwner: boolean): Pro
 
 function createClient(databaseUrl: string, assumeOwner: boolean): PrismaClient {
   const pool = new Pool({ connectionString: postgresUrlWithoutSchema(databaseUrl) });
+  pool.on('error', () => undefined);
   wrapPoolConnect(pool, (client) => decoratePoolClient(client, assumeOwner));
   const adapter = new PrismaPg(pool);
   return new PrismaClient({ adapter });

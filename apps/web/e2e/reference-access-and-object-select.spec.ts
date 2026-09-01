@@ -1,4 +1,5 @@
 import { expect, test, type ConsoleMessage, type Page } from '@playwright/test';
+import { e2eApiOrigin, e2eWebOrigin } from './e2e-origins';
 
 const DEMO_PASSWORD = 'Dana-SGR-Demo-2026!';
 const ACCOUNTS = {
@@ -75,14 +76,14 @@ test.describe('reference access and linked object selection', () => {
       page.getByText('ОАО «Северная инвестиционная группа» (демо)').first(),
     ).toBeVisible();
 
-    const me = await page.request.get('http://localhost:3001/api/auth/me');
+    const me = await page.request.get(`${e2eApiOrigin()}/api/auth/me`);
     expect(me.ok()).toBe(true);
     const csrfToken = ((await me.json()) as { csrfToken: string }).csrfToken;
     const mutation = await page.request.post(
-      'http://localhost:3001/api/reference-data/property-objects',
+      `${e2eApiOrigin()}/api/reference-data/property-objects`,
       {
         headers: {
-          origin: 'http://localhost:3000',
+          origin: e2eWebOrigin(),
           'x-csrf-token': csrfToken,
         },
         data: { name: 'Попытка записи', address: 'Нет' },
@@ -199,7 +200,14 @@ test.describe('reference access and linked object selection', () => {
     await page.getByRole('combobox', { name: 'Ответственные инженеры' }).click();
     await page.getByRole('option', { name: /Дмитрий Орлов/ }).click();
     await page.keyboard.press('Escape');
+    const created = page.waitForResponse(
+      (response) =>
+        response.url().includes('/api/reference-data/property-objects') &&
+        response.request().method() === 'POST',
+    );
     await page.getByRole('dialog').getByRole('button', { name: 'Создать' }).click();
+    expect((await created).ok()).toBe(true);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
     await page.getByLabel('Поиск справочника').fill(String(stamp));
     await expect(page.getByRole('cell', { name: `Е2Е объект инженеры ${stamp}` })).toBeVisible();
     await expect(page.getByText('Дмитрий Орлов').first()).toBeVisible();
@@ -232,10 +240,10 @@ test.describe('reference access and linked object selection', () => {
     await expect(page.getByRole('tab', { name: 'История изменений' })).toBeVisible();
     await expect(page.getByText(/Предложение B|proposalsBC|"slot":"B"/)).toHaveCount(0);
 
-    const me = await page.request.get('http://localhost:3001/api/auth/me');
+    const me = await page.request.get(`${e2eApiOrigin()}/api/auth/me`);
     expect(me.ok()).toBe(true);
     const csrfToken = ((await me.json()) as { csrfToken: string }).csrfToken;
-    const lookupsResponse = await page.request.get('http://localhost:3001/api/operations/lookups');
+    const lookupsResponse = await page.request.get(`${e2eApiOrigin()}/api/operations/lookups`);
     expect(lookupsResponse.ok()).toBe(true);
     const lookups = (await lookupsResponse.json()) as {
       customers: Array<{ id: string }>;
@@ -245,9 +253,9 @@ test.describe('reference access and linked object selection', () => {
     };
     expect(lookups.propertyObjects.some((item) => /Северный парк/.test(item.name))).toBe(true);
     expect(lookups.propertyObjects.some((item) => /Речной квартал/.test(item.name))).toBe(false);
-    const spoofed = await page.request.post('http://localhost:3001/api/acts', {
+    const spoofed = await page.request.post(`${e2eApiOrigin()}/api/acts`, {
       headers: {
-        origin: 'http://localhost:3000',
+        origin: e2eWebOrigin(),
         'x-csrf-token': csrfToken,
         'idempotency-key': `e2e-foreign-${Date.now()}`,
         'content-type': 'application/json',

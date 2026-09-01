@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { e2eApiOrigin } from './e2e-origins';
 
 const DEMO_PASSWORD = 'Dana-SGR-Demo-2026!';
 const ACCOUNTS = {
@@ -150,7 +151,7 @@ test.describe('act discussion chat', () => {
     await expect(page.locator('#act-discussion')).toHaveCount(0);
     const cookies = await page.context().cookies();
     const cookieHeader = cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join('; ');
-    const chat = await request.get(`http://localhost:3001/api/acts/${actId}/chat`, {
+    const chat = await request.get(`${e2eApiOrigin()}/api/acts/${actId}/chat`, {
       headers: { cookie: cookieHeader },
     });
     expect(chat.status()).toBe(403);

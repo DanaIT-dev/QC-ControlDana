@@ -48,7 +48,7 @@ Verified context: HMAC-SHA256 (`RLS_CONTEXT_SECRET`), `SECURITY DEFINER` `sgr_se
 
 ### SUPER_ADMIN
 
-Не входит в `sgr_is_staff()` и `sgr_is_admin()`. `sgr_is_business_user()` ложен. SELECT бизнес-таблиц пуст, мутации актов/дефектов/предложений/вложений/чата/уведомлений/справочников запрещены. Каталог сотрудников для назначения ADMIN — только SECURITY DEFINER `sgr_super_admin_directory` / `sgr_grant_admin` / `sgr_revoke_admin`. AuditLog на чтение недоступен. Назначение ADMIN блокирует строку и не снимает последнего активного ADMIN.
+Не входит в `sgr_is_staff()` и `sgr_is_admin()`. `sgr_is_business_user()` ложен. SELECT бизнес-таблиц пуст, мутации актов/дефектов/предложений/вложений/чата/уведомлений/справочников запрещены. Каталог сотрудников для назначения ADMIN — только SECURITY DEFINER `sgr_super_admin_directory` / `sgr_grant_admin` / `sgr_revoke_admin`. Диагностика активных SUPER_ADMIN — `sgr_active_super_admins()` (только owner/migrator, без `passwordHash`). AuditLog на чтение недоступен. Назначение ADMIN блокирует строку и не снимает последнего активного ADMIN.
 
 ### ADMIN
 

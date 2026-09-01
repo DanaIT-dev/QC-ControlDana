@@ -57,8 +57,8 @@ ACL_FILE="${REDIS_ACL_FILE:-/tmp/sgr-users.acl}"
 umask 077
 cat >"${ACL_FILE}" <<EOF
 user default off
-user sgr_api on #${API_HASH} ~sgr:* ~sgr-test:* ~sgr-audit:* ~bull:* &* -@all +@connection +@read +@write +@set +@sortedset +@list +@hash +@stream +@blocking +@scripting +@pubsub +@transaction +info +echo +time +ping +select +config|get +cluster|slots +cluster|nodes +cluster|info +client|setname +client|id +client|setinfo -FLUSHALL -FLUSHDB -SHUTDOWN -DEBUG -MODULE -SAVE -BGSAVE
-user sgr_worker on #${WORKER_HASH} ~sgr:* ~sgr-test:* ~sgr-audit:* ~bull:* &* -@all +@connection +@read +@write +@set +@sortedset +@list +@hash +@stream +@blocking +@scripting +@pubsub +@transaction +info +echo +time +ping +select +config|get +cluster|slots +cluster|nodes +cluster|info +client|setname +client|id +client|setinfo -FLUSHALL -FLUSHDB -SHUTDOWN -DEBUG -MODULE -SAVE -BGSAVE
+user sgr_api on #${API_HASH} ~sgr:* ~sgr-test:* ~sgr-e2e:* ~sgr-audit:* ~bull:* &* -@all +@connection +@read +@write +@set +@sortedset +@list +@hash +@stream +@blocking +@scripting +@pubsub +@transaction +info +echo +time +ping +select +config|get +cluster|slots +cluster|nodes +cluster|info +client|setname +client|id +client|setinfo -FLUSHALL -FLUSHDB -SHUTDOWN -DEBUG -MODULE -SAVE -BGSAVE
+user sgr_worker on #${WORKER_HASH} ~sgr:* ~sgr-test:* ~sgr-e2e:* ~sgr-audit:* ~bull:* &* -@all +@connection +@read +@write +@set +@sortedset +@list +@hash +@stream +@blocking +@scripting +@pubsub +@transaction +info +echo +time +ping +select +config|get +cluster|slots +cluster|nodes +cluster|info +client|setname +client|id +client|setinfo -FLUSHALL -FLUSHDB -SHUTDOWN -DEBUG -MODULE -SAVE -BGSAVE
 EOF
 
 # EVAL/EVALSHA remain available via +@scripting because BullMQ Lua workers require them.

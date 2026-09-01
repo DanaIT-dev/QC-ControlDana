@@ -19,6 +19,7 @@
     "seed": "tsx prisma/seed.ts",
     "test": "vitest run --config vitest.config.mts",
     "test:integration": "tsx scripts/run-integration-tests.ts",
+    "test:e2e": "tsx scripts/run-e2e.ts",
     "test:registry:performance": "tsx scripts/registry-performance.ts",
     "test:sla:performance": "tsx scripts/sla-performance.ts",
     "roles:provision": "tsx scripts/provision-roles.ts",
@@ -26,10 +27,12 @@
     "isolation:verify": "tsx scripts/verify-isolation-hardening.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1119.0",
     "@prisma/adapter-pg": "7.10.0",
     "@prisma/client": "7.10.0",
     "@sgr-registry/domain": "workspace:*",
     "argon2": "^0.44.0",
+    "ioredis": "^5.8.2",
     "pg": "^8.16.3"
   },
   "devDependencies": {
