@@ -23,6 +23,7 @@ export * from './text';
 export * from './secrets';
 export * from './history';
 export * from './user-commands';
+export * from './admin-grants';
 export * from './reference';
 export * from './act-commands';
 export * from './attachments';

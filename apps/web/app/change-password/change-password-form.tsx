@@ -12,7 +12,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ApiError, commandFetch } from '../../lib/command-api';
 
-export function ChangePasswordForm({ csrfToken }: { csrfToken: string }) {
+export function ChangePasswordForm({
+  csrfToken,
+  nextPath = '/registry',
+}: {
+  csrfToken: string;
+  nextPath?: string;
+}) {
   const router = useRouter();
   const currentId = useId();
   const nextId = useId();
@@ -40,7 +46,7 @@ export function ChangePasswordForm({ csrfToken }: { csrfToken: string }) {
       });
       setSuccess(true);
       toast.success('Пароль обновлён');
-      router.replace('/registry');
+      router.replace(nextPath);
       router.refresh();
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : 'Не удалось сменить пароль');

@@ -92,12 +92,37 @@ export class IdempotencyConflictError extends DomainError {
 }
 
 export class LastAdminProtectedError extends DomainError {
-  constructor() {
-    super(
-      'LAST_ADMIN_PROTECTED',
-      'Нельзя архивировать или понизить последнего активного администратора',
-    );
+  constructor(message = 'Нельзя архивировать или понизить последнего активного администратора') {
+    super('LAST_ADMIN_PROTECTED', message);
     this.name = 'LastAdminProtectedError';
+  }
+}
+
+export class LastAdminRevokeError extends LastAdminProtectedError {
+  constructor() {
+    super('Нельзя снять права последнего администратора');
+    this.name = 'LastAdminRevokeError';
+  }
+}
+
+export class AdminGrantNotEligibleError extends DomainError {
+  constructor() {
+    super('ADMIN_GRANT_INELIGIBLE', 'Нельзя назначить эту учётную запись администратором');
+    this.name = 'AdminGrantNotEligibleError';
+  }
+}
+
+export class SelfAdminGrantError extends DomainError {
+  constructor() {
+    super('ADMIN_GRANT_INELIGIBLE', 'Нельзя назначить эту учётную запись администратором');
+    this.name = 'SelfAdminGrantError';
+  }
+}
+
+export class AccountProtectedError extends DomainError {
+  constructor() {
+    super('FORBIDDEN_FIELD', 'Недостаточно прав');
+    this.name = 'AccountProtectedError';
   }
 }
 
@@ -142,6 +167,7 @@ export const VALIDATION_ERROR_CODES = new Set([
   'VALIDATION_ERROR',
   'PASSWORD_POLICY',
   'UNKNOWN_FIELD',
+  'ADMIN_GRANT_INELIGIBLE',
   'UNSAFE_FILENAME',
   'UNSUPPORTED_TYPE',
   'MIME_MISMATCH',

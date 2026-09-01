@@ -21,7 +21,8 @@
     "test:integration": "tsx scripts/run-integration-tests.ts",
     "test:registry:performance": "tsx scripts/registry-performance.ts",
     "test:sla:performance": "tsx scripts/sla-performance.ts",
-    "roles:provision": "tsx scripts/provision-roles.ts"
+    "roles:provision": "tsx scripts/provision-roles.ts",
+    "super-admin:provision": "tsx scripts/provision-super-admin.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "7.10.0",

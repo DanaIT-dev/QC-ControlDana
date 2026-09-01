@@ -7,6 +7,7 @@ import { SafeExceptionFilter } from './common/safe-exception.filter';
 import { HealthModule } from './health/health.module';
 import { RegistryModule } from './registry/registry.module';
 import { UsersModule } from './users/users.module';
+import { SuperAdminModule } from './super-admin/super-admin.module';
 import { ReferenceDataModule } from './reference-data/reference-data.module';
 import { OperationsModule } from './operations/operations.module';
 import { AttachmentsModule } from './attachments/attachments.module';
@@ -20,6 +21,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     HealthModule,
     RegistryModule,
     UsersModule,
+    SuperAdminModule,
     ReferenceDataModule,
     OperationsModule,
     AttachmentsModule,

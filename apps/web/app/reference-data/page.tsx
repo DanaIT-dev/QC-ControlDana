@@ -1,5 +1,5 @@
 import { canManageReferenceData, hasCapability } from '@sgr-registry/domain';
-import { requireAppUser } from '../../lib/server-auth';
+import { requireBusinessUser } from '../../lib/server-auth';
 import { AppShell } from '../app-shell';
 import { ForbiddenState } from '@/components/forbidden-state';
 import { ReferenceDataView } from './reference-data-view';
@@ -7,7 +7,7 @@ import { ReferenceDataView } from './reference-data-view';
 export const dynamic = 'force-dynamic';
 
 export default async function ReferenceDataPage() {
-  const user = await requireAppUser();
+  const user = await requireBusinessUser();
   if (!hasCapability(user.role, 'VIEW_REFERENCE_DATA')) {
     return (
       <AppShell user={user}>

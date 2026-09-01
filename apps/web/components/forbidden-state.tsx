@@ -6,9 +6,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 export function ForbiddenState({
   title = 'Недостаточно прав',
   description,
+  homeHref = '/registry',
+  homeLabel = 'Вернуться в реестр',
 }: {
   title?: string;
   description: string;
+  homeHref?: string;
+  homeLabel?: string;
 }) {
   return (
     <Card className="max-w-lg shadow-none">
@@ -21,7 +25,7 @@ export function ForbiddenState({
       </CardHeader>
       <CardContent>
         <Button asChild variant="outline">
-          <Link href="/registry">Вернуться в реестр</Link>
+          <Link href={homeHref}>{homeLabel}</Link>
         </Button>
       </CardContent>
     </Card>

@@ -31,6 +31,9 @@ export const AUDIT_ACTIONS = [
   'ATTACHMENT_SCAN_FAILED',
   'ATTACHMENT_ARCHIVED',
   'ACT_CHAT_MESSAGE_CREATED',
+  'ADMIN_GRANTED',
+  'ADMIN_REVOKED',
+  'SUPER_ADMIN_PROVISIONED',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
@@ -64,6 +67,9 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction | string, string> = {
   ATTACHMENT_SCAN_FAILED: 'Не удалось проверить вложение',
   ATTACHMENT_ARCHIVED: 'Вложение архивировано',
   ACT_CHAT_MESSAGE_CREATED: 'Сообщение в обсуждении акта',
+  ADMIN_GRANTED: 'Назначены права администратора',
+  ADMIN_REVOKED: 'Сняты права администратора',
+  SUPER_ADMIN_PROVISIONED: 'Создана учётная запись суперадминистратора',
   LOGIN_SUCCEEDED: 'Вход выполнен',
   LOGIN_FAILED: 'Неудачная попытка входа',
   LOGIN_RATE_LIMITED: 'Превышен лимит попыток входа',

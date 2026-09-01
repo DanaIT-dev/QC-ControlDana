@@ -31,4 +31,9 @@ export {
   remapDatabaseUrl,
 } from './database-url';
 export { applyTestDatabaseEnv } from './test-env';
+export {
+  ensureTestSuperAdmin,
+  TEST_SUPER_ADMIN_EMAIL,
+  TEST_SUPER_ADMIN_NAME,
+} from './test-super-admin';
 export { insertAuditLogRow, insertOutboxEventRow } from './rls-writes';

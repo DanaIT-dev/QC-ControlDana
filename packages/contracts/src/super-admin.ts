@@ -1,0 +1,36 @@
+import { z } from 'zod';
+import { expectedVersionSchema } from './operations';
+import type { UserRole, UserStatus } from './enums';
+
+export const superAdminDirectoryQuerySchema = z
+  .object({
+    search: z.string().max(200).optional(),
+  })
+  .strict();
+
+export const adminGrantRequestSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+  })
+  .strict();
+
+export type SuperAdminDirectoryQuery = z.infer<typeof superAdminDirectoryQuerySchema>;
+export type AdminGrantRequest = z.infer<typeof adminGrantRequestSchema>;
+
+export type SuperAdminUserAdminStatus = 'ACTIVE_ADMIN' | 'ELIGIBLE';
+
+export interface SuperAdminDirectoryUser {
+  id: string;
+  fullName: string;
+  email: string;
+  currentRole: UserRole;
+  roleLabel: string;
+  adminStatus: SuperAdminUserAdminStatus;
+  status: UserStatus;
+  archivedAt: string | null;
+  version: number;
+}
+
+export interface SuperAdminDirectoryResponse {
+  items: SuperAdminDirectoryUser[];
+}

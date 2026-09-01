@@ -1,6 +1,7 @@
 import type { UserRole } from '@sgr-registry/contracts';
 
 export const CAPABILITIES = [
+  'MANAGE_ADMIN_GRANTS',
   'MANAGE_USERS',
   'MANAGE_REFERENCE_DATA',
   'VIEW_REFERENCE_DATA',
@@ -31,11 +32,14 @@ export const CAPABILITIES = [
   'VIEW_NOTIFICATIONS',
   'VIEW_DEADLINE_CONTROL',
   'MANAGE_NOTIFICATION_SETTINGS',
+  'CHANGE_OWN_PASSWORD',
+  'VIEW_OWN_PROFILE',
 ] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];
 
 const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
+  SUPER_ADMIN: ['MANAGE_ADMIN_GRANTS', 'CHANGE_OWN_PASSWORD', 'VIEW_OWN_PROFILE'],
   ADMIN: [
     'MANAGE_USERS',
     'MANAGE_REFERENCE_DATA',
@@ -65,6 +69,8 @@ const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
     'VIEW_NOTIFICATIONS',
     'VIEW_DEADLINE_CONTROL',
     'MANAGE_NOTIFICATION_SETTINGS',
+    'CHANGE_OWN_PASSWORD',
+    'VIEW_OWN_PROFILE',
   ],
   SGR_MANAGER: [
     'MANAGE_REFERENCE_DATA',
@@ -92,6 +98,8 @@ const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
     'DOWNLOAD_ATTACHMENT',
     'VIEW_NOTIFICATIONS',
     'VIEW_DEADLINE_CONTROL',
+    'CHANGE_OWN_PASSWORD',
+    'VIEW_OWN_PROFILE',
   ],
   CONTRACTOR_ENGINEER: [
     'VIEW_ALL_ACTS',
@@ -105,6 +113,8 @@ const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
     'DOWNLOAD_ATTACHMENT',
     'VIEW_NOTIFICATIONS',
     'VIEW_DEADLINE_CONTROL',
+    'CHANGE_OWN_PASSWORD',
+    'VIEW_OWN_PROFILE',
   ],
   RESPONSIBLE_ENGINEER: [
     'VIEW_REFERENCE_DATA',
@@ -128,10 +138,13 @@ const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
     'DOWNLOAD_ATTACHMENT',
     'VIEW_NOTIFICATIONS',
     'VIEW_DEADLINE_CONTROL',
+    'CHANGE_OWN_PASSWORD',
+    'VIEW_OWN_PROFILE',
   ],
 };
 
 export const CAPABILITY_LABELS: Record<Capability, string> = {
+  MANAGE_ADMIN_GRANTS: 'Назначение и снятие администраторов',
   MANAGE_USERS: 'Управление пользователями',
   MANAGE_REFERENCE_DATA: 'Управление справочниками',
   VIEW_REFERENCE_DATA: 'Просмотр справочников',
@@ -162,6 +175,8 @@ export const CAPABILITY_LABELS: Record<Capability, string> = {
   VIEW_NOTIFICATIONS: 'Просмотр уведомлений',
   VIEW_DEADLINE_CONTROL: 'Контроль сроков',
   MANAGE_NOTIFICATION_SETTINGS: 'Настройки уведомлений',
+  CHANGE_OWN_PASSWORD: 'Смена собственного пароля',
+  VIEW_OWN_PROFILE: 'Просмотр собственного профиля',
 };
 
 export function capabilitiesForRole(role: UserRole): Capability[] {
@@ -223,4 +238,18 @@ export function canViewHistory(role: UserRole): boolean {
 
 export function canViewActChat(role: UserRole): boolean {
   return hasCapability(role, 'VIEW_ACT_CHAT');
+}
+
+export function canManageAdminGrants(role: UserRole): boolean {
+  return hasCapability(role, 'MANAGE_ADMIN_GRANTS');
+}
+
+export function postLoginPath(role: UserRole, mustChangePassword = false): string {
+  if (mustChangePassword) {
+    return '/change-password';
+  }
+  if (hasCapability(role, 'MANAGE_ADMIN_GRANTS') && !hasCapability(role, 'VIEW_ALL_ACTS')) {
+    return '/super-admin';
+  }
+  return '/registry';
 }

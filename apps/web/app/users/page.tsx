@@ -1,5 +1,5 @@
 import { hasCapability } from '@sgr-registry/domain';
-import { requireAppUser } from '../../lib/server-auth';
+import { requireBusinessUser } from '../../lib/server-auth';
 import { AppShell } from '../app-shell';
 import { ForbiddenState } from '@/components/forbidden-state';
 import { UsersView } from './users-view';
@@ -7,7 +7,7 @@ import { UsersView } from './users-view';
 export const dynamic = 'force-dynamic';
 
 export default async function UsersPage() {
-  const user = await requireAppUser();
+  const user = await requireBusinessUser();
   if (!hasCapability(user.role, 'MANAGE_USERS')) {
     return (
       <AppShell user={user}>

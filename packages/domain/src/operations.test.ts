@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  adminGrantRequestSchema,
   createActRequestSchema,
+  createUserRequestSchema,
   patchActHeaderRequestSchema,
   patchDeadlinesRequestSchema,
   upsertProposalRequestSchema,
@@ -9,6 +11,13 @@ import {
   assertAuditPayloadSafe,
   assertCaseInsensitiveUnique,
   assertLastActiveAdminProtected,
+  assertCanGrantAdmin,
+  assertCanRevokeAdmin,
+  nextAdminGrantState,
+  previousRoleAfterAdminRevoke,
+  AdminGrantNotEligibleError,
+  LastAdminRevokeError,
+  SelfAdminGrantError,
   assertNotSelfArchive,
   assertUniqueIds,
   calendarDateToUtcNoon,
@@ -81,6 +90,71 @@ describe('user lifecycle rules', () => {
     ).toThrow(LastAdminProtectedError);
     expect(() => assertNotSelfArchive('u1', 'u1')).toThrow(SelfArchiveError);
     assertNotSelfArchive('u1', 'u2');
+  });
+
+  it('keeps SUPER_ADMIN admin-grant rules deny-by-default', () => {
+    const manager = {
+      id: 'm1',
+      role: 'SGR_MANAGER' as const,
+      status: 'ACTIVE' as const,
+      archivedAt: null,
+      roleBeforeAdmin: null,
+    };
+    assertCanGrantAdmin({ actorId: 'sa', target: manager });
+    expect(nextAdminGrantState(manager)).toEqual({
+      role: 'ADMIN',
+      roleBeforeAdmin: 'SGR_MANAGER',
+    });
+    const responsible = { ...manager, id: 'r1', role: 'RESPONSIBLE_ENGINEER' as const };
+    expect(nextAdminGrantState(responsible).roleBeforeAdmin).toBe('RESPONSIBLE_ENGINEER');
+    expect(() =>
+      assertCanGrantAdmin({
+        actorId: 'sa',
+        target: { ...manager, role: 'CONTRACTOR_ENGINEER' },
+      }),
+    ).toThrow(AdminGrantNotEligibleError);
+    expect(() =>
+      assertCanGrantAdmin({
+        actorId: 'sa',
+        target: { ...manager, role: 'SUPER_ADMIN' },
+      }),
+    ).toThrow(AdminGrantNotEligibleError);
+    expect(() => assertCanGrantAdmin({ actorId: 'm1', target: manager })).toThrow(
+      SelfAdminGrantError,
+    );
+    const admin = {
+      id: 'a1',
+      role: 'ADMIN' as const,
+      status: 'ACTIVE' as const,
+      archivedAt: null,
+      roleBeforeAdmin: 'RESPONSIBLE_ENGINEER' as const,
+    };
+    assertCanGrantAdmin({ actorId: 'sa', target: admin });
+    expect(previousRoleAfterAdminRevoke(admin)).toBe('RESPONSIBLE_ENGINEER');
+    expect(previousRoleAfterAdminRevoke({ role: 'ADMIN', roleBeforeAdmin: null })).toBe(
+      'SGR_MANAGER',
+    );
+    expect(() =>
+      assertCanRevokeAdmin({ actorId: 'sa', target: admin, activeAdminCount: 1 }),
+    ).toThrow(LastAdminRevokeError);
+    assertCanRevokeAdmin({ actorId: 'sa', target: admin, activeAdminCount: 2 });
+    expect(adminGrantRequestSchema.safeParse({ expectedVersion: 1, role: 'ADMIN' }).success).toBe(
+      false,
+    );
+    expect(
+      createUserRequestSchema.safeParse({
+        fullName: 'Иван Иванов',
+        email: 'ivan@example.sgr.local',
+        role: 'ADMIN',
+      }).success,
+    ).toBe(false);
+    expect(
+      createUserRequestSchema.safeParse({
+        fullName: 'Иван Иванов',
+        email: 'ivan@example.sgr.local',
+        role: 'SUPER_ADMIN',
+      }).success,
+    ).toBe(false);
   });
 
   it('normalizes emails without regard to case', () => {

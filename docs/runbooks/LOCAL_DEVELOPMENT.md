@@ -38,6 +38,8 @@ pnpm db:roles:provision
 pnpm db:migrate
 # также примените миграции к test-базе (тот же migrator URL с именем *_test)
 pnpm db:seed
+# SUPER_ADMIN не входит в seed. Локальное создание:
+# SGR_SUPER_ADMIN_PROVISION_CONFIRM=<имя БД> pnpm super-admin:provision
 ```
 
 Не используйте bootstrap `sgr_registry` в `DATABASE_URL` / `AUTH_DATABASE_URL` / `WORKER_DATABASE_URL`. Seed и migrate — `MIGRATION_DATABASE_URL`. Development-базу не reset-ьте ради RLS.
@@ -85,7 +87,7 @@ Worker: outbox claim и email finalize — короткие RLS-транзакц
 Главная страница web: http://localhost:3000  
 Экран входа: http://localhost:3000/login
 
-Демо-учётки и локальный пароль описаны в [AUTHENTICATION.md](../requirements/AUTHENTICATION.md). `SEED_DEMO_PASSWORD` задаётся только в `.env` и не коммитится.
+Демо-учётки и локальный пароль описаны в [AUTHENTICATION.md](../requirements/AUTHENTICATION.md). `SEED_DEMO_PASSWORD` задаётся только в `.env` и не коммитится. `SUPER_ADMIN` создаётся только `pnpm super-admin:provision`: пароль вводится masked TTY, не аргументом CLI и не через `.env`. Для базы без суффикса `_test` и для `NODE_ENV=production` нужно `SGR_SUPER_ADMIN_PROVISION_CONFIRM` равное имени целевой БД. По умолчанию активен один SUPER_ADMIN.
 
 ## Тесты
 

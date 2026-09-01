@@ -1,5 +1,5 @@
 import type { SystemStatusResponse } from '@sgr-registry/contracts';
-import { redirect } from 'next/navigation';
+import { hasCapability } from '@sgr-registry/domain';
 import { CheckCircle2, Database, Server, Wifi } from 'lucide-react';
 import { AppShell } from '../app-shell';
 import { ForbiddenState } from '@/components/forbidden-state';
@@ -8,17 +8,14 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { fetchCurrentUser, fetchSystemStatus } from '../../lib/server-auth';
+import { fetchSystemStatus, requireBusinessUser } from '../../lib/server-auth';
 import { NotificationSettingsForm } from './notification-settings-form';
 
 export const dynamic = 'force-dynamic';
 
 export default async function SystemStatusPage() {
-  const user = await fetchCurrentUser();
-  if (!user) {
-    redirect('/login');
-  }
-  if (user.role !== 'ADMIN') {
+  const user = await requireBusinessUser();
+  if (!hasCapability(user.role, 'VIEW_SYSTEM_STATUS')) {
     return (
       <AppShell user={user}>
         <ForbiddenState description="Эта страница доступна только администратору." />

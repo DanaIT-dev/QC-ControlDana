@@ -9,6 +9,7 @@ import {
 import {
   StaleWriteError,
   DuplicateValueError,
+  AccountProtectedError,
   assertLastActiveAdminProtected,
   assertNotSelfArchive,
   normalizeUserEmail,
@@ -57,7 +58,9 @@ export class UsersService {
     const query = parseCommandBody(usersListQuerySchema, rawQuery);
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 50;
-    const where: Prisma.UserWhereInput = {};
+    const where: Prisma.UserWhereInput = {
+      role: { not: 'SUPER_ADMIN' },
+    };
     if (query.role) {
       where.role = query.role;
     }
@@ -140,6 +143,7 @@ export class UsersService {
       if (!current) {
         throw new NotFoundException('Запись не найдена');
       }
+      assertOrdinaryStaffAccount(current.role);
       if (current.version !== input.expectedVersion) {
         throw new StaleWriteError();
       }
@@ -198,6 +202,7 @@ export class UsersService {
       if (!current) {
         throw new NotFoundException('Запись не найдена');
       }
+      assertOrdinaryStaffAccount(current.role);
       if (current.version !== input.expectedVersion) {
         throw new StaleWriteError();
       }
@@ -250,6 +255,7 @@ export class UsersService {
       if (!current) {
         throw new NotFoundException('Запись не найдена');
       }
+      assertOrdinaryStaffAccount(current.role);
       if (current.version !== input.expectedVersion) {
         throw new StaleWriteError();
       }
@@ -293,6 +299,7 @@ export class UsersService {
       if (!current) {
         throw new NotFoundException('Запись не найдена');
       }
+      assertOrdinaryStaffAccount(current.role);
       if (current.version !== input.expectedVersion) {
         throw new StaleWriteError();
       }
@@ -326,9 +333,9 @@ export class UsersService {
   async history(userId: string, rawQuery: Record<string, unknown>) {
     const exists = await this.prisma.client.user.findUnique({
       where: { id: userId },
-      select: { id: true },
+      select: { id: true, role: true },
     });
-    if (!exists) {
+    if (!exists || exists.role === 'SUPER_ADMIN') {
       throw new NotFoundException('Запись не найдена');
     }
     const query = parseCommandBody(historyQuerySchema, rawQuery);
@@ -351,6 +358,12 @@ export class UsersService {
       items: page.map(toHistoryDto),
       nextCursor: hasMore ? encodeHistoryCursor(page[page.length - 1]!) : null,
     };
+  }
+}
+
+function assertOrdinaryStaffAccount(role: AuthenticatedUser['role']): void {
+  if (role === 'ADMIN' || role === 'SUPER_ADMIN') {
+    throw new AccountProtectedError();
   }
 }
 

@@ -48,6 +48,7 @@ import {
   registryAccessMode,
   isObjectScopedRole,
   visibleProposalSlots,
+  postLoginPath,
   canViewProposalASum,
   canViewProposalGroupBC,
   countActiveRegistryFilters,
@@ -271,6 +272,8 @@ describe('capabilities', () => {
       'VIEW_NOTIFICATIONS',
       'VIEW_DEADLINE_CONTROL',
       'MANAGE_NOTIFICATION_SETTINGS',
+      'CHANGE_OWN_PASSWORD',
+      'VIEW_OWN_PROFILE',
     ]);
     expect(capabilitiesForRole('SGR_MANAGER')).toContain('CREATE_ACT');
     expect(capabilitiesForRole('SGR_MANAGER')).toContain('VIEW_REFERENCE_DATA');
@@ -300,6 +303,8 @@ describe('capabilities', () => {
       'DOWNLOAD_ATTACHMENT',
       'VIEW_NOTIFICATIONS',
       'VIEW_DEADLINE_CONTROL',
+      'CHANGE_OWN_PASSWORD',
+      'VIEW_OWN_PROFILE',
     ]);
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).toContain('EDIT_THIRD_PARTY_DEADLINE');
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('MANAGE_REFERENCE_DATA');
@@ -322,8 +327,24 @@ describe('capabilities', () => {
     expect(canViewActChat('SGR_MANAGER')).toBe(true);
     expect(canViewActChat('RESPONSIBLE_ENGINEER')).toBe(true);
     expect(canViewActChat('CONTRACTOR_ENGINEER')).toBe(false);
+    expect(canViewActChat('SUPER_ADMIN')).toBe(false);
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('VIEW_ACT_CHAT');
+    expect(capabilitiesForRole('SUPER_ADMIN')).toEqual([
+      'MANAGE_ADMIN_GRANTS',
+      'CHANGE_OWN_PASSWORD',
+      'VIEW_OWN_PROFILE',
+    ]);
+    expect(capabilitiesForRole('SUPER_ADMIN')).not.toContain('MANAGE_USERS');
+    expect(capabilitiesForRole('SUPER_ADMIN')).not.toContain('VIEW_ALL_ACTS');
+    expect(capabilitiesForRole('ADMIN')).not.toContain('MANAGE_ADMIN_GRANTS');
+    expect(hasCapability('SUPER_ADMIN', 'MANAGE_ADMIN_GRANTS')).toBe(true);
+    expect(hasCapability('ADMIN', 'MANAGE_ADMIN_GRANTS')).toBe(false);
     expect(roleLabel('ADMIN')).toBe('Администратор');
+    expect(roleLabel('SUPER_ADMIN')).toBe('Суперадминистратор');
+    expect(visibleProposalSlots('SUPER_ADMIN')).toEqual([]);
+    expect(postLoginPath('SUPER_ADMIN')).toBe('/super-admin');
+    expect(postLoginPath('ADMIN')).toBe('/registry');
+    expect(postLoginPath('SUPER_ADMIN', true)).toBe('/change-password');
   });
 });
 

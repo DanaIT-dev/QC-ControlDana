@@ -1,6 +1,10 @@
 'use client';
 
-import { AUTH_LOGIN_FAILED_MESSAGE, AUTH_RATE_LIMITED_MESSAGE } from '@sgr-registry/domain';
+import {
+  AUTH_LOGIN_FAILED_MESSAGE,
+  AUTH_RATE_LIMITED_MESSAGE,
+  postLoginPath,
+} from '@sgr-registry/domain';
 import { EyeIcon, EyeOffIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { type SyntheticEvent, useId, useState } from 'react';
@@ -44,8 +48,15 @@ export function LoginForm() {
         setError(AUTH_LOGIN_FAILED_MESSAGE);
         return;
       }
-      const profile = (await response.json()) as { mustChangePassword?: boolean };
-      router.replace(profile.mustChangePassword ? '/change-password' : '/registry');
+      const profile = (await response.json()) as {
+        mustChangePassword?: boolean;
+        role?: Parameters<typeof postLoginPath>[0];
+      };
+      if (!profile.role) {
+        router.replace('/');
+        return;
+      }
+      router.replace(postLoginPath(profile.role, Boolean(profile.mustChangePassword)));
       router.refresh();
     } catch {
       setPassword('');

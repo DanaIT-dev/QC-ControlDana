@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { SESSION_COOKIE_NAME } from '@sgr-registry/domain';
+import { hasCapability, postLoginPath, SESSION_COOKIE_NAME } from '@sgr-registry/domain';
 import type { CapabilitiesResponse, SafeUserProfile } from '@sgr-registry/contracts';
 
 function apiBaseUrl(): string {
@@ -43,6 +43,22 @@ export async function requireAppUser(): Promise<SafeUserProfile> {
   }
   if (user.mustChangePassword) {
     redirect('/change-password');
+  }
+  return user;
+}
+
+export async function requireBusinessUser(): Promise<SafeUserProfile> {
+  const user = await requireAppUser();
+  if (postLoginPath(user.role) === '/super-admin') {
+    redirect('/super-admin');
+  }
+  return user;
+}
+
+export async function requireSuperAdminUser(): Promise<SafeUserProfile> {
+  const user = await requireAppUser();
+  if (!hasCapability(user.role, 'MANAGE_ADMIN_GRANTS')) {
+    redirect(postLoginPath(user.role));
   }
   return user;
 }

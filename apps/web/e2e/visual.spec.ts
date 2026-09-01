@@ -133,7 +133,9 @@ test.describe('visual and responsive QA', () => {
 
     await page.setViewportSize({ width: 360, height: 800 });
     await page.goto('/change-password');
-    await expect(page).not.toHaveURL(/\/change-password/);
+    await expect(page).toHaveURL(/\/change-password/);
+    await expect(page.getByLabel('Текущий пароль')).toBeVisible();
+    await noOverflow(page);
     await page.goto('/registry');
     await noOverflow(page);
     await noAppErrors(errors);

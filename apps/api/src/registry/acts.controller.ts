@@ -119,6 +119,8 @@ export class ActsController {
   }
 
   @Get(':actId')
+  @UseGuards(CapabilityGuard)
+  @RequireCapability('VIEW_ALL_ACTS', 'VIEW_ASSIGNED_DEFECTS')
   detail(@CurrentUser() user: AuthenticatedUser, @Param('actId') actId: string) {
     if (!UUID_PATTERN.test(actId)) {
       throw new NotFoundException('Запись не найдена');

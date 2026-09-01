@@ -70,6 +70,12 @@ function cookieValue(response: InjectResponse): string | undefined {
 }
 
 async function createUser(role: UserRole, status: 'ACTIVE' | 'ARCHIVED' = 'ACTIVE') {
+  if (role === 'SUPER_ADMIN' && status === 'ACTIVE') {
+    await prisma.user.updateMany({
+      where: { role: 'SUPER_ADMIN', status: 'ACTIVE' },
+      data: { status: 'ARCHIVED', archivedAt: new Date() },
+    });
+  }
   const email = `itest.${role.toLowerCase()}.${Date.now()}.${Math.random().toString(16).slice(2)}@example.sgr.local`;
   const passwordHash = await hashArgon2id(DEMO_PASSWORD, { memoryCost: 4096, timeCost: 1 });
   const user = await prisma.user.create({
@@ -322,6 +328,7 @@ describe('auth integration', () => {
 
   it('returns the expected capabilities for each role', async () => {
     const roles: UserRole[] = [
+      'SUPER_ADMIN',
       'ADMIN',
       'SGR_MANAGER',
       'RESPONSIBLE_ENGINEER',

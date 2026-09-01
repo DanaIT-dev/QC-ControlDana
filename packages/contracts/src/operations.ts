@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import { ORGANIZATION_ROLES, USER_ROLES, USER_STATUSES } from './enums';
+import {
+  MANAGED_USER_ROLES,
+  ORGANIZATION_ROLES,
+  STAFF_ASSIGNABLE_ROLES,
+  USER_STATUSES,
+} from './enums';
 
 const uuid = z.uuid();
 const calendarDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -11,7 +16,7 @@ export const createUserRequestSchema = z
   .object({
     fullName: z.string(),
     email: z.string(),
-    role: z.enum(USER_ROLES),
+    role: z.enum(STAFF_ASSIGNABLE_ROLES),
   })
   .strict();
 
@@ -19,7 +24,7 @@ export const patchUserRequestSchema = z
   .object({
     expectedVersion: expectedVersionSchema,
     fullName: z.string().optional(),
-    role: z.enum(USER_ROLES).optional(),
+    role: z.enum(STAFF_ASSIGNABLE_ROLES).optional(),
   })
   .strict();
 
@@ -33,7 +38,7 @@ export const versionedReasonSchema = z
 export const usersListQuerySchema = z
   .object({
     search: z.string().optional(),
-    role: z.enum(USER_ROLES).optional(),
+    role: z.enum(MANAGED_USER_ROLES).optional(),
     status: z.enum(USER_STATUSES).optional(),
     page: z.coerce.number().int().positive().optional(),
     pageSize: z.coerce.number().int().positive().max(100).optional(),

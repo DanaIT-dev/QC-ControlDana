@@ -27,14 +27,15 @@ export function proxy(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set('x-nonce', nonce);
 
-  if (pathname === '/') {
+  if (pathname === '/' && !hasSession) {
     const destination = request.nextUrl.clone();
-    destination.pathname = hasSession ? '/registry' : '/login';
+    destination.pathname = '/login';
     return applySecurityHeaders(NextResponse.redirect(destination), nonce);
   }
 
   if (
     (pathname === '/registry' ||
+      pathname === '/super-admin' ||
       pathname === '/system-status' ||
       pathname === '/users' ||
       pathname === '/reference-data' ||

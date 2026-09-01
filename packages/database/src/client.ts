@@ -37,40 +37,58 @@ async function decoratePoolClient(client: PoolClient, assumeOwner: boolean): Pro
   return client;
 }
 
-function createClient(databaseUrl: string, assumeOwner: boolean): PrismaClient {
+function createClient(
+  databaseUrl: string,
+  assumeOwner: boolean,
+  omitUserPasswordHash: boolean,
+): PrismaClient {
   const pool = new Pool({ connectionString: postgresUrlWithoutSchema(databaseUrl) });
   wrapPoolConnect(pool, (client) => decoratePoolClient(client, assumeOwner));
   const adapter = new PrismaPg(pool);
-  return new PrismaClient({ adapter });
+  return new PrismaClient({
+    adapter,
+    ...(omitUserPasswordHash ? { omit: { user: { passwordHash: true } } } : {}),
+  });
 }
 
-export function createPrismaClient(databaseUrl: string): PrismaClient {
-  return createClient(databaseUrl, false);
+export function createPrismaClient(
+  databaseUrl: string,
+  options: { omitUserPasswordHash?: boolean } = {},
+): PrismaClient {
+  return createClient(databaseUrl, false, options.omitUserPasswordHash ?? true);
 }
 
 export function createOwnerPrismaClient(databaseUrl: string): PrismaClient {
-  return createClient(databaseUrl, true);
+  return createClient(databaseUrl, true, false);
 }
 
 const clients = new Map<string, PrismaClient>();
 
-function cacheKey(databaseUrl: string, assumeOwner: boolean): string {
-  return `${assumeOwner ? 'owner' : 'runtime'}:${databaseUrl}`;
+function cacheKey(
+  databaseUrl: string,
+  assumeOwner: boolean,
+  omitUserPasswordHash: boolean,
+): string {
+  return `${assumeOwner ? 'owner' : 'runtime'}:${omitUserPasswordHash ? 'omit-hash' : 'full'}:${databaseUrl}`;
 }
 
-export function getPrismaClient(databaseUrl: string): PrismaClient {
-  const key = cacheKey(databaseUrl, false);
+export function getPrismaClient(
+  databaseUrl: string,
+  options: { omitUserPasswordHash?: boolean } = {},
+): PrismaClient {
+  const omitUserPasswordHash = options.omitUserPasswordHash ?? true;
+  const key = cacheKey(databaseUrl, false, omitUserPasswordHash);
   const existing = clients.get(key);
   if (existing) {
     return existing;
   }
-  const created = createPrismaClient(databaseUrl);
+  const created = createPrismaClient(databaseUrl, { omitUserPasswordHash });
   clients.set(key, created);
   return created;
 }
 
 export function getOwnerPrismaClient(databaseUrl: string): PrismaClient {
-  const key = cacheKey(databaseUrl, true);
+  const key = cacheKey(databaseUrl, true, false);
   const existing = clients.get(key);
   if (existing) {
     return existing;
@@ -82,7 +100,7 @@ export function getOwnerPrismaClient(databaseUrl: string): PrismaClient {
 
 export async function disconnectPrismaClient(databaseUrl?: string): Promise<void> {
   if (databaseUrl) {
-    const keys = [cacheKey(databaseUrl, false), cacheKey(databaseUrl, true)];
+    const keys = [...clients.keys()].filter((key) => key.endsWith(`:${databaseUrl}`));
     await Promise.all(
       keys.map(async (key) => {
         const client = clients.get(key);

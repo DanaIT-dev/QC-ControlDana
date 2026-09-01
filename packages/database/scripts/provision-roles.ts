@@ -177,6 +177,16 @@ async function reassignPublicToOwner(pool: Pool): Promise<void> {
         EXECUTE format('ALTER FUNCTION public.%I(%s) OWNER TO sgr_owner', r.proname, r.args);
       END LOOP;
       ALTER SCHEMA public OWNER TO sgr_owner;
+      FOR r IN
+        SELECT t.typname
+        FROM pg_type t
+        JOIN pg_namespace n ON n.oid = t.typnamespace
+        WHERE n.nspname = 'public'
+          AND t.typtype = 'e'
+          AND t.typowner <> (SELECT oid FROM pg_roles WHERE rolname = 'sgr_owner')
+      LOOP
+        EXECUTE format('ALTER TYPE public.%I OWNER TO sgr_owner', r.typname);
+      END LOOP;
     END
     $$;
   `);

@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import { postLoginPath } from '@sgr-registry/domain';
 import { fetchCurrentUser } from '../../lib/server-auth';
 import { QcLogo } from '@/components/qc-logo';
 import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
@@ -8,11 +9,8 @@ export const dynamic = 'force-dynamic';
 
 export default async function LoginPage() {
   const user = await fetchCurrentUser();
-  if (user?.mustChangePassword) {
-    redirect('/change-password');
-  }
   if (user) {
-    redirect('/registry');
+    redirect(postLoginPath(user.role, user.mustChangePassword));
   }
 
   return (

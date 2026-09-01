@@ -23,6 +23,7 @@ enum DefectItemStatus {
 }
 
 enum UserRole {
+  SUPER_ADMIN
   ADMIN
   SGR_MANAGER
   RESPONSIBLE_ENGINEER
@@ -87,6 +88,7 @@ model User {
   sessionVersion      Int        @default(1)
   lastLoginAt         DateTime?  @db.Timestamptz(3)
   role                UserRole
+  roleBeforeAdmin     UserRole?
   status              UserStatus @default(ACTIVE)
   version             Int        @default(1)
   createdAt           DateTime   @default(now()) @db.Timestamptz(3)

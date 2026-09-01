@@ -15,7 +15,7 @@ export class ApiError extends Error {
 export async function commandFetch<T>(
   path: string,
   input: {
-    method: 'POST' | 'PATCH' | 'PUT';
+    method: 'POST' | 'PATCH' | 'PUT' | 'DELETE';
     csrfToken: string;
     body?: unknown;
     idempotencyKey?: string;

@@ -8,6 +8,15 @@ export interface AppNavItem {
 }
 
 export function navItemsForRole(role: UserRole): AppNavItem[] {
+  if (hasCapability(role, 'MANAGE_ADMIN_GRANTS') && !hasCapability(role, 'VIEW_ALL_ACTS')) {
+    return [
+      {
+        href: '/super-admin',
+        label: 'Администраторы',
+        match: (pathname) => pathname.startsWith('/super-admin'),
+      },
+    ];
+  }
   const items: AppNavItem[] = [
     {
       href: '/registry',

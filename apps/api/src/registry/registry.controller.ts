@@ -3,10 +3,12 @@ import type { FastifyRequest } from 'fastify';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { AuthenticationGuard } from '../auth/authentication.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
+import { CapabilityGuard, RequireCapability } from '../common/capability.guard';
 import { RegistryService } from './registry.service';
 
 @Controller('registry')
-@UseGuards(AuthenticationGuard)
+@UseGuards(AuthenticationGuard, CapabilityGuard)
+@RequireCapability('VIEW_ALL_ACTS', 'VIEW_ASSIGNED_DEFECTS')
 export class RegistryController {
   constructor(@Inject(RegistryService) private readonly registryService: RegistryService) {}
 

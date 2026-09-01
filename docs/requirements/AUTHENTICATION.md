@@ -16,13 +16,21 @@
 | `elena.krylova@example.sgr.local`   | `RESPONSIBLE_ENGINEER` | Ответственный инженер            |
 | `igor.panteleev@example.sgr.local`  | `CONTRACTOR_ENGINEER`  | Инженер по работе с подрядчиками |
 
+`SUPER_ADMIN` в seed не создаётся. В test/e2e допускается синтетическая fixture `super.admin@example.sgr.local` через `ensureTestSuperAdmin`, без записи пароля в Git.
+
 Повторный seed не создаёт пользователей заново и не меняет `passwordHash`, если текущий хеш по-прежнему соответствует `SEED_DEMO_PASSWORD`.
+
+После входа `SUPER_ADMIN` перенаправляется на `/super-admin`. Остальные роли — на `/registry` (или `/change-password`, если `mustChangePassword`).
+
+## SUPER_ADMIN
+
+Роль изолирована: не wildcard, не иерархия «выше ADMIN». Единственная бизнес-capability — `MANAGE_ADMIN_GRANTS` (назначить или снять обычный `ADMIN`). Создание учётки — только локальная команда `pnpm super-admin:provision` (masked TTY-пароль, для non-test цели требуется `SGR_SUPER_ADMIN_PROVISION_CONFIRM=<имя БД>`). Публичный API, панель пользователей и seed production не создают `SUPER_ADMIN`.
 
 ## Пароль
 
 - хеш Argon2id;
 - исходный пароль не сохраняется;
-- `passwordHash` не возвращается API;
+- `passwordHash` не возвращается API и недоступен `SELECT` для `sgr_app` / `sgr_worker`; читает его только auth-компонент (`sgr_auth`);
 - при создании пароля: 12–128 символов, заглавная, строчная, цифра и специальный символ;
 - слишком длинное значение отклоняется до Argon2;
 - на входе пароль не нормализуется (нет trim/lowercase/Unicode NFC);
@@ -75,15 +83,15 @@
 
 `mustChangePassword` блокирует продуктовые API до смены пароля на `/change-password`.
 
-`/registry` доступна активной сессии без обязательной смены пароля. `/system-status` и `/users` — только `ADMIN`. `/acts/new` — ADMIN, SGR_MANAGER и `RESPONSIBLE_ENGINEER` (последнему только на закреплённых объектах). `/reference-data` — ADMIN, SGR_MANAGER и `RESPONSIBLE_ENGINEER` (последнему только просмотр объектов и организаций). `GET /api/health` и `GET /api/ready` остаются машинными.
+`/registry` доступна активной бизнес-сессии без обязательной смены пароля. `SUPER_ADMIN` туда не попадает: после входа и при прямом переходе на бизнес-маршруты сервер возвращает на `/super-admin`, API бизнес-модулей — `403`. `/system-status` и `/users` — только `ADMIN`. `/acts/new` — ADMIN, SGR_MANAGER и `RESPONSIBLE_ENGINEER` (последнему только на закреплённых объектах). `/reference-data` — ADMIN, SGR_MANAGER и `RESPONSIBLE_ENGINEER` (последнему только просмотр объектов и организаций). `GET /api/health` и `GET /api/ready` остаются машинными.
 
 История изменений: `VIEW_HISTORY` у ADMIN и SGR_MANAGER (полный журнал), `VIEW_ASSIGNED_HISTORY` у RESPONSIBLE_ENGINEER (акты закреплённых объектов). `CONTRACTOR_ENGINEER` не имеет ни одной history-capability: вкладка скрыта, прямые запросы `/history` и `/audit-log` возвращают `403`.
 
 ## Аудит
 
-Append-only `AuditLog`: `LOGIN_SUCCEEDED`, `LOGIN_FAILED`, `LOGIN_RATE_LIMITED`, `LOGOUT`, `LOGOUT_ALL`, `SESSION_REJECTED_ARCHIVED_USER`, `SESSION_REJECTED_VERSION_MISMATCH`.
+Append-only `AuditLog`: `LOGIN_SUCCEEDED`, `LOGIN_FAILED`, `LOGIN_RATE_LIMITED`, `LOGOUT`, `LOGOUT_ALL`, `SESSION_REJECTED_ARCHIVED_USER`, `SESSION_REJECTED_VERSION_MISMATCH`, `ADMIN_GRANTED`, `ADMIN_REVOKED`, `SUPER_ADMIN_PROVISIONED`.
 
-Не записываются пароль, cookie, session id, csrfToken, passwordHash, temporaryPassword.
+Не записываются пароль, cookie, session id, csrfToken, passwordHash, temporaryPassword. `SUPER_ADMIN` не читает AuditLog.
 
 ## Тесты
 

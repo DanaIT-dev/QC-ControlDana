@@ -1,6 +1,7 @@
 import type { UserRole } from '@sgr-registry/contracts';
 
 export const USER_ROLE_LABELS: Record<UserRole, string> = {
+  SUPER_ADMIN: 'Суперадминистратор',
   ADMIN: 'Администратор',
   SGR_MANAGER: 'Руководитель СГР',
   RESPONSIBLE_ENGINEER: 'Ответственный инженер',

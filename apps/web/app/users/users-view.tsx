@@ -1,6 +1,6 @@
 'use client';
 
-import { USER_ROLES, USER_STATUSES } from '@sgr-registry/contracts';
+import { MANAGED_USER_ROLES, STAFF_ASSIGNABLE_ROLES, USER_STATUSES } from '@sgr-registry/contracts';
 import { roleLabel } from '@sgr-registry/domain';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CopyIcon, MoreHorizontal } from 'lucide-react';
@@ -43,7 +43,7 @@ interface UserRow {
   id: string;
   fullName: string;
   email: string;
-  role: (typeof USER_ROLES)[number];
+  role: (typeof MANAGED_USER_ROLES)[number];
   roleLabel: string;
   status: (typeof USER_STATUSES)[number];
   createdAt: string;
@@ -136,7 +136,7 @@ export function UsersView({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="ALL">Все роли</SelectItem>
-            {USER_ROLES.map((item) => (
+            {MANAGED_USER_ROLES.map((item) => (
               <SelectItem key={item} value={item}>
                 {roleLabel(item)}
               </SelectItem>
@@ -272,58 +272,68 @@ function UserActions({
   currentUserId: string;
   onMutate: (path: string, method: 'POST' | 'PATCH', body: unknown) => Promise<void>;
 }) {
-  const nextRole = user.role === 'SGR_MANAGER' ? 'ADMIN' : 'SGR_MANAGER';
+  const [roleOpen, setRoleOpen] = useState(false);
+  const protectedAccount = user.role === 'ADMIN';
+  if (protectedAccount) {
+    return null;
+  }
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button type="button" variant="outline" size="icon" aria-label="Действия">
-          <MoreHorizontal />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem
-          onSelect={() =>
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button type="button" variant="outline" size="icon" aria-label="Действия">
+            <MoreHorizontal />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onSelect={() => setRoleOpen(true)}>Изменить роль</DropdownMenuItem>
+          {user.status === 'ACTIVE' && user.id !== currentUserId ? (
+            <DropdownMenuItem
+              onSelect={() =>
+                void onMutate(`/api/users/${user.id}/archive`, 'POST', {
+                  expectedVersion: user.version,
+                })
+              }
+            >
+              Архивировать
+            </DropdownMenuItem>
+          ) : null}
+          {user.status === 'ARCHIVED' ? (
+            <DropdownMenuItem
+              onSelect={() =>
+                void onMutate(`/api/users/${user.id}/restore`, 'POST', {
+                  expectedVersion: user.version,
+                })
+              }
+            >
+              Восстановить
+            </DropdownMenuItem>
+          ) : null}
+          <DropdownMenuItem
+            onSelect={() =>
+              void onMutate(`/api/users/${user.id}/reset-password`, 'POST', {
+                expectedVersion: user.version,
+              })
+            }
+          >
+            Сбросить пароль
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {roleOpen ? (
+        <ChangeRoleDialog
+          user={user}
+          onClose={() => setRoleOpen(false)}
+          onSave={(role) => {
+            setRoleOpen(false);
             void onMutate(`/api/users/${user.id}`, 'PATCH', {
               expectedVersion: user.version,
-              role: nextRole,
-            })
-          }
-        >
-          Изменить роль
-        </DropdownMenuItem>
-        {user.status === 'ACTIVE' && user.id !== currentUserId ? (
-          <DropdownMenuItem
-            onSelect={() =>
-              void onMutate(`/api/users/${user.id}/archive`, 'POST', {
-                expectedVersion: user.version,
-              })
-            }
-          >
-            Архивировать
-          </DropdownMenuItem>
-        ) : null}
-        {user.status === 'ARCHIVED' ? (
-          <DropdownMenuItem
-            onSelect={() =>
-              void onMutate(`/api/users/${user.id}/restore`, 'POST', {
-                expectedVersion: user.version,
-              })
-            }
-          >
-            Восстановить
-          </DropdownMenuItem>
-        ) : null}
-        <DropdownMenuItem
-          onSelect={() =>
-            void onMutate(`/api/users/${user.id}/reset-password`, 'POST', {
-              expectedVersion: user.version,
-            })
-          }
-        >
-          Сбросить пароль
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+              role,
+            });
+          }}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -336,7 +346,7 @@ function CreateUserDialog({
 }) {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState<(typeof USER_ROLES)[number]>('RESPONSIBLE_ENGINEER');
+  const [role, setRole] = useState<(typeof STAFF_ASSIGNABLE_ROLES)[number]>('RESPONSIBLE_ENGINEER');
   return (
     <Dialog open onOpenChange={(open) => (!open ? onClose() : undefined)}>
       <DialogContent>
@@ -373,13 +383,13 @@ function CreateUserDialog({
             <Label htmlFor="new-user-role">Роль</Label>
             <Select
               value={role}
-              onValueChange={(value) => setRole(value as (typeof USER_ROLES)[number])}
+              onValueChange={(value) => setRole(value as (typeof STAFF_ASSIGNABLE_ROLES)[number])}
             >
               <SelectTrigger id="new-user-role">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {USER_ROLES.map((item) => (
+                {STAFF_ASSIGNABLE_ROLES.map((item) => (
                   <SelectItem key={item} value={item}>
                     {roleLabel(item)}
                   </SelectItem>
@@ -394,6 +404,55 @@ function CreateUserDialog({
             <Button type="submit">Создать</Button>
           </DialogFooter>
         </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ChangeRoleDialog({
+  user,
+  onClose,
+  onSave,
+}: {
+  user: UserRow;
+  onClose: () => void;
+  onSave: (role: (typeof STAFF_ASSIGNABLE_ROLES)[number]) => void;
+}) {
+  const initial = STAFF_ASSIGNABLE_ROLES.includes(
+    user.role as (typeof STAFF_ASSIGNABLE_ROLES)[number],
+  )
+    ? (user.role as (typeof STAFF_ASSIGNABLE_ROLES)[number])
+    : 'RESPONSIBLE_ENGINEER';
+  const [role, setRole] = useState<(typeof STAFF_ASSIGNABLE_ROLES)[number]>(initial);
+  return (
+    <Dialog open onOpenChange={(open) => (!open ? onClose() : undefined)}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Изменить роль</DialogTitle>
+        </DialogHeader>
+        <Select
+          value={role}
+          onValueChange={(value) => setRole(value as (typeof STAFF_ASSIGNABLE_ROLES)[number])}
+        >
+          <SelectTrigger aria-label="Новая роль">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {STAFF_ASSIGNABLE_ROLES.map((item) => (
+              <SelectItem key={item} value={item}>
+                {roleLabel(item)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>
+            Отмена
+          </Button>
+          <Button type="button" onClick={() => onSave(role)}>
+            Сохранить
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

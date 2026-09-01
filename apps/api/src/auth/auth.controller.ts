@@ -8,6 +8,7 @@ import { BrowserOriginGuard } from './browser-origin.guard';
 import { clearSessionCookie, sessionCookieSecure, setSessionCookie } from './cookie';
 import { CsrfGuard } from './csrf.guard';
 import { CurrentUser } from './current-user.decorator';
+import { CapabilityGuard, RequireCapability } from '../common/capability.guard';
 
 function writeSessionCookie(reply: FastifyReply, sessionId: string): void {
   const config = loadConfig();
@@ -34,7 +35,8 @@ export class AuthController {
   }
 
   @Get('me')
-  @UseGuards(AuthenticationGuard)
+  @UseGuards(AuthenticationGuard, CapabilityGuard)
+  @RequireCapability('VIEW_OWN_PROFILE')
   me(@CurrentUser() user: AuthenticatedUser): ReturnType<typeof toSafeProfile> {
     return this.authService.me(user);
   }
@@ -47,7 +49,8 @@ export class AuthController {
 
   @Post('change-password')
   @HttpCode(200)
-  @UseGuards(BrowserOriginGuard, AuthenticationGuard, CsrfGuard)
+  @UseGuards(BrowserOriginGuard, AuthenticationGuard, CsrfGuard, CapabilityGuard)
+  @RequireCapability('CHANGE_OWN_PASSWORD')
   async changePassword(
     @CurrentUser() user: AuthenticatedUser,
     @Req() request: FastifyRequest,

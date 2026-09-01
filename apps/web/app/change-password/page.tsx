@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import { postLoginPath } from '@sgr-registry/domain';
 import { fetchCurrentUser } from '../../lib/server-auth';
 import { AppShell } from '../app-shell';
 import { ChangePasswordCard, ChangePasswordForm } from './change-password-form';
@@ -10,13 +11,10 @@ export default async function ChangePasswordPage() {
   if (!user) {
     redirect('/login');
   }
-  if (!user.mustChangePassword) {
-    redirect('/registry');
-  }
   return (
     <AppShell user={user}>
       <ChangePasswordCard>
-        <ChangePasswordForm csrfToken={user.csrfToken} />
+        <ChangePasswordForm csrfToken={user.csrfToken} nextPath={postLoginPath(user.role)} />
       </ChangePasswordCard>
     </AppShell>
   );

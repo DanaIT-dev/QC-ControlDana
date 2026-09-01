@@ -252,6 +252,7 @@ describe('PostgreSQL RLS', () => {
             `${MARKER}.responsible@example.sgr.local`,
             `${MARKER}.other@example.sgr.local`,
             `${MARKER}.contractor@example.sgr.local`,
+            `${MARKER}.super@example.sgr.local`,
           ],
         },
       },
@@ -668,5 +669,133 @@ describe('PostgreSQL RLS', () => {
     expect(leftover).toHaveLength(0);
     const leaked = await appPrisma.actChatMessage.findMany({ where: { actId } });
     expect(leaked).toHaveLength(0);
+  });
+
+  it('isolates SUPER_ADMIN from business data and password hashes', async () => {
+    await owner.user.updateMany({
+      where: { role: 'SUPER_ADMIN', status: 'ACTIVE' },
+      data: { status: 'ARCHIVED', archivedAt: new Date() },
+    });
+    const superAdmin = await owner.user.create({
+      data: {
+        fullName: `${MARKER} super-admin`,
+        email: `${MARKER}.super@example.sgr.local`,
+        role: 'SUPER_ADMIN',
+        sessionVersion: 1,
+      },
+    });
+    try {
+      const denied = await withAuthenticatedDbContext({
+        prisma: appPrisma,
+        secret,
+        user: { id: superAdmin.id, sessionVersion: 1 },
+        callback: async (tx) => ({
+          acts: await tx.act.findMany({ where: { id: { in: [actId, otherActId] } } }),
+          defects: await tx.defectItem.findMany({
+            where: { id: { in: [defectId, otherDefectId] } },
+          }),
+          proposals: await tx.proposal.findMany({
+            where: { id: { in: [proposalAId, proposalBId] } },
+          }),
+          users: await tx.user.findMany(),
+          objects: await tx.propertyObject.findMany({ where: { id: objectId } }),
+          orgs: await tx.organization.findMany({
+            where: { email: `${MARKER}.org@example.sgr.local` },
+          }),
+          audit: await tx.auditLog.findMany({ where: { entityId: actId } }),
+          chat: await tx.actChatMessage.findMany({ where: { actId } }),
+          assignments: await tx.propertyObjectEngineer.findMany({
+            where: { propertyObjectId: objectId },
+          }),
+        }),
+      });
+      expect(denied.acts).toHaveLength(0);
+      expect(denied.defects).toHaveLength(0);
+      expect(denied.proposals).toHaveLength(0);
+      expect(denied.users).toHaveLength(0);
+      expect(denied.objects).toHaveLength(0);
+      expect(denied.orgs).toHaveLength(0);
+      expect(denied.audit).toHaveLength(0);
+      expect(denied.chat).toHaveLength(0);
+      expect(denied.assignments).toHaveLength(0);
+
+      await expect(
+        withAuthenticatedDbContext({
+          prisma: appPrisma,
+          secret,
+          user: { id: superAdmin.id, sessionVersion: 1 },
+          callback: (tx) => tx.act.update({ where: { id: actId }, data: { status: 'CANCELLED' } }),
+        }),
+      ).rejects.toThrow();
+
+      const directory = await withAuthenticatedDbContext({
+        prisma: appPrisma,
+        secret,
+        user: { id: superAdmin.id, sessionVersion: 1 },
+        callback: (tx) =>
+          tx.$queryRaw<Array<Record<string, unknown>>>`
+            SELECT * FROM public.sgr_super_admin_directory('admins', null)
+          `,
+      });
+      expect(directory.some((row) => row.id === adminId)).toBe(true);
+      expect(JSON.stringify(directory)).not.toMatch(/passwordHash/);
+
+      await expect(
+        withAuthenticatedDbContext({
+          prisma: appPrisma,
+          secret,
+          user: { id: superAdmin.id, sessionVersion: 1 },
+          callback: async (tx) => {
+            await tx.$queryRaw`
+              SELECT * FROM public.sgr_grant_admin(${managerId}::uuid, ${1}::int)
+            `;
+            throw new Error('grant-rollback');
+          },
+        }),
+      ).rejects.toThrow('grant-rollback');
+      expect((await owner.user.findUniqueOrThrow({ where: { id: managerId } })).role).toBe(
+        'SGR_MANAGER',
+      );
+    } finally {
+      await owner.user.delete({ where: { id: superAdmin.id } });
+    }
+
+    const hashSelect = await sql(appUrl, 'SELECT "passwordHash" FROM users LIMIT 1');
+    expect(hashSelect.error).toBeTruthy();
+    expect(hashSelect.rows).toHaveLength(0);
+
+    await expect(
+      withAuthenticatedDbContext({
+        prisma: appPrisma,
+        secret,
+        user: { id: adminId, sessionVersion: 1 },
+        callback: (tx) =>
+          tx.user.update({
+            where: { id: managerId },
+            data: { role: 'ADMIN' },
+          }),
+      }),
+    ).rejects.toThrow();
+    expect((await owner.user.findUniqueOrThrow({ where: { id: managerId } })).role).toBe(
+      'SGR_MANAGER',
+    );
+
+    const promoteSql = await withAuthenticatedDbContext({
+      prisma: appPrisma,
+      secret,
+      user: { id: adminId, sessionVersion: 1 },
+      callback: async (tx) => {
+        try {
+          await tx.$executeRaw`UPDATE users SET role = 'SUPER_ADMIN' WHERE id = ${managerId}::uuid`;
+          return 'updated';
+        } catch (error) {
+          return error instanceof Error ? error.message : 'failed';
+        }
+      },
+    });
+    expect(promoteSql).not.toBe('updated');
+    expect((await owner.user.findUniqueOrThrow({ where: { id: managerId } })).role).toBe(
+      'SGR_MANAGER',
+    );
   });
 });

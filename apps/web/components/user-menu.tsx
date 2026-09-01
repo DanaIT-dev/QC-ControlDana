@@ -41,11 +41,9 @@ export function UserMenu({ user }: { user: SafeUserProfile }) {
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        {user.mustChangePassword ? (
-          <DropdownMenuItem asChild>
-            <a href="/change-password">Сменить пароль</a>
-          </DropdownMenuItem>
-        ) : null}
+        <DropdownMenuItem asChild>
+          <a href="/change-password">Сменить пароль</a>
+        </DropdownMenuItem>
         <LogoutMenuItem csrfToken={user.csrfToken} />
       </DropdownMenuContent>
     </DropdownMenu>
@@ -63,6 +61,9 @@ export function MobileUserBlock({ user }: { user: SafeUserProfile }) {
           <p className="truncate text-xs text-muted-foreground">{user.roleLabel}</p>
         </div>
       </div>
+      <Button asChild variant="outline" className="mb-2 min-h-11 w-full">
+        <a href="/change-password">Сменить пароль</a>
+      </Button>
       <Button
         type="button"
         variant="outline"

@@ -226,6 +226,8 @@ describe('role-aware navigation', () => {
     expect(contractor).toEqual(['Реестр', 'Контроль сроков']);
     expect(contractor).not.toContain('Справочники');
     expect(contractor).not.toContain('Создать акт');
+    expect(navItemsForRole('SUPER_ADMIN').map((item) => item.label)).toEqual(['Администраторы']);
+    expect(navItemsForRole('SUPER_ADMIN').map((item) => item.href)).not.toContain('/registry');
   });
 });
 

@@ -15,7 +15,10 @@ export function visibleProposalSlots(role: UserRole): ProposalSlot[] {
   if (role === 'RESPONSIBLE_ENGINEER') {
     return ['A'];
   }
-  return ['A', 'B', 'C'];
+  if (role === 'ADMIN' || role === 'SGR_MANAGER' || role === 'CONTRACTOR_ENGINEER') {
+    return ['A', 'B', 'C'];
+  }
+  return [];
 }
 
 export function canViewProposalASum(role: UserRole): boolean {
