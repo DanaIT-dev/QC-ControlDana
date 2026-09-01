@@ -16,6 +16,8 @@ export const queryKeys = {
   defectItem: defectItemKey,
   history: historyKey,
   attachments: (path: string) => ['attachments', path] as const,
+  actChat: (actId: string) => ['act-chat', actId] as const,
+  actChatMentions: (actId: string, q: string) => ['act-chat-mentions', actId, q] as const,
   notifications: {
     all: ['notifications'] as const,
     unread: ['notifications', 'unread'] as const,

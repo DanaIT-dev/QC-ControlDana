@@ -4,7 +4,7 @@
 
 Монорепозиторий pnpm workspace:
 
-- `apps/web` — Next.js 16, React 19, App Router. Вход, смена пароля, реестр, создание и карточка акта, центр уведомлений, контроль сроков, справочники, пользователи, system-status. Защита маршрутов через `proxy.ts` (не deprecated `middleware`).
+- `apps/web` — Next.js 16, React 19, App Router. Вход, смена пароля, реестр, создание и карточка акта (включая внутреннее обсуждение), центр уведомлений, контроль сроков, справочники, пользователи, system-status. Защита маршрутов через `proxy.ts` (не deprecated `middleware`).
 - `apps/api` — NestJS 11 на Fastify. HTTP API, сессии Redis, CSRF, capability matrix, команды актов/дефектов, read API уведомлений и SLA, создание OutboxEvent, справочники, пользователи, реестр, health/ready. HTTP-процесс не claim outbox, не отправляет email и не регистрирует BullMQ processors.
 - `apps/worker` — отдельный runtime без продуктового HTTP-порта (liveness на `127.0.0.1:WORKER_HEALTH_PORT`). Outbox dispatcher, проекция уведомлений, email, SLA scheduler/evaluator, scan вложений, retry/DEAD, catch-up, heartbeat в Redis.
 - `packages/domain` — чистые типы, инварианты и доменные функции. Без React и Prisma.
@@ -67,6 +67,12 @@ Docker Compose поднимает:
 Роли БД, provisioning и rotation секрета: [RLS_OPERATIONS.md](../security/RLS_OPERATIONS.md), матрица: [RLS_POLICY_MATRIX.md](../security/RLS_POLICY_MATRIX.md).
 
 Интерактивная Prisma-транзакция запроса держит одно PostgreSQL-соединение. Параллельный `Promise.all` и вложенные `include` сериализуются на этом client (не глобальным mutex): иначе `pg@9` отвергнет второй `client.query()`. Разные HTTP-запросы по-прежнему параллельны на разных соединениях пула. RLS-контекст transaction-local; после commit/rollback client не покидает транзакцию и не переносится в ALS.
+
+## Внутренний чат акта
+
+Карточка акта содержит вкладку «Обсуждение» для `ADMIN`, `SGR_MANAGER` и `RESPONSIBLE_ENGINEER` (последнему — только закреплённые объекты). `CONTRACTOR_ENGINEER` не видит UI и получает `403` на API. Сообщения — plain text, без редактирования, удаления и вложений. `@` создаёт только внутреннее уведомление `ACT_CHAT_MENTION` (без SMTP, SMS, Telegram и Web Push). Упоминание не расширяет доступ к акту. Пагинация keyset, обновление — polling открытой вкладки, без WebSocket.
+
+Worker не имеет GRANT на таблицы чата и не читает содержимое переписки.
 
 Worker не держит эту транзакцию на время SMTP, DNS, TLS, MinIO, ClamAV или Redis.
 

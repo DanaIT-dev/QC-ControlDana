@@ -17,6 +17,7 @@ import {
   capabilitiesForRole,
   canAccessReferenceKind,
   canViewAssignedHistory,
+  canViewActChat,
   canViewFullHistory,
   canViewHistory,
   completeDefectItem,
@@ -259,6 +260,7 @@ describe('capabilities', () => {
       'MANAGE_PROPOSALS',
       'VIEW_PROPOSAL_A',
       'VIEW_HISTORY',
+      'VIEW_ACT_CHAT',
       'CANCEL_ACT',
       'VIEW_ATTACHMENTS',
       'UPLOAD_ACT_ATTACHMENT',
@@ -273,6 +275,7 @@ describe('capabilities', () => {
     expect(capabilitiesForRole('SGR_MANAGER')).toContain('CREATE_ACT');
     expect(capabilitiesForRole('SGR_MANAGER')).toContain('VIEW_REFERENCE_DATA');
     expect(capabilitiesForRole('SGR_MANAGER')).toContain('VIEW_HISTORY');
+    expect(capabilitiesForRole('SGR_MANAGER')).toContain('VIEW_ACT_CHAT');
     expect(capabilitiesForRole('SGR_MANAGER')).not.toContain('VIEW_ASSIGNED_HISTORY');
     expect(capabilitiesForRole('SGR_MANAGER')).not.toContain('MANAGE_USERS');
     expect(capabilitiesForRole('RESPONSIBLE_ENGINEER')).toEqual([
@@ -289,6 +292,7 @@ describe('capabilities', () => {
       'REOPEN_DEFECT',
       'VIEW_PROPOSAL_A',
       'VIEW_ASSIGNED_HISTORY',
+      'VIEW_ACT_CHAT',
       'VIEW_ATTACHMENTS',
       'UPLOAD_ACT_ATTACHMENT',
       'UPLOAD_DEFECT_ATTACHMENT',
@@ -314,6 +318,11 @@ describe('capabilities', () => {
     expect(canViewFullHistory('SGR_MANAGER')).toBe(true);
     expect(canViewAssignedHistory('RESPONSIBLE_ENGINEER')).toBe(true);
     expect(canViewHistory('CONTRACTOR_ENGINEER')).toBe(false);
+    expect(canViewActChat('ADMIN')).toBe(true);
+    expect(canViewActChat('SGR_MANAGER')).toBe(true);
+    expect(canViewActChat('RESPONSIBLE_ENGINEER')).toBe(true);
+    expect(canViewActChat('CONTRACTOR_ENGINEER')).toBe(false);
+    expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('VIEW_ACT_CHAT');
     expect(roleLabel('ADMIN')).toBe('Администратор');
   });
 });

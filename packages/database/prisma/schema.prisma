@@ -102,6 +102,8 @@ model User {
   auditLogs             AuditLog[]
   idempotencyRecords    IdempotencyRecord[]
   notificationRecipients NotificationRecipient[]
+  actChatMessages       ActChatMessage[]
+  actChatMentions       ActChatMention[]
 
   @@index([role, status])
   @@index([status, createdAt])
@@ -250,11 +252,42 @@ model Act {
   defectItems    DefectItem[]
   attachments    Attachment[]
   notificationEvents NotificationEvent[]
+  chatMessages   ActChatMessage[]
 
   @@unique([formCode, year, sequence])
   @@index([objectId])
   @@index([customerOrganizationId])
   @@map("acts")
+}
+
+model ActChatMessage {
+  id              String   @id @default(uuid()) @db.Uuid
+  actId           String   @db.Uuid
+  authorId        String   @db.Uuid
+  body            String
+  clientMessageId String   @db.Uuid
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+
+  act      Act              @relation(fields: [actId], references: [id], onDelete: Restrict)
+  author   User             @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  mentions ActChatMention[]
+
+  @@unique([authorId, clientMessageId])
+  @@index([actId, createdAt, id])
+  @@map("act_chat_messages")
+}
+
+model ActChatMention {
+  messageId String   @db.Uuid
+  userId    String   @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  message ActChatMessage @relation(fields: [messageId], references: [id], onDelete: Restrict)
+  user    User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@id([messageId, userId])
+  @@index([userId])
+  @@map("act_chat_mentions")
 }
 
 model ActNumberSequence {

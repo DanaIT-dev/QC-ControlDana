@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BellIcon } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { notificationDestination } from '@sgr-registry/domain';
 import {
   fetchNotifications,
   fetchUnreadCount,
@@ -46,18 +47,19 @@ export function NotificationBell({ csrfToken }: { csrfToken: string }) {
   const count = unread.data?.count ?? 0;
   const items = recent.data?.items.slice(0, 8) ?? [];
 
-  async function openItem(item: { id: string; actId: string | null; defectItemId: string | null }) {
+  async function openItem(item: {
+    id: string;
+    type: string;
+    actId: string | null;
+    defectItemId: string | null;
+  }) {
     try {
       await markRead.mutateAsync(item.id);
     } catch {
       /* 404 is handled by the destination */
     }
-    if (!item.actId) {
-      router.push('/notifications');
-      return;
-    }
-    const defect = item.defectItemId ? `?defect=${item.defectItemId}` : '';
-    router.push(`/acts/${item.actId}${defect}`);
+    const href = notificationDestination(item);
+    router.push(href ?? '/notifications');
   }
 
   return (

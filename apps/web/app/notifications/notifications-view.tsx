@@ -6,6 +6,7 @@ import { PageHeader } from '@/components/page-header';
 import { EmptyState, ErrorState, TableSkeleton } from '@/components/states';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { notificationDestination } from '@sgr-registry/domain';
 import {
   fetchNotifications,
   markAllNotificationsRead,
@@ -43,17 +44,21 @@ export function NotificationsView({ csrfToken }: { csrfToken: string }) {
     router.replace(`/notifications${search.toString() ? `?${search}` : ''}`);
   }
 
-  async function openItem(item: { id: string; actId: string | null; defectItemId: string | null }) {
+  async function openItem(item: {
+    id: string;
+    type: string;
+    actId: string | null;
+    defectItemId: string | null;
+  }) {
     try {
       await markRead.mutateAsync(item.id);
     } catch {
       /* destination handles missing access */
     }
-    if (!item.actId) {
-      return;
+    const href = notificationDestination(item);
+    if (href) {
+      router.push(href);
     }
-    const defect = item.defectItemId ? `?defect=${item.defectItemId}` : '';
-    router.push(`/acts/${item.actId}${defect}`);
   }
 
   const totalPages = list.data ? Math.max(1, Math.ceil(list.data.total / list.data.pageSize)) : 1;

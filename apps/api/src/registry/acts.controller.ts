@@ -21,6 +21,8 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { CapabilityGuard, RequireCapability } from '../common/capability.guard';
 import { OperationsService } from '../operations/operations.service';
 import { RegistryService } from './registry.service';
+import { ActChatService } from './act-chat.service';
+import { ActChatRateLimitGuard } from './act-chat-rate-limit.guard';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -30,6 +32,7 @@ export class ActsController {
   constructor(
     @Inject(RegistryService) private readonly registryService: RegistryService,
     @Inject(OperationsService) private readonly operationsService: OperationsService,
+    @Inject(ActChatService) private readonly actChatService: ActChatService,
   ) {}
 
   @Post()
@@ -42,6 +45,41 @@ export class ActsController {
     @Req() request: FastifyRequest,
   ) {
     return this.operationsService.createAct(user, body, request);
+  }
+
+  @Get(':actId/chat/mention-candidates')
+  @UseGuards(CapabilityGuard)
+  @RequireCapability('VIEW_ACT_CHAT')
+  chatMentionCandidates(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('actId') actId: string,
+    @Query() query: Record<string, unknown>,
+  ) {
+    return this.actChatService.mentionCandidates(user, actId, query);
+  }
+
+  @Get(':actId/chat')
+  @UseGuards(CapabilityGuard)
+  @RequireCapability('VIEW_ACT_CHAT')
+  chatList(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('actId') actId: string,
+    @Query() query: Record<string, unknown>,
+  ) {
+    return this.actChatService.list(user, actId, query);
+  }
+
+  @Post(':actId/chat')
+  @HttpCode(201)
+  @UseGuards(BrowserOriginGuard, CsrfGuard, CapabilityGuard, ActChatRateLimitGuard)
+  @RequireCapability('VIEW_ACT_CHAT')
+  createChatMessage(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('actId') actId: string,
+    @Body() body: unknown,
+    @Req() request: FastifyRequest,
+  ) {
+    return this.actChatService.create(user, actId, body, request);
   }
 
   @Get(':actId/history')

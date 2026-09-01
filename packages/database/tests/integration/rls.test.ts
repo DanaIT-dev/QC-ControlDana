@@ -226,6 +226,12 @@ describe('PostgreSQL RLS', () => {
     }
     const actIds = ids(actId, otherActId);
     if (actIds.length > 0) {
+      await owner.actChatMention.deleteMany({ where: { message: { actId: { in: actIds } } } });
+      await owner.actChatMessage.deleteMany({ where: { actId: { in: actIds } } });
+      await owner.notificationRecipient.deleteMany({
+        where: { event: { actId: { in: actIds } } },
+      });
+      await owner.notificationEvent.deleteMany({ where: { actId: { in: actIds } } });
       await owner.act.deleteMany({ where: { id: { in: actIds } } });
     }
     if (assignmentId) {
@@ -510,5 +516,87 @@ describe('PostgreSQL RLS', () => {
       inserted.id,
     ]);
     expect(updated.error).toBeTruthy();
+  });
+
+  it('hides act chat from contractors and unverified connections', async () => {
+    const created = await withAuthenticatedDbContext({
+      prisma: appPrisma,
+      secret,
+      user: { id: adminId, sessionVersion: 1 },
+      callback: async (tx) =>
+        tx.actChatMessage.create({
+          data: {
+            actId,
+            authorId: adminId,
+            body: 'Внутреннее сообщение',
+            clientMessageId: randomUUID(),
+          },
+        }),
+    });
+    const open = await sql(appUrl, 'SELECT id FROM act_chat_messages WHERE id = $1', [created.id]);
+    expect(open.rows).toHaveLength(0);
+    const contractorRows = await withAuthenticatedDbContext({
+      prisma: appPrisma,
+      secret,
+      user: { id: contractorId, sessionVersion: 1 },
+      callback: (tx) => tx.actChatMessage.findMany({ where: { actId } }),
+    });
+    expect(contractorRows).toHaveLength(0);
+    const responsibleRows = await withAuthenticatedDbContext({
+      prisma: appPrisma,
+      secret,
+      user: { id: responsibleId, sessionVersion: 1 },
+      callback: (tx) => tx.actChatMessage.findMany({ where: { actId } }),
+    });
+    expect(responsibleRows).toHaveLength(1);
+    const foreignRows = await withAuthenticatedDbContext({
+      prisma: appPrisma,
+      secret,
+      user: { id: otherResponsibleId, sessionVersion: 1 },
+      callback: (tx) => tx.actChatMessage.findMany({ where: { actId } }),
+    });
+    expect(foreignRows).toHaveLength(0);
+    const updated = await sql(appUrl, 'UPDATE act_chat_messages SET body = $1 WHERE id = $2', [
+      'tamper',
+      created.id,
+    ]);
+    expect(updated.error).toBeTruthy();
+    const deleted = await sql(appUrl, 'DELETE FROM act_chat_messages WHERE id = $1', [created.id]);
+    expect(deleted.error).toBeTruthy();
+    const workerChat = await sql(workerUrl, 'SELECT id FROM act_chat_messages WHERE id = $1', [
+      created.id,
+    ]);
+    expect(workerChat.error).toBeTruthy();
+  });
+
+  it('rolls back chat rows together with mentions and does not leak RLS context', async () => {
+    const clientMessageId = randomUUID();
+    await expect(
+      withAuthenticatedDbContext({
+        prisma: appPrisma,
+        secret,
+        user: { id: adminId, sessionVersion: 1 },
+        callback: async (tx) => {
+          const message = await tx.actChatMessage.create({
+            data: {
+              actId,
+              authorId: adminId,
+              body: 'Откат',
+              clientMessageId,
+            },
+          });
+          await tx.actChatMention.create({
+            data: { messageId: message.id, userId: managerId },
+          });
+          throw new Error('chat-rollback');
+        },
+      }),
+    ).rejects.toThrow('chat-rollback');
+    const leftover = await owner.actChatMessage.findMany({
+      where: { clientMessageId },
+    });
+    expect(leftover).toHaveLength(0);
+    const leaked = await appPrisma.actChatMessage.findMany({ where: { actId } });
+    expect(leaked).toHaveLength(0);
   });
 });

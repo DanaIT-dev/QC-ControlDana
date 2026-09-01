@@ -78,6 +78,18 @@ RESPONSIBLE не мутирует Proposal, получает только A (о�
 
 `GET /api/acts/:actId/history` требует `VIEW_HISTORY` или `VIEW_ASSIGNED_HISTORY` до выборки журнала. `CONTRACTOR_ENGINEER` получает `403` на историю акта, дефекта, предложения, пользователей и `/api/audit-log`; тело ошибки не содержит события, авторов и `totalCount`. Действия подрядчика продолжают записываться в AuditLog и доступны ADMIN и SGR_MANAGER. RESPONSIBLE видит историю всех дефектов актов закреплённых объектов; чужой объект → тот же безопасный `404`, B/C в истории нет.
 
+## Внутреннее обсуждение акта
+
+Чат — внутренний рабочий канал карточки акта, не email.
+
+- `GET /api/acts/:actId/chat` — keyset, по умолчанию последние 30 сообщений
+- `POST /api/acts/:actId/chat` — `{ body, mentionedUserIds, clientMessageId }`, strict DTO
+- `GET /api/acts/:actId/chat/mention-candidates?q=`
+
+`ADMIN` и `SGR_MANAGER` читают и пишут. `RESPONSIBLE_ENGINEER` — только акты закреплённого объекта (`PropertyObjectEngineer.unassignedAt IS NULL`). `CONTRACTOR_ENGINEER` — `403`, вкладки нет. Неавторизованный — `401`. Чужой акт — безопасный `404`.
+
+Сервер ставит `authorId`. Повтор с тем же `clientMessageId` идемпотентен (уникальность `(authorId, clientMessageId)`). Сообщение, mentions, внутренние уведомления `ACT_CHAT_MENTION` и AuditLog `ACT_CHAT_MESSAGE_CREATED` пишутся атомарно. Полный текст в AuditLog не копируется. SMTP/outbox/SMS/Telegram/Web Push для чата не создаются. Сообщения не редактируются и не удаляются. Упоминание не выдаёт доступ к акту. Кандидаты `@`: активные ADMIN, SGR_MANAGER и ответственные инженеры этого объекта; подрядчики и чужие объекты не раскрываются.
+
 ## Optimistic concurrency
 
 Изменяемые сущности имеют `version`. Команда передаёт `expectedVersion`. Конфликт → `409 STALE_WRITE`, AuditLog не пишется.

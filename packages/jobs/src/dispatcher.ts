@@ -270,6 +270,10 @@ export class NotificationDispatcher {
     try {
       const payload = claimed.payload as OutboxPayload;
       assertSafeNotificationPayload(payload);
+      if (payload.type === 'ACT_CHAT_MENTION') {
+        await this.markProcessed(claimed.id);
+        return { deliveryIds: [] };
+      }
       if (payload.kind && payload.cycle !== undefined && payload.deadline !== undefined) {
         if (!payload.defectItemId) {
           await this.markProcessed(claimed.id);

@@ -1,11 +1,12 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { canViewProposalGroupBC, canViewHistory } from '@sgr-registry/domain';
+import { canViewProposalGroupBC, canViewHistory, canViewActChat } from '@sgr-registry/domain';
 import type { SafeUserProfile } from '@sgr-registry/contracts';
 import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { DeadlineBadge, StatusBadge } from '@/components/status-badge';
 import { ErrorState } from '@/components/states';
 import { Badge } from '@/components/ui/badge';
@@ -26,6 +27,7 @@ import { fetchActDetail } from '../../../lib/registry-api';
 import { formatCalendarDate, formatTimestamp, isSafeDocumentHref } from '../../../lib/registry-url';
 import { queryKeys } from '../../../lib/query-keys';
 import { ActHistory, ActOperations } from './act-operations';
+import { ActDiscussion } from './act-discussion';
 import { AttachmentsPanel } from '@/components/attachments-panel';
 import { ProposalValue, proposalSlotOf } from '@/components/proposal-value';
 import { cn } from '@/lib/utils';
@@ -34,9 +36,11 @@ import type { ReactNode } from 'react';
 export function ActDetailView({ actId, user }: { actId: string; user: SafeUserProfile }) {
   const params = useSearchParams();
   const highlighted = params.get('defect');
+  const requestedTab = params.get('tab');
   const backQuery = (() => {
     const copy = new URLSearchParams(params.toString());
     copy.delete('defect');
+    copy.delete('tab');
     const encoded = copy.toString();
     return encoded ? `/registry?${encoded}` : '/registry';
   })();
@@ -45,6 +49,23 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
     queryFn: () => fetchActDetail(actId),
     retry: false,
   });
+  const showChat = canViewActChat(user.role);
+  const [tab, setTab] = useState(() =>
+    requestedTab === 'discussion' && showChat ? 'discussion' : 'defects',
+  );
+
+  useEffect(() => {
+    if (requestedTab === 'discussion' && showChat) {
+      setTab('discussion');
+    }
+  }, [requestedTab, showChat]);
+
+  useEffect(() => {
+    if (tab !== 'discussion' || !detailQuery.data) {
+      return;
+    }
+    document.getElementById('act-discussion')?.scrollIntoView({ block: 'start' });
+  }, [tab, detailQuery.data?.id]);
 
   if (detailQuery.isLoading) {
     return (
@@ -67,7 +88,7 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
   const showHistory = canViewHistory(user.role);
 
   return (
-    <article className="act-detail grid gap-4">
+    <article className="act-detail grid min-w-0 max-w-full gap-4">
       <Breadcrumb>
         <BreadcrumbList>
           <BreadcrumbItem>
@@ -141,12 +162,16 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
         canUpload={user.role === 'ADMIN' || user.role === 'SGR_MANAGER'}
         csrfToken={user.csrfToken}
       />
-      <Tabs defaultValue="defects">
-        <TabsList>
+      <Tabs value={tab} onValueChange={setTab} className="min-w-0 max-w-full">
+        <TabsList className="h-auto min-h-8 w-full max-w-full flex-wrap justify-start">
           <TabsTrigger value="defects">Дефекты</TabsTrigger>
+          {showChat ? <TabsTrigger value="discussion">Обсуждение</TabsTrigger> : null}
           {showHistory ? <TabsTrigger value="history">История изменений</TabsTrigger> : null}
         </TabsList>
-        <TabsContent value="defects" className="mt-4 grid gap-3">
+        <TabsContent
+          value="defects"
+          className="mt-4 grid flex-none gap-3 data-[state=inactive]:hidden"
+        >
           {act.defectItems.map((item) => (
             <Card
               key={item.id}
@@ -271,8 +296,18 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
             </Card>
           ))}
         </TabsContent>
+        {showChat ? (
+          <TabsContent
+            value="discussion"
+            className="mt-4 min-w-0 flex-none data-[state=inactive]:hidden"
+          >
+            {tab === 'discussion' ? (
+              <ActDiscussion actId={act.id} csrfToken={user.csrfToken} />
+            ) : null}
+          </TabsContent>
+        ) : null}
         {showHistory ? (
-          <TabsContent value="history" className="mt-4">
+          <TabsContent value="history" className="mt-4 flex-none data-[state=inactive]:hidden">
             <ActHistory actId={act.id} />
           </TabsContent>
         ) : null}

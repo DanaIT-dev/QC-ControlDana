@@ -32,3 +32,4 @@ export * from './email-content';
 export * from './outbox';
 export * from './notification-settings';
 export * from './worker-heartbeat';
+export * from './chat';

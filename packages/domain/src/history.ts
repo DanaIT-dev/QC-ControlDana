@@ -30,6 +30,7 @@ export const AUDIT_ACTIONS = [
   'ATTACHMENT_REJECTED',
   'ATTACHMENT_SCAN_FAILED',
   'ATTACHMENT_ARCHIVED',
+  'ACT_CHAT_MESSAGE_CREATED',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
@@ -62,6 +63,7 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction | string, string> = {
   ATTACHMENT_REJECTED: 'Вложение отклонено',
   ATTACHMENT_SCAN_FAILED: 'Не удалось проверить вложение',
   ATTACHMENT_ARCHIVED: 'Вложение архивировано',
+  ACT_CHAT_MESSAGE_CREATED: 'Сообщение в обсуждении акта',
   LOGIN_SUCCEEDED: 'Вход выполнен',
   LOGIN_FAILED: 'Неудачная попытка входа',
   LOGIN_RATE_LIMITED: 'Превышен лимит попыток входа',
@@ -131,6 +133,9 @@ export function historyVisibleToRole(
     return false;
   }
   if (HEADER_ACTIONS.has(event.action) && event.entityId === input.actId) {
+    return true;
+  }
+  if (event.action === 'ACT_CHAT_MESSAGE_CREATED' && event.parentEntityId === input.actId) {
     return true;
   }
   if (ATTACHMENT_ACTIONS.has(event.action)) {

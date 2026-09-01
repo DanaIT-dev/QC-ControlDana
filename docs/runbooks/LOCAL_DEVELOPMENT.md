@@ -42,6 +42,8 @@ pnpm db:seed
 
 Не используйте bootstrap `sgr_registry` в `DATABASE_URL` / `AUTH_DATABASE_URL` / `WORKER_DATABASE_URL`. Seed и migrate — `MIGRATION_DATABASE_URL`. Development-базу не reset-ьте ради RLS.
 
+Внутренний чат акта не требует SMTP: Mailpit можно не открывать, чтобы проверить `@` упоминания. Worker по-прежнему нужен для остальных уведомлений и SLA.
+
 Порты PostgreSQL, Redis, MinIO, Mailpit и ClamAV публикуются только на `127.0.0.1`. Проверка:
 
 ```bash

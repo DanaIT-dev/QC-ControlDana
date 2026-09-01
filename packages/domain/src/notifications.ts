@@ -33,6 +33,7 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
   SLA_WARNING: 'Приближается срок',
   SLA_DUE_TODAY: 'Срок сегодня',
   SLA_OVERDUE: 'Просрочка срока',
+  ACT_CHAT_MENTION: 'Упоминание в обсуждении акта',
 };
 
 export function buildOccurrenceKey(parts: Array<string | number | null | undefined>): string {

@@ -6,3 +6,4 @@ export * from './operations';
 export * from './attachments';
 export * from './notifications';
 export * from './sla';
+export * from './chat';

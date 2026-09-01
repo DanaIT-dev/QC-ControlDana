@@ -20,6 +20,7 @@ export const CAPABILITIES = [
   'VIEW_PROPOSAL_A',
   'VIEW_HISTORY',
   'VIEW_ASSIGNED_HISTORY',
+  'VIEW_ACT_CHAT',
   'CANCEL_ACT',
   'VIEW_ATTACHMENTS',
   'UPLOAD_ACT_ATTACHMENT',
@@ -53,6 +54,7 @@ const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
     'MANAGE_PROPOSALS',
     'VIEW_PROPOSAL_A',
     'VIEW_HISTORY',
+    'VIEW_ACT_CHAT',
     'CANCEL_ACT',
     'VIEW_ATTACHMENTS',
     'UPLOAD_ACT_ATTACHMENT',
@@ -80,6 +82,7 @@ const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
     'MANAGE_PROPOSALS',
     'VIEW_PROPOSAL_A',
     'VIEW_HISTORY',
+    'VIEW_ACT_CHAT',
     'CANCEL_ACT',
     'VIEW_ATTACHMENTS',
     'UPLOAD_ACT_ATTACHMENT',
@@ -117,6 +120,7 @@ const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
     'REOPEN_DEFECT',
     'VIEW_PROPOSAL_A',
     'VIEW_ASSIGNED_HISTORY',
+    'VIEW_ACT_CHAT',
     'VIEW_ATTACHMENTS',
     'UPLOAD_ACT_ATTACHMENT',
     'UPLOAD_DEFECT_ATTACHMENT',
@@ -147,6 +151,7 @@ export const CAPABILITY_LABELS: Record<Capability, string> = {
   VIEW_PROPOSAL_A: 'Просмотр предложения A',
   VIEW_HISTORY: 'Просмотр полной истории изменений',
   VIEW_ASSIGNED_HISTORY: 'Просмотр истории закреплённых объектов',
+  VIEW_ACT_CHAT: 'Обсуждение акта',
   CANCEL_ACT: 'Аннулирование актов',
   VIEW_ATTACHMENTS: 'Просмотр вложений',
   UPLOAD_ACT_ATTACHMENT: 'Загрузка документов акта',
@@ -214,4 +219,8 @@ export function canViewAssignedHistory(role: UserRole): boolean {
 
 export function canViewHistory(role: UserRole): boolean {
   return canViewFullHistory(role) || canViewAssignedHistory(role);
+}
+
+export function canViewActChat(role: UserRole): boolean {
+  return hasCapability(role, 'VIEW_ACT_CHAT');
 }

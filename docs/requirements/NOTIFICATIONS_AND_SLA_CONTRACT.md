@@ -106,6 +106,8 @@ Development/test: Mailpit (`axllent/mailpit:v1.27.10@sha256:b1f1be18af530d939a11
 - `GET /api/sla/summary`, `GET /api/sla/items`
 - `GET/PATCH /api/system/notification-settings` (ADMIN / `MANAGE_NOTIFICATION_SETTINGS`)
 
+Упоминание в чате акта создаёт внутреннее уведомление `ACT_CHAT_MENTION` в той же транзакции, что и сообщение. Получатель — упомянутый сотрудник (не автор). Ссылка: `/acts/:actId?tab=discussion`. Повторный клик проверяет текущий доступ к акту. Email, SMTP outbox, SMS, Telegram и Web Push для чата не используются. Идемпотентный retry с тем же `clientMessageId` не создаёт второе уведомление.
+
 Scope в SQL. SMTP password нельзя прочитать даже ADMIN. Stale settings → 409. CSRF + session + mustChangePassword. Unknown fields → 400.
 
 ## UI

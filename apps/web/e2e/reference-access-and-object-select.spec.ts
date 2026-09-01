@@ -66,9 +66,11 @@ test.describe('reference access and linked object selection', () => {
     await expect(page.getByRole('button', { name: 'Создать' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Архивировать' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Восстановить' })).toHaveCount(0);
+    await page.getByLabel('Поиск справочника').fill('Северный парк');
     await expect(page.getByText('ЖК «Северный парк» (демо)').first()).toBeVisible();
     await expect(page.getByText('г. Минск, ул. Вымышленная, 1').first()).toBeVisible();
     await page.getByRole('tab', { name: 'Организации' }).click();
+    await page.getByLabel('Поиск справочника').fill('Северная инвестиционная');
     await expect(
       page.getByText('ОАО «Северная инвестиционная группа» (демо)').first(),
     ).toBeVisible();
@@ -198,6 +200,7 @@ test.describe('reference access and linked object selection', () => {
     await page.getByRole('option', { name: /Дмитрий Орлов/ }).click();
     await page.keyboard.press('Escape');
     await page.getByRole('dialog').getByRole('button', { name: 'Создать' }).click();
+    await page.getByLabel('Поиск справочника').fill(String(stamp));
     await expect(page.getByRole('cell', { name: `Е2Е объект инженеры ${stamp}` })).toBeVisible();
     await expect(page.getByText('Дмитрий Орлов').first()).toBeVisible();
     expect(applicationErrors(errors)).toEqual([]);

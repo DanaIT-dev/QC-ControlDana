@@ -6,6 +6,7 @@ describe('act query-key factory', () => {
     const actId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb01';
     expect(historyKey(actId)).toEqual(['history', actId]);
     expect(queryKeys.history(actId)).toEqual(historyKey(actId));
+    expect(queryKeys.actChat(actId)).toEqual(['act-chat', actId]);
     expect(actKey(actId)).toEqual(['act', actId]);
     expect(defectItemKey('cccccccc-cccc-4ccc-8ccc-cccccccccc01')).toEqual([
       'defect',

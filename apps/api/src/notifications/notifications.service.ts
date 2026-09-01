@@ -199,14 +199,19 @@ export class NotificationsService {
       userId: user.id,
       revokedAt: null,
       event: {
-        OR: [
-          { defectItem: scope.defectItemWhere() },
+        AND: [
+          user.role === 'CONTRACTOR_ENGINEER' ? { type: { not: 'ACT_CHAT_MENTION' } } : {},
           {
-            defectItemId: null,
-            act: {
-              status: { not: 'CANCELLED' as const },
-              ...(scope.objectScoped ? { propertyObject: scope.assignedObjectWhere() } : {}),
-            },
+            OR: [
+              { defectItem: scope.defectItemWhere() },
+              {
+                defectItemId: null,
+                act: {
+                  status: { not: 'CANCELLED' as const },
+                  ...(scope.objectScoped ? { propertyObject: scope.assignedObjectWhere() } : {}),
+                },
+              },
+            ],
           },
         ],
       },
