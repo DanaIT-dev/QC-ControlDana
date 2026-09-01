@@ -1,6 +1,6 @@
 'use client';
 
-import { isPasswordPolicySatisfied, PASSWORD_MIN_LENGTH } from '@sgr-registry/domain';
+import { isPasswordPolicySatisfied, PASSWORD_POLICY_HINT } from '@sgr-registry/domain';
 import { EyeIcon, EyeOffIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { type ReactNode, type SyntheticEvent, useId, useState } from 'react';
@@ -14,9 +14,13 @@ import { ApiError, commandFetch } from '../../lib/command-api';
 
 export function ChangePasswordForm({
   csrfToken,
+  email,
+  fullName,
   nextPath = '/registry',
 }: {
   csrfToken: string;
+  email: string;
+  fullName: string;
   nextPath?: string;
 }) {
   const router = useRouter();
@@ -29,7 +33,7 @@ export function ChangePasswordForm({
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [success, setSuccess] = useState(false);
-  const policyOk = isPasswordPolicySatisfied(newPassword);
+  const policyOk = isPasswordPolicySatisfied(newPassword, { email, fullName });
 
   async function onSubmit(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -99,14 +103,12 @@ export function ChangePasswordForm({
           </Button>
         </div>
       </div>
-      <ul className="grid gap-1 text-[13px] text-muted-foreground">
-        <li>Не менее {PASSWORD_MIN_LENGTH} символов</li>
-        <li>Заглавная и строчная буква</li>
-        <li>Цифра и спецсимвол</li>
-        <li className={policyOk ? 'text-success-foreground' : ''}>
-          {policyOk ? 'Требования выполнены' : 'Пароль пока не соответствует политике'}
-        </li>
-      </ul>
+      <p className="text-[13px] text-muted-foreground">{PASSWORD_POLICY_HINT}</p>
+      <p
+        className={`text-[13px] ${policyOk ? 'text-success-foreground' : 'text-muted-foreground'}`}
+      >
+        {policyOk ? 'Требования выполнены' : 'Пароль пока не соответствует политике'}
+      </p>
       {error ? (
         <Alert variant="destructive" className="form-error">
           <AlertDescription>{error}</AlertDescription>
@@ -130,9 +132,7 @@ export function ChangePasswordCard({ children }: { children: ReactNode }) {
       <Card className="w-full max-w-[440px] shadow-none">
         <CardHeader>
           <CardTitle className="text-2xl font-semibold">Смена временного пароля</CardTitle>
-          <CardDescription>
-            Перед работой в реестре задайте новый пароль по политике сложности.
-          </CardDescription>
+          <CardDescription>Перед работой в реестре задайте новый пароль.</CardDescription>
         </CardHeader>
         <CardContent>{children}</CardContent>
       </Card>

@@ -4,13 +4,19 @@ import { resolve } from 'node:path';
 import { ForbiddenException, HttpException, UnauthorizedException } from '@nestjs/common';
 import type { ExecutionContext } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
-import { AUTH_LOGIN_FAILED_MESSAGE, capabilitiesForRole } from '@sgr-registry/domain';
+import {
+  AUTH_LOGIN_FAILED_MESSAGE,
+  capabilitiesForRole,
+  isPasswordPolicySatisfied,
+  PasswordPolicyError,
+} from '@sgr-registry/domain';
 import { AuthenticationGuard } from '../../src/auth/authentication.guard';
 import { AuthService } from '../../src/auth/auth.service';
 import {
   generateOpaqueToken,
   generateTemporaryPassword,
   hashArgon2id,
+  hashPassword,
   hashSessionId,
   safeEqual,
   TEMPORARY_PASSWORD_ALPHABET,
@@ -42,6 +48,21 @@ describe('Argon2id', () => {
     const hash = await hashArgon2id(password, argonOptions);
     expect(hash).toContain('argon2id');
     expect(await verifyPassword(hash, password)).toBe(true);
+  });
+
+  it('hashes an eight-character lowercase password with Argon2id', async () => {
+    const password = 'treefrog';
+    const hash = await hashPassword(password, argonOptions);
+    expect(hash).toContain('argon2id');
+    expect(await verifyPassword(hash, password)).toBe(true);
+    expect(await verifyPassword(hash, 'TREEFROG')).toBe(false);
+  });
+
+  it('rejects a password that fails the shared policy before hashing', async () => {
+    await expect(hashPassword('abcdefg', argonOptions)).rejects.toBeInstanceOf(PasswordPolicyError);
+    await expect(hashPassword('password', argonOptions)).rejects.toBeInstanceOf(
+      PasswordPolicyError,
+    );
   });
 
   it('rejects an incorrect password', async () => {
@@ -254,9 +275,10 @@ describe('capabilities contract', () => {
 });
 
 describe('temporary password generation', () => {
-  it('produces a password that satisfies the policy', () => {
+  it('produces a password that satisfies the shared policy', () => {
     const password = generateTemporaryPassword();
-    expect(password.length).toBeGreaterThanOrEqual(12);
+    expect(password.length).toBeGreaterThanOrEqual(16);
+    expect(isPasswordPolicySatisfied(password)).toBe(true);
     expect(/[A-Z]/.test(password)).toBe(true);
     expect(/[a-z]/.test(password)).toBe(true);
     expect(/\d/.test(password)).toBe(true);
@@ -266,6 +288,8 @@ describe('temporary password generation', () => {
   it('keeps the contracted length and alphabet and uses CSPRNG without modulo bias', () => {
     const source = readFileSync(resolve(import.meta.dirname, '../../src/auth/crypto.ts'), 'utf8');
     expect(source).toMatch(/randomInt\(/);
+    expect(source).toMatch(/isPasswordPolicySatisfied\(password, context\)/);
+    expect(source).toMatch(/assertPasswordPolicy\(password, \{ email: options.email/);
     expect(source).not.toMatch(/Math\.random/);
     expect(source).not.toMatch(/% alphabet\.length/);
     expect(source).not.toMatch(/% \(i \+ 1\)/);

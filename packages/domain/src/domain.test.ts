@@ -226,18 +226,72 @@ describe('email normalization', () => {
 });
 
 describe('password policy', () => {
-  it('accepts a sufficiently complex password and rejects short or overlong values', () => {
-    expect(isPasswordPolicySatisfied('Dana-SGR-Demo-2026!')).toBe(true);
-    expect(isPasswordPolicySatisfied('short1A!')).toBe(false);
-    expect(isPasswordPolicySatisfied(`${'Aa1!'.repeat(33)}`)).toBe(false);
-    expect(() => assertPasswordPolicy('nouppercase1!')).toThrow(PasswordPolicyError);
+  const allowed = 'treefrog';
+  const context = {
+    email: 'alexey.viktorov@example.sgr.local',
+    fullName: 'Алексей Викторов',
+  };
+
+  it('accepts eight lowercase letters that are not blocked', () => {
+    expect(isPasswordPolicySatisfied(allowed)).toBe(true);
+    expect(() => assertPasswordPolicy(allowed, context)).not.toThrow();
   });
 
-  it('does not silently trim leading or trailing spaces', () => {
-    const withSpaces = '  Dana-SGR-Demo-2026!  ';
+  it('accepts lowercase letters with digits and does not require uppercase or special characters', () => {
+    expect(isPasswordPolicySatisfied('tree1234')).toBe(true);
+    expect(isPasswordPolicySatisfied('nouppercase1!')).toBe(true);
+    expect(isPasswordPolicySatisfied('тетрадка')).toBe(true);
+    expect(isPasswordPolicySatisfied('TreeFrog!')).toBe(true);
+    expect(isPasswordPolicySatisfied('Dana-SGR-Demo-2026!')).toBe(true);
+  });
+
+  it('rejects seven characters and 129 characters', () => {
+    expect(isPasswordPolicySatisfied('abcdefg')).toBe(false);
+    expect(() => assertPasswordPolicy('abcdefg')).toThrow(PasswordPolicyError);
+    expect(isPasswordPolicySatisfied(`${allowed}${'xy'.repeat(60)}z`)).toBe(false);
+  });
+
+  it('rejects common passwords, identical characters, and obvious sequences', () => {
+    expect(() => assertPasswordPolicy('password')).toThrow(PasswordPolicyError);
+    expect(() => assertPasswordPolicy('qwertyui')).toThrow(PasswordPolicyError);
+    expect(() => assertPasswordPolicy('12345678')).toThrow(PasswordPolicyError);
+    expect(() => assertPasswordPolicy('admin123')).toThrow(PasswordPolicyError);
+    expect(() => assertPasswordPolicy('aaaaaaaa')).toThrow(PasswordPolicyError);
+    expect(() => assertPasswordPolicy('abcdefgh')).toThrow(PasswordPolicyError);
+    expect(() => assertPasswordPolicy('87654321')).toThrow(PasswordPolicyError);
+  });
+
+  it('rejects a password that matches email or an obvious name part', () => {
+    expect(() => assertPasswordPolicy('alexey.viktorov', context)).toThrow(PasswordPolicyError);
+    expect(() => assertPasswordPolicy(context.email, context)).toThrow(PasswordPolicyError);
+    expect(() => assertPasswordPolicy('Викторов', context)).toThrow(PasswordPolicyError);
+    expect(() => assertPasswordPolicy('алексей1', context)).toThrow(PasswordPolicyError);
+  });
+
+  it('rejects blank passwords and leading or trailing spaces without mutating the value', () => {
+    const withSpaces = `  ${allowed}  `;
     expect(withSpaces.startsWith(' ')).toBe(true);
-    expect(isPasswordPolicySatisfied(withSpaces)).toBe(true);
-    expect(withSpaces.length).toBeGreaterThan(12);
+    expect(isPasswordPolicySatisfied(withSpaces)).toBe(false);
+    expect(isPasswordPolicySatisfied('        ')).toBe(false);
+    expect(isPasswordPolicySatisfied('tree frog')).toBe(true);
+    expect(withSpaces).toBe(`  ${allowed}  `);
+  });
+
+  it('accepts the SUPER_ADMIN provisioning format', () => {
+    expect(() =>
+      assertPasswordPolicy(allowed, {
+        email: 'bolutenko_p@bir.by',
+        fullName: 'Суперадминистратор',
+      }),
+    ).not.toThrow();
+  });
+
+  it('keeps a single shared validator without class-composition rules', () => {
+    const source = readFileSync(resolve(__dirname, 'password-policy.ts'), 'utf8');
+    expect(source).toMatch(/PASSWORD_MIN_LENGTH = 8/);
+    expect(source).not.toMatch(/!\/\[A-Z\]/);
+    expect(source).not.toMatch(/!\/\\d\//);
+    expect(source).not.toMatch(/!\/\[\^A-Za-z0-9\]/);
   });
 });
 

@@ -103,7 +103,7 @@ async function main(): Promise<void> {
     argValue('full-name') ?? (await prompt('Full name: ')) ?? 'Суперадминистратор',
   );
   const password = await promptHidden('Password: ');
-  assertPasswordPolicy(password);
+  assertPasswordPolicy(password, { email, fullName });
   const replace = hasFlag('replace');
 
   const owner = createOwnerPrismaClient(config.MIGRATION_DATABASE_URL);

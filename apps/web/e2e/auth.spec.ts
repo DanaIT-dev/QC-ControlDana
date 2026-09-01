@@ -67,6 +67,17 @@ test.describe('authentication browser flows', () => {
     await expect(page.getByLabel('Электронная почта')).toHaveValue(ACCOUNTS.admin.email);
   });
 
+  test('change-password shows the simplified length hint', async ({ page }) => {
+    await login(page, ACCOUNTS.admin.email, DEMO_PASSWORD);
+    await expect(page).toHaveURL(/\/registry$/);
+    await page.goto('/change-password');
+    await expect(page).toHaveURL(/\/change-password/);
+    await expect(page.getByLabel('Новый пароль')).toBeVisible();
+    await expect(page.getByText('Минимум 8 символов')).toBeVisible();
+    await expect(page.getByText('Заглавная и строчная буква')).toHaveCount(0);
+    await expect(page.getByText('Цифра и спецсимвол')).toHaveCount(0);
+  });
+
   test('logout returns to login and blocks registry', async ({ page }) => {
     await login(page, ACCOUNTS.admin.email, DEMO_PASSWORD);
     await page.getByRole('button', { name: 'Меню пользователя' }).click();

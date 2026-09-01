@@ -318,8 +318,14 @@ export class AuthService {
     if (!matches) {
       throw new BadRequestException('Неверный текущий пароль');
     }
-    assertPasswordPolicy(parsed.data.newPassword);
-    const passwordHash = await this.hasher.hash(parsed.data.newPassword);
+    assertPasswordPolicy(parsed.data.newPassword, {
+      email: stored.email,
+      fullName: stored.fullName,
+    });
+    const passwordHash = await this.hasher.hash(parsed.data.newPassword, {
+      email: stored.email,
+      fullName: stored.fullName,
+    });
     const updated = await this.prisma.$transaction(async (tx) => {
       await tx.userCredential.upsert({
         where: { userId: user.id },

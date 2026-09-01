@@ -14,7 +14,12 @@ export default async function ChangePasswordPage() {
   return (
     <AppShell user={user}>
       <ChangePasswordCard>
-        <ChangePasswordForm csrfToken={user.csrfToken} nextPath={postLoginPath(user.role)} />
+        <ChangePasswordForm
+          csrfToken={user.csrfToken}
+          email={user.email}
+          fullName={user.fullName}
+          nextPath={postLoginPath(user.role)}
+        />
       </ChangePasswordCard>
     </AppShell>
   );

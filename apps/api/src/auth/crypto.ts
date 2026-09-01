@@ -1,6 +1,12 @@
 import { createHash, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import argon2 from 'argon2';
-import { PASSWORD_MAX_LENGTH, assertPasswordPolicy } from '@sgr-registry/domain';
+import {
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+  assertPasswordPolicy,
+  isPasswordPolicySatisfied,
+  type PasswordPolicyContext,
+} from '@sgr-registry/domain';
 
 export async function hashArgon2id(
   password: string,
@@ -19,10 +25,13 @@ export async function hashArgon2id(
 
 export async function hashPassword(
   password: string,
-  options: { memoryCost: number; timeCost: number },
+  options: { memoryCost: number; timeCost: number } & PasswordPolicyContext,
 ): Promise<string> {
-  assertPasswordPolicy(password);
-  return hashArgon2id(password, options);
+  assertPasswordPolicy(password, { email: options.email, fullName: options.fullName });
+  return hashArgon2id(password, {
+    memoryCost: options.memoryCost,
+    timeCost: options.timeCost,
+  });
 }
 
 export async function verifyPassword(hash: string, password: string): Promise<boolean> {
@@ -48,24 +57,31 @@ function pickChar(alphabet: string): string {
   return alphabet[randomInt(0, alphabet.length)]!;
 }
 
-export function generateTemporaryPassword(length = 16): string {
-  const size = Math.max(length, 12);
-  const chars = [
-    pickChar(TEMP_PASSWORD_UPPER),
-    pickChar(TEMP_PASSWORD_LOWER),
-    pickChar(TEMP_PASSWORD_DIGITS),
-    pickChar(TEMP_PASSWORD_SPECIAL),
-    ...Array.from({ length: size - 4 }, () => pickChar(TEMP_PASSWORD_ALL)),
-  ];
-  for (let i = chars.length - 1; i > 0; i -= 1) {
-    const j = randomInt(0, i + 1);
-    const current = chars[i]!;
-    chars[i] = chars[j]!;
-    chars[j] = current;
+export function generateTemporaryPassword(
+  length = 16,
+  context: PasswordPolicyContext = {},
+): string {
+  const size = Math.max(length, PASSWORD_MIN_LENGTH, 16);
+  for (let attempt = 0; attempt < 32; attempt += 1) {
+    const chars = [
+      pickChar(TEMP_PASSWORD_UPPER),
+      pickChar(TEMP_PASSWORD_LOWER),
+      pickChar(TEMP_PASSWORD_DIGITS),
+      pickChar(TEMP_PASSWORD_SPECIAL),
+      ...Array.from({ length: size - 4 }, () => pickChar(TEMP_PASSWORD_ALL)),
+    ];
+    for (let i = chars.length - 1; i > 0; i -= 1) {
+      const j = randomInt(0, i + 1);
+      const current = chars[i]!;
+      chars[i] = chars[j]!;
+      chars[j] = current;
+    }
+    const password = chars.join('');
+    if (isPasswordPolicySatisfied(password, context)) {
+      return password;
+    }
   }
-  const password = chars.join('');
-  assertPasswordPolicy(password);
-  return password;
+  throw new Error('Unable to generate a compliant temporary password');
 }
 
 export function hashSessionId(sessionId: string): string {

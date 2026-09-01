@@ -367,6 +367,73 @@ describe('auth integration', () => {
     }
   });
 
+  it('accepts the simplified password policy, hashes with Argon2id, and revokes old sessions', async () => {
+    const user = await createUser('ADMIN');
+    const loggedIn = await login(user.email, DEMO_PASSWORD);
+    const csrfToken = (loggedIn.json() as { csrfToken: string }).csrfToken;
+    const sessionId = cookieValue(loggedIn)!;
+    const nextPassword = 'treefrog';
+    const changed = await inject({
+      method: 'POST',
+      url: '/api/auth/change-password',
+      payload: { currentPassword: DEMO_PASSWORD, newPassword: nextPassword },
+      cookies: { [SESSION_COOKIE_NAME]: sessionId },
+      headers: { [CSRF_HEADER_NAME]: csrfToken },
+    });
+    expect(changed.statusCode).toBe(200);
+    const body = JSON.stringify(changed.json());
+    expect(body).not.toContain(nextPassword);
+    expect(body).not.toContain(DEMO_PASSWORD);
+    expect(body).not.toMatch(/passwordHash/);
+
+    const stale = await inject({
+      method: 'GET',
+      url: '/api/auth/me',
+      cookies: { [SESSION_COOKIE_NAME]: sessionId },
+    });
+    expect(stale.statusCode).toBe(401);
+
+    const relogin = await login(user.email, nextPassword);
+    expect(relogin.statusCode).toBe(200);
+
+    const stored = await prisma.userCredential.findUniqueOrThrow({ where: { userId: user.id } });
+    expect(stored.passwordHash).toContain('argon2id');
+    expect(stored.passwordHash).not.toContain(nextPassword);
+
+    const audits = await prisma.auditLog.findMany({
+      where: { OR: [{ actorUserId: user.id }, { entityId: user.id }] },
+    });
+    expect(audits.some((row) => row.action === 'USER_PASSWORD_CHANGED')).toBe(true);
+    for (const row of audits) {
+      const serialized = JSON.stringify(row);
+      expect(serialized).not.toContain(nextPassword);
+      expect(serialized).not.toContain(DEMO_PASSWORD);
+      expect(serialized).not.toContain(stored.passwordHash);
+    }
+  });
+
+  it('rejects short, common, identity and edge-space passwords on change-password', async () => {
+    const user = await createUser('SGR_MANAGER');
+    const loggedIn = await login(user.email, DEMO_PASSWORD);
+    const csrfToken = (loggedIn.json() as { csrfToken: string }).csrfToken;
+    const sessionId = cookieValue(loggedIn)!;
+    const attempts = ['abcdefg', 'password', 'aaaaaaaa', '12345678', user.email, ' treefrog'];
+    for (const newPassword of attempts) {
+      const response = await inject({
+        method: 'POST',
+        url: '/api/auth/change-password',
+        payload: { currentPassword: DEMO_PASSWORD, newPassword },
+        cookies: { [SESSION_COOKIE_NAME]: sessionId },
+        headers: { [CSRF_HEADER_NAME]: csrfToken },
+      });
+      expect(response.statusCode).toBe(400);
+      expect(JSON.stringify(response.json())).not.toContain(newPassword);
+      expect(JSON.stringify(response.json())).not.toMatch(/argon2|blocklist|sequence/i);
+    }
+    const stillValid = await login(user.email, DEMO_PASSWORD);
+    expect(stillValid.statusCode).toBe(200);
+  });
+
   it('protects system-status for non-admin users', async () => {
     const engineer = await createUser('RESPONSIBLE_ENGINEER');
     const admin = await createUser('ADMIN');

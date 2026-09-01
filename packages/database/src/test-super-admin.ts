@@ -13,9 +13,9 @@ export async function ensureTestSuperAdmin(options: {
   email?: string;
   fullName?: string;
 }): Promise<{ id: string; email: string }> {
-  assertPasswordPolicy(options.password);
   const email = (options.email ?? TEST_SUPER_ADMIN_EMAIL).trim().toLowerCase();
   const fullName = options.fullName ?? TEST_SUPER_ADMIN_NAME;
+  assertPasswordPolicy(options.password, { email, fullName });
   const passwordHash = await argon2.hash(options.password, { type: argon2.argon2id });
   const now = new Date();
   await options.owner.user.updateMany({

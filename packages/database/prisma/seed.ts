@@ -10,6 +10,7 @@ import {
   computeActStatus,
   normalizeEmail,
   normalizeUnp,
+  assertPasswordPolicy,
 } from '@sgr-registry/domain';
 import argon2 from 'argon2';
 import { allocateActNumber, createOwnerPrismaClient, upsertUserCredentials } from '../src/index';
@@ -110,6 +111,9 @@ async function seed(): Promise<void> {
   const emailsNeedingPassword = new Set<string>();
   let preparedDemoPasswordHash: string | undefined;
   if (demoPassword) {
+    for (const spec of DEMO_USERS) {
+      assertPasswordPolicy(demoPassword, { email: spec.email, fullName: spec.fullName });
+    }
     const existing = await prisma.user.findMany({
       where: { email: { in: DEMO_USERS.map((user) => normalizeEmail(user.email)) } },
       include: { credentials: true },

@@ -95,8 +95,8 @@ export class UsersService {
     const input = parseCommandBody(createUserRequestSchema, body);
     const fullName = normalizeUserFullName(input.fullName);
     const email = normalizeUserEmail(input.email);
-    const temporaryPassword = generateTemporaryPassword();
-    const passwordHash = await this.hasher.hash(temporaryPassword);
+    const temporaryPassword = generateTemporaryPassword(16, { email, fullName });
+    const passwordHash = await this.hasher.hash(temporaryPassword, { email, fullName });
     const ctx = actorContext(actor, request);
     try {
       const user = await this.prisma.client.$transaction(async (tx) => {
@@ -290,8 +290,22 @@ export class UsersService {
     request: FastifyRequest,
   ) {
     const input = parseCommandBody(versionedReasonSchema, body);
-    const temporaryPassword = generateTemporaryPassword();
-    const passwordHash = await this.hasher.hash(temporaryPassword);
+    const preview = await this.prisma.client.user.findUnique({
+      where: { id: userId },
+      select: USER_SELECT,
+    });
+    if (!preview) {
+      throw new NotFoundException('Запись не найдена');
+    }
+    assertOrdinaryStaffAccount(preview.role);
+    const temporaryPassword = generateTemporaryPassword(16, {
+      email: preview.email,
+      fullName: preview.fullName,
+    });
+    const passwordHash = await this.hasher.hash(temporaryPassword, {
+      email: preview.email,
+      fullName: preview.fullName,
+    });
     const ctx = actorContext(actor, request);
     const user = await this.prisma.client.$transaction(async (tx) => {
       const current = await tx.user.findUnique({ where: { id: userId }, select: USER_SELECT });
