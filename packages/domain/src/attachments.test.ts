@@ -74,6 +74,9 @@ describe('attachment permission matrix', () => {
     expect(canUploadCategory('RESPONSIBLE_ENGINEER', 'DEFECT_ITEM', 'THIRD_PARTY_DOCUMENT')).toBe(
       false,
     );
+    expect(canUploadCategory('SUPER_ADMIN', 'ACT', 'ACT_DOCUMENT')).toBe(false);
+    expect(canUploadCategory('SUPER_ADMIN', 'PROPOSAL', 'PROPOSAL_DOCUMENT')).toBe(false);
+    expect(canUploadCategory('PENDING_ROLE', 'DEFECT_ITEM', 'DEFECT_PHOTO')).toBe(false);
   });
 });
 

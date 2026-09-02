@@ -9,6 +9,7 @@ import {
   DEFAULT_NOTIFICATION_PAGE_SIZE,
   StaleWriteError,
   formatDailyEvaluationTime,
+  hasCapability,
   notificationTitle,
   parseDailyEvaluationTime,
   parseNotificationListQuery,
@@ -194,6 +195,9 @@ export class NotificationsService {
   }
 
   private recipientWhere(user: AuthenticatedUser) {
+    if (hasCapability(user.role, 'VIEW_ALL_BUSINESS_DATA')) {
+      return { revokedAt: null };
+    }
     const scope = new RegistryAccessScope(user);
     return {
       userId: user.id,

@@ -674,7 +674,7 @@ describe('PostgreSQL RLS', () => {
     expect(leaked).toHaveLength(0);
   });
 
-  it('isolates SUPER_ADMIN from business data and password hashes', async () => {
+  it('gives SUPER_ADMIN read-only business data without password hashes', async () => {
     await owner.user.updateMany({
       where: { role: 'SUPER_ADMIN', status: 'ACTIVE' },
       data: { status: 'ARCHIVED', archivedAt: new Date() },
@@ -687,8 +687,24 @@ describe('PostgreSQL RLS', () => {
         sessionVersion: 1,
       },
     });
+    const pending = await owner.user.create({
+      data: {
+        fullName: `${MARKER} pending`,
+        email: `${MARKER}.pending@example.sgr.local`,
+        role: 'PENDING_ROLE',
+        sessionVersion: 1,
+      },
+    });
     try {
-      const denied = await withAuthenticatedDbContext({
+      await owner.actChatMessage.create({
+        data: {
+          actId,
+          authorId: adminId,
+          body: 'Oversight chat',
+          clientMessageId: randomUUID(),
+        },
+      });
+      const visible = await withAuthenticatedDbContext({
         prisma: appPrisma,
         secret,
         user: { id: superAdmin.id, sessionVersion: 1 },
@@ -712,15 +728,27 @@ describe('PostgreSQL RLS', () => {
           }),
         }),
       });
-      expect(denied.acts).toHaveLength(0);
-      expect(denied.defects).toHaveLength(0);
-      expect(denied.proposals).toHaveLength(0);
-      expect(denied.users).toHaveLength(0);
-      expect(denied.objects).toHaveLength(0);
-      expect(denied.orgs).toHaveLength(0);
-      expect(denied.audit).toHaveLength(0);
-      expect(denied.chat).toHaveLength(0);
-      expect(denied.assignments).toHaveLength(0);
+      expect(visible.acts).toHaveLength(2);
+      expect(visible.defects.length).toBeGreaterThan(0);
+      expect(visible.proposals.length).toBeGreaterThan(0);
+      expect(visible.users.length).toBeGreaterThan(0);
+      expect(visible.objects).toHaveLength(1);
+      expect(visible.orgs.length).toBeGreaterThan(0);
+      expect(visible.audit.length).toBeGreaterThan(0);
+      expect(visible.chat.length).toBeGreaterThan(0);
+      expect(visible.assignments.length).toBeGreaterThan(0);
+
+      const pendingView = await withAuthenticatedDbContext({
+        prisma: appPrisma,
+        secret,
+        user: { id: pending.id, sessionVersion: 1 },
+        callback: async (tx) => ({
+          acts: await tx.act.findMany({ where: { id: { in: [actId, otherActId] } } }),
+          defects: await tx.defectItem.findMany({ where: { id: defectId } }),
+        }),
+      });
+      expect(pendingView.acts).toHaveLength(0);
+      expect(pendingView.defects).toHaveLength(0);
 
       await expect(
         withAuthenticatedDbContext({
@@ -760,6 +788,7 @@ describe('PostgreSQL RLS', () => {
         'SGR_MANAGER',
       );
     } finally {
+      await owner.user.delete({ where: { id: pending.id } });
       await owner.user.delete({ where: { id: superAdmin.id } });
     }
 
@@ -1003,7 +1032,7 @@ describe('PostgreSQL RLS', () => {
           user: { id: superAdmin.id, sessionVersion: 1 },
           callback: (tx) => tx.slaClock.findMany({ where: { id: clockA.id } }),
         });
-        expect(saSelect).toHaveLength(0);
+        expect(saSelect).toHaveLength(1);
         const saWrite = await withAuthenticatedDbContext({
           prisma: appPrisma,
           secret,

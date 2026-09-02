@@ -1,9 +1,10 @@
 import { Module } from '@nestjs/common';
-import { APP_FILTER } from '@nestjs/core';
+import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { AuthModule } from './auth/auth.module';
 import { PrismaModule } from './auth/prisma.module';
 import { RedisModule } from './auth/redis.module';
 import { SafeExceptionFilter } from './common/safe-exception.filter';
+import { SuperAdminReadOnlyInterceptor } from './common/super-admin-read-only.interceptor';
 import { HealthModule } from './health/health.module';
 import { RegistryModule } from './registry/registry.module';
 import { UsersModule } from './users/users.module';
@@ -31,6 +32,10 @@ import { NotificationsModule } from './notifications/notifications.module';
     {
       provide: APP_FILTER,
       useClass: SafeExceptionFilter,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: SuperAdminReadOnlyInterceptor,
     },
   ],
 })

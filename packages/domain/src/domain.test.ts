@@ -25,6 +25,8 @@ import {
   createDefectItem,
   formatOfficialActNumber,
   hasCapability,
+  isOversightRole,
+  isPendingRole,
   isPasswordPolicySatisfied,
   isValidEmail,
   linkLiableOrganizations,
@@ -35,6 +37,7 @@ import {
   PasswordPolicyError,
   preserveAssignmentsOnArchive,
   roleLabel,
+  satisfiesCapability,
   usesCountPlusOneStrategy,
   parseRegistryListQuery,
   RegistryQueryError,
@@ -381,22 +384,37 @@ describe('capabilities', () => {
     expect(canViewActChat('SGR_MANAGER')).toBe(true);
     expect(canViewActChat('RESPONSIBLE_ENGINEER')).toBe(true);
     expect(canViewActChat('CONTRACTOR_ENGINEER')).toBe(false);
-    expect(canViewActChat('SUPER_ADMIN')).toBe(false);
+    expect(canViewActChat('SUPER_ADMIN')).toBe(true);
+    expect(hasCapability('SUPER_ADMIN', 'VIEW_ACT_CHAT')).toBe(false);
+    expect(satisfiesCapability('SUPER_ADMIN', 'VIEW_ACT_CHAT')).toBe(true);
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('VIEW_ACT_CHAT');
     expect(capabilitiesForRole('SUPER_ADMIN')).toEqual([
+      'VIEW_ALL_BUSINESS_DATA',
+      'CREATE_UNASSIGNED_USER',
       'MANAGE_ADMIN_GRANTS',
       'CHANGE_OWN_PASSWORD',
       'VIEW_OWN_PROFILE',
     ]);
     expect(capabilitiesForRole('SUPER_ADMIN')).not.toContain('MANAGE_USERS');
     expect(capabilitiesForRole('SUPER_ADMIN')).not.toContain('VIEW_ALL_ACTS');
+    expect(capabilitiesForRole('SUPER_ADMIN')).not.toContain('CREATE_ACT');
+    expect(capabilitiesForRole('PENDING_ROLE')).toEqual([
+      'CHANGE_OWN_PASSWORD',
+      'VIEW_OWN_PROFILE',
+    ]);
+    expect(isOversightRole('SUPER_ADMIN')).toBe(true);
+    expect(isPendingRole('PENDING_ROLE')).toBe(true);
+    expect(satisfiesCapability('SUPER_ADMIN', 'CREATE_ACT')).toBe(false);
+    expect(satisfiesCapability('SUPER_ADMIN', 'VIEW_HISTORY')).toBe(true);
     expect(capabilitiesForRole('ADMIN')).not.toContain('MANAGE_ADMIN_GRANTS');
     expect(hasCapability('SUPER_ADMIN', 'MANAGE_ADMIN_GRANTS')).toBe(true);
     expect(hasCapability('ADMIN', 'MANAGE_ADMIN_GRANTS')).toBe(false);
     expect(roleLabel('ADMIN')).toBe('Администратор');
     expect(roleLabel('SUPER_ADMIN')).toBe('Суперадминистратор');
-    expect(visibleProposalSlots('SUPER_ADMIN')).toEqual([]);
-    expect(postLoginPath('SUPER_ADMIN')).toBe('/super-admin');
+    expect(roleLabel('PENDING_ROLE')).toBe('Ожидает назначение роли');
+    expect(visibleProposalSlots('SUPER_ADMIN')).toEqual(['A', 'B', 'C']);
+    expect(postLoginPath('SUPER_ADMIN')).toBe('/registry');
+    expect(postLoginPath('PENDING_ROLE')).toBe('/pending-role');
     expect(postLoginPath('ADMIN')).toBe('/registry');
     expect(postLoginPath('SUPER_ADMIN', true)).toBe('/change-password');
   });

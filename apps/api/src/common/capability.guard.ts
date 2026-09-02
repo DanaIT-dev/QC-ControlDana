@@ -7,7 +7,7 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { hasCapability, type Capability } from '@sgr-registry/domain';
+import { satisfiesAnyCapability, type Capability } from '@sgr-registry/domain';
 import type { FastifyRequest } from 'fastify';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 
@@ -32,7 +32,7 @@ export class CapabilityGuard implements CanActivate {
       .switchToHttp()
       .getRequest<FastifyRequest & { user?: AuthenticatedUser }>();
     const role = request.user?.role;
-    if (!role || !required.some((capability) => hasCapability(role, capability))) {
+    if (!role || !required.some((capability) => satisfiesAnyCapability(role, [capability]))) {
       throw new ForbiddenException('Недостаточно прав');
     }
     return true;

@@ -14,8 +14,16 @@ export const adminGrantRequestSchema = z
   })
   .strict();
 
+export const createUnassignedUserRequestSchema = z
+  .object({
+    fullName: z.string(),
+    email: z.string(),
+  })
+  .strict();
+
 export type SuperAdminDirectoryQuery = z.infer<typeof superAdminDirectoryQuerySchema>;
 export type AdminGrantRequest = z.infer<typeof adminGrantRequestSchema>;
+export type CreateUnassignedUserRequest = z.infer<typeof createUnassignedUserRequestSchema>;
 
 export type SuperAdminUserAdminStatus = 'ACTIVE_ADMIN' | 'ELIGIBLE';
 

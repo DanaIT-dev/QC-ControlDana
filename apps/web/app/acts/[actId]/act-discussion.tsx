@@ -40,7 +40,15 @@ function mergeMessages(current: ActChatMessageDto[], incoming: ActChatMessageDto
   });
 }
 
-export function ActDiscussion({ actId, csrfToken }: { actId: string; csrfToken: string }) {
+export function ActDiscussion({
+  actId,
+  csrfToken,
+  canPost = true,
+}: {
+  actId: string;
+  csrfToken: string;
+  canPost?: boolean;
+}) {
   const queryClient = useQueryClient();
   const [messages, setMessages] = useState<ActChatMessageDto[]>([]);
   const [hasOlder, setHasOlder] = useState(false);
@@ -294,115 +302,117 @@ export function ActDiscussion({ actId, csrfToken }: { actId: string; csrfToken: 
             </li>
           ))}
         </ul>
-        <form
-          className="grid min-w-0 gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void send();
-          }}
-        >
-          <Label htmlFor="act-chat-draft">Сообщение</Label>
-          <Textarea
-            id="act-chat-draft"
-            ref={textareaRef}
-            value={draft}
-            disabled={sending}
-            rows={3}
-            className="min-h-20 max-h-48 overflow-y-auto"
-            placeholder="Напишите сообщение. @ — чтобы упомянуть коллегу"
-            onChange={(event) => applyDraft(event.target.value, event.target.selectionStart)}
-            onKeyDown={(event) => {
-              if (openMention && candidates.length > 0) {
-                if (event.key === 'ArrowDown') {
-                  event.preventDefault();
-                  setHighlight((index) => (index + 1) % candidates.length);
-                  return;
-                }
-                if (event.key === 'ArrowUp') {
-                  event.preventDefault();
-                  setHighlight((index) => (index - 1 + candidates.length) % candidates.length);
-                  return;
-                }
-                if (event.key === 'Enter') {
-                  event.preventDefault();
-                  if (highlighted) {
-                    insertMention(highlighted);
-                  }
-                  return;
-                }
-                if (event.key === 'Escape') {
-                  event.preventDefault();
-                  setOpenMention(false);
-                  return;
-                }
-              }
-              if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault();
-                void send();
-              }
+        {canPost ? (
+          <form
+            className="grid min-w-0 gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void send();
             }}
-          />
-          {openMention ? (
-            <ul
-              ref={mentionListRef}
-              role="listbox"
-              aria-label="Сотрудники"
-              className="max-h-[min(12rem,40vh)] w-full min-w-0 max-w-[min(100%,calc(100vw-2rem))] scroll-mb-4 overflow-y-auto overflow-x-hidden rounded-lg border border-border bg-background shadow-md"
-            >
-              {candidatesQuery.isLoading ? (
-                <li className="px-3 py-2 text-sm text-muted-foreground">Поиск…</li>
-              ) : null}
-              {candidatesQuery.isError ? (
-                <li className="px-3 py-2 text-sm text-error-foreground">
-                  Не удалось загрузить список
-                </li>
-              ) : null}
-              {!candidatesQuery.isLoading && candidates.length === 0 ? (
-                <li className="px-3 py-2 text-sm text-muted-foreground">Никого не найдено</li>
-              ) : null}
-              {candidates.map((candidate, index) => (
-                <li key={candidate.id}>
-                  <button
-                    type="button"
-                    role="option"
-                    aria-selected={index === highlight}
-                    className={cn(
-                      'flex min-h-11 w-full min-w-0 items-center justify-between gap-2 px-3 py-2 text-left text-sm',
-                      index === highlight && 'bg-muted',
-                    )}
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => insertMention(candidate)}
-                  >
-                    <span className="min-w-0 break-words">{candidate.fullName}</span>
-                    <span className="shrink-0 text-xs text-muted-foreground">
-                      {candidate.roleLabel}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-          {sendError ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="text-sm text-error-foreground">{sendError}</p>
-              <Button
-                type="button"
-                variant="outline"
-                className="min-h-11"
-                onClick={() => void send()}
-              >
-                Повторить
-              </Button>
-            </div>
-          ) : null}
-          <Button
-            type="submit"
-            className="min-h-11 w-full sm:w-fit"
-            disabled={sending || draft.trim().length === 0}
           >
-            {sending ? 'Отправка…' : 'Отправить'}
-          </Button>
-        </form>
+            <Label htmlFor="act-chat-draft">Сообщение</Label>
+            <Textarea
+              id="act-chat-draft"
+              ref={textareaRef}
+              value={draft}
+              disabled={sending}
+              rows={3}
+              className="min-h-20 max-h-48 overflow-y-auto"
+              placeholder="Напишите сообщение. @ — чтобы упомянуть коллегу"
+              onChange={(event) => applyDraft(event.target.value, event.target.selectionStart)}
+              onKeyDown={(event) => {
+                if (openMention && candidates.length > 0) {
+                  if (event.key === 'ArrowDown') {
+                    event.preventDefault();
+                    setHighlight((index) => (index + 1) % candidates.length);
+                    return;
+                  }
+                  if (event.key === 'ArrowUp') {
+                    event.preventDefault();
+                    setHighlight((index) => (index - 1 + candidates.length) % candidates.length);
+                    return;
+                  }
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    if (highlighted) {
+                      insertMention(highlighted);
+                    }
+                    return;
+                  }
+                  if (event.key === 'Escape') {
+                    event.preventDefault();
+                    setOpenMention(false);
+                    return;
+                  }
+                }
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault();
+                  void send();
+                }
+              }}
+            />
+            {openMention ? (
+              <ul
+                ref={mentionListRef}
+                role="listbox"
+                aria-label="Сотрудники"
+                className="max-h-[min(12rem,40vh)] w-full min-w-0 max-w-[min(100%,calc(100vw-2rem))] scroll-mb-4 overflow-y-auto overflow-x-hidden rounded-lg border border-border bg-background shadow-md"
+              >
+                {candidatesQuery.isLoading ? (
+                  <li className="px-3 py-2 text-sm text-muted-foreground">Поиск…</li>
+                ) : null}
+                {candidatesQuery.isError ? (
+                  <li className="px-3 py-2 text-sm text-error-foreground">
+                    Не удалось загрузить список
+                  </li>
+                ) : null}
+                {!candidatesQuery.isLoading && candidates.length === 0 ? (
+                  <li className="px-3 py-2 text-sm text-muted-foreground">Никого не найдено</li>
+                ) : null}
+                {candidates.map((candidate, index) => (
+                  <li key={candidate.id}>
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={index === highlight}
+                      className={cn(
+                        'flex min-h-11 w-full min-w-0 items-center justify-between gap-2 px-3 py-2 text-left text-sm',
+                        index === highlight && 'bg-muted',
+                      )}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => insertMention(candidate)}
+                    >
+                      <span className="min-w-0 break-words">{candidate.fullName}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {candidate.roleLabel}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {sendError ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-sm text-error-foreground">{sendError}</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="min-h-11"
+                  onClick={() => void send()}
+                >
+                  Повторить
+                </Button>
+              </div>
+            ) : null}
+            <Button
+              type="submit"
+              className="min-h-11 w-full sm:w-fit"
+              disabled={sending || draft.trim().length === 0}
+            >
+              {sending ? 'Отправка…' : 'Отправить'}
+            </Button>
+          </form>
+        ) : null}
       </CardContent>
     </Card>
   );

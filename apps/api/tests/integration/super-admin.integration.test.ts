@@ -201,7 +201,7 @@ describe('super-admin admin grants', () => {
     expect(eligible.statusCode).toBe(200);
     const eligibleList = eligible.json() as { items: Array<{ id: string; currentRole: string }> };
     expect(eligibleList.items.some((item) => item.id === sgr.id)).toBe(true);
-    expect(eligibleList.items.some((item) => item.id === contractor.id)).toBe(false);
+    expect(eligibleList.items.some((item) => item.id === contractor.id)).toBe(true);
     expect(eligibleList.items.some((item) => item.id === superAdmin.id)).toBe(false);
 
     const missingCsrf = await inject({
@@ -274,7 +274,26 @@ describe('super-admin admin grants', () => {
           payload: { expectedVersion: contractorTwo.version },
         })
       ).statusCode,
-    ).toBe(400);
+    ).toBe(200);
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: contractorTwo.id } })).role).toBe(
+      'ADMIN',
+    );
+    expect(
+      (
+        await mutate(sa, {
+          method: 'DELETE',
+          url: `/api/super-admin/admins/${contractorTwo.id}`,
+          payload: {
+            expectedVersion: (
+              await prisma.user.findUniqueOrThrow({ where: { id: contractorTwo.id } })
+            ).version,
+          },
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: contractorTwo.id } })).role).toBe(
+      'CONTRACTOR_ENGINEER',
+    );
     expect(
       (
         await mutate(sa, {
@@ -374,20 +393,161 @@ describe('super-admin admin grants', () => {
       ).statusCode,
     ).toBe(400);
 
+    const pendingEmail = `pending.${Date.now()}@example.sgr.local`;
+    const injectedRole = await mutate(sa, {
+      method: 'POST',
+      url: '/api/super-admin/users',
+      payload: { fullName: 'Pending Inject', email: pendingEmail, role: 'ADMIN' },
+    });
+    expect(injectedRole.statusCode).toBe(400);
+    expect(await prisma.user.findUnique({ where: { email: pendingEmail } })).toBeNull();
+
+    const createdPending = await mutate(sa, {
+      method: 'POST',
+      url: '/api/super-admin/users',
+      payload: { fullName: 'Pending User', email: pendingEmail },
+    });
+    expect(createdPending.statusCode).toBe(201);
+    const pendingBody = createdPending.json() as {
+      user: { id: string; role: string };
+      temporaryPassword?: string;
+    };
+    expect(pendingBody.user.role).toBe('PENDING_ROLE');
+    expect(pendingBody.temporaryPassword).toBeTruthy();
+    expect(JSON.stringify(createdPending.json())).not.toMatch(/passwordHash/);
+    createdUserIds.push(pendingBody.user.id);
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: pendingBody.user.id } })).role).toBe(
+      'PENDING_ROLE',
+    );
+    const pendingAudit = await prisma.auditLog.findFirst({
+      where: { action: 'USER_CREATED_PENDING_ROLE', entityId: pendingBody.user.id },
+    });
+    expect(pendingAudit).toBeTruthy();
+    expect(JSON.stringify(pendingAudit)).not.toMatch(/passwordHash|temporaryPassword/);
+
+    const pendingLoginResponse = await inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { email: pendingEmail, password: pendingBody.temporaryPassword },
+    });
+    expect(pendingLoginResponse.statusCode).toBe(200);
+    const pendingLogin = {
+      cookie:
+        pendingLoginResponse.cookies.find((item) => item.name === SESSION_COOKIE_NAME)?.value ?? '',
+      body: pendingLoginResponse.json() as { role?: string },
+    };
+    expect(pendingLogin.body.role).toBe('PENDING_ROLE');
+    expect(
+      (
+        await inject({
+          method: 'GET',
+          url: '/api/registry/defects',
+          cookies: { [SESSION_COOKIE_NAME]: pendingLogin.cookie },
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await inject({
+          method: 'GET',
+          url: `/api/acts/${object.id}/chat/mention-candidates`,
+          cookies: { [SESSION_COOKIE_NAME]: pendingLogin.cookie },
+        })
+      ).statusCode,
+    ).toBeGreaterThanOrEqual(400);
+
+    expect(
+      (
+        await mutate(sa, {
+          method: 'PATCH',
+          url: `/api/users/${pendingBody.user.id}`,
+          payload: { expectedVersion: 1, role: 'SGR_MANAGER' },
+        })
+      ).statusCode,
+    ).toBe(403);
+    const assigned = await mutate(adminSession, {
+      method: 'PATCH',
+      url: `/api/users/${pendingBody.user.id}`,
+      payload: {
+        expectedVersion: (
+          await prisma.user.findUniqueOrThrow({ where: { id: pendingBody.user.id } })
+        ).version,
+        role: 'SGR_MANAGER',
+      },
+    });
+    expect(assigned.statusCode).toBe(200);
+    expect((assigned.json() as { role: string }).role).toBe('SGR_MANAGER');
+    expect(
+      (
+        await prisma.auditLog.findFirst({
+          where: { action: 'USER_ROLE_ASSIGNED', entityId: pendingBody.user.id },
+        })
+      )?.action,
+    ).toBe('USER_ROLE_ASSIGNED');
+    expect(
+      (
+        await inject({
+          method: 'GET',
+          url: '/api/registry/defects',
+          cookies: { [SESSION_COOKIE_NAME]: pendingLogin.cookie },
+        })
+      ).statusCode,
+    ).toBe(401);
+
+    const pendingGrantEmail = `pending.grant.${Date.now()}@example.sgr.local`;
+    const pendingForGrant = await mutate(sa, {
+      method: 'POST',
+      url: '/api/super-admin/users',
+      payload: { fullName: 'Pending Grant', email: pendingGrantEmail },
+    });
+    expect(pendingForGrant.statusCode).toBe(201);
+    const pendingGrantId = (pendingForGrant.json() as { user: { id: string } }).user.id;
+    createdUserIds.push(pendingGrantId);
+    expect(
+      (
+        await mutate(sa, {
+          method: 'POST',
+          url: `/api/super-admin/admins/${pendingGrantId}`,
+          payload: {
+            expectedVersion: (
+              await prisma.user.findUniqueOrThrow({ where: { id: pendingGrantId } })
+            ).version,
+          },
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(
+      (await prisma.user.findUniqueOrThrow({ where: { id: pendingGrantId } })).roleBeforeAdmin,
+    ).toBe('UNASSIGNED');
+    expect(
+      (
+        await mutate(sa, {
+          method: 'DELETE',
+          url: `/api/super-admin/admins/${pendingGrantId}`,
+          payload: {
+            expectedVersion: (
+              await prisma.user.findUniqueOrThrow({ where: { id: pendingGrantId } })
+            ).version,
+          },
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: pendingGrantId } })).role).toBe(
+      'PENDING_ROLE',
+    );
+
     const business = await inject({
       method: 'GET',
       url: '/api/registry/defects',
       cookies: { [SESSION_COOKIE_NAME]: sa.cookie },
     });
-    expect(business.statusCode).toBe(403);
+    expect(business.statusCode).toBe(200);
     expect(business.body).not.toMatch(/passwordHash/);
     for (const url of [
       '/api/users',
       '/api/notifications',
       '/api/reference-data/property-objects',
       '/api/audit-log',
-      `/api/acts/${'11111111-1111-4111-8111-111111111111'}/chat`,
-      `/api/acts/${'11111111-1111-4111-8111-111111111111'}/history`,
     ]) {
       expect(
         (
@@ -397,8 +557,29 @@ describe('super-admin admin grants', () => {
             cookies: { [SESSION_COOKIE_NAME]: sa.cookie },
           })
         ).statusCode,
-      ).toBe(403);
+      ).toBe(200);
     }
+    expect(
+      (
+        await mutate(sa, {
+          method: 'POST',
+          url: '/api/acts',
+          payload: { formCode: 'S1', objectId: object.id },
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await mutate(sa, {
+          method: 'PATCH',
+          url: `/api/users/${engineer.id}`,
+          payload: { expectedVersion: engineer.version, role: 'SGR_MANAGER' },
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: engineer.id } })).role).toBe(
+      'RESPONSIBLE_ENGINEER',
+    );
     expect(
       JSON.stringify(
         (

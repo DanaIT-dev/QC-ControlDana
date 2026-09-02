@@ -176,13 +176,24 @@ export class UsersService {
         throw new StaleWriteError();
       }
       const fresh = await tx.user.findUniqueOrThrow({ where: { id: userId }, select: USER_SELECT });
+      const assignedFromPending = current.role === 'PENDING_ROLE' && nextRole !== current.role;
       await writeAuditLog(tx, {
         ...ctx,
-        action: 'USER_UPDATED',
+        action: assignedFromPending ? 'USER_ROLE_ASSIGNED' : 'USER_UPDATED',
         entityType: 'USER',
         entityId: userId,
-        oldValue: toJsonValue({ fullName: current.fullName, role: current.role }),
-        newValue: toJsonValue({ fullName: fresh.fullName, role: fresh.role }),
+        oldValue: toJsonValue({
+          fullName: current.fullName,
+          role: current.role,
+          targetUserId: userId,
+          actorId: actor.id,
+        }),
+        newValue: toJsonValue({
+          fullName: fresh.fullName,
+          role: fresh.role,
+          targetUserId: userId,
+          actorId: actor.id,
+        }),
       });
       return { dto: toUserDto(fresh), invalidateSessions };
     });
@@ -374,7 +385,7 @@ export class UsersService {
 }
 
 function assertOrdinaryStaffAccount(role: AuthenticatedUser['role']): void {
-  if (role === 'ADMIN' || role === 'SUPER_ADMIN') {
+  if (role === 'ADMIN' || role === 'SUPER_ADMIN' || role === 'UNASSIGNED') {
     throw new AccountProtectedError();
   }
 }

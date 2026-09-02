@@ -1,5 +1,5 @@
 import type { SystemStatusResponse } from '@sgr-registry/contracts';
-import { hasCapability } from '@sgr-registry/domain';
+import { hasCapability, satisfiesCapability } from '@sgr-registry/domain';
 import { CheckCircle2, Database, Server, Wifi } from 'lucide-react';
 import { AppShell } from '../app-shell';
 import { ForbiddenState } from '@/components/forbidden-state';
@@ -15,7 +15,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function SystemStatusPage() {
   const user = await requireBusinessUser();
-  if (!hasCapability(user.role, 'VIEW_SYSTEM_STATUS')) {
+  if (!satisfiesCapability(user.role, 'VIEW_SYSTEM_STATUS')) {
     return (
       <AppShell user={user}>
         <ForbiddenState description="Эта страница доступна только администратору." />
@@ -114,14 +114,16 @@ export default async function SystemStatusPage() {
           <p>Следующая оценка: {data?.notifications?.nextSlaRunAt ?? '—'}</p>
         </CardContent>
       </Card>
-      <Card className="mt-4 shadow-none">
-        <CardHeader>
-          <CardTitle className="text-sm">Настройки уведомлений</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <NotificationSettingsForm csrfToken={user.csrfToken} />
-        </CardContent>
-      </Card>
+      {hasCapability(user.role, 'MANAGE_NOTIFICATION_SETTINGS') ? (
+        <Card className="mt-4 shadow-none">
+          <CardHeader>
+            <CardTitle className="text-sm">Настройки уведомлений</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <NotificationSettingsForm csrfToken={user.csrfToken} />
+          </CardContent>
+        </Card>
+      ) : null}
       {data?.timestamp ? (
         <p className="mt-4 text-sm text-muted-foreground">
           Отметка времени готовности: {data.timestamp}

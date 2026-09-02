@@ -972,6 +972,14 @@ export class OperationsService {
     );
   }
 
+  async listAuditLog(user: AuthenticatedUser, rawQuery: Record<string, unknown>) {
+    this.assertHistoryRead(user);
+    if (!canViewFullHistory(user.role)) {
+      throw new ForbiddenException('Недостаточно прав');
+    }
+    return this.paginateHistory(user, {}, new Set(), '', rawQuery);
+  }
+
   private assertHistoryRead(user: AuthenticatedUser) {
     if (!canViewHistory(user.role)) {
       throw new ForbiddenException('Недостаточно прав');
@@ -1026,6 +1034,7 @@ export class OperationsService {
         oldValue: row.oldValue,
         newValue: row.newValue,
         reason: row.reason,
+        actorUserId: row.actorUserId,
         actorName: row.actorName,
         occurredAt: row.occurredAt.toISOString(),
       })),

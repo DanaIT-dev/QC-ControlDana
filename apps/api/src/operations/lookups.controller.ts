@@ -18,6 +18,10 @@ export class LookupsController {
     'EDIT_ACT_HEADER',
     'MANAGE_PROPOSALS',
     'MANAGE_REFERENCE_DATA',
+    'VIEW_ALL_BUSINESS_DATA',
+    'VIEW_REFERENCE_DATA',
+    'VIEW_ALL_ACTS',
+    'VIEW_ASSIGNED_DEFECTS',
   )
   lookups(@CurrentUser() user: AuthenticatedUser) {
     return this.operationsService.lookups(user);

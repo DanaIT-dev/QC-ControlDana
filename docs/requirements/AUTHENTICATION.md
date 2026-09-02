@@ -20,11 +20,11 @@
 
 Повторный seed не создаёт пользователей заново и не меняет `user_credentials.passwordHash`, если текущий хеш по-прежнему соответствует `SEED_DEMO_PASSWORD`.
 
-После входа `SUPER_ADMIN` перенаправляется на `/super-admin`. Остальные роли — на `/registry` (или `/change-password`, если `mustChangePassword`).
+После входа `SUPER_ADMIN` перенаправляется на `/registry` в режиме просмотра. Пользователь `PENDING_ROLE` — на `/pending-role`. Остальные роли — на `/registry` (или `/change-password`, если `mustChangePassword`).
 
 ## SUPER_ADMIN
 
-Роль изолирована: не wildcard, не иерархия «выше ADMIN». Единственная бизнес-capability — `MANAGE_ADMIN_GRANTS` (назначить или снять обычный `ADMIN`). Создание учётки — только локальная команда `pnpm super-admin:provision` (masked TTY-пароль, 8–128 символов, для non-test цели требуется `SGR_SUPER_ADMIN_PROVISION_CONFIRM=<имя БД>`). `--replace` атомарно архивирует только подтверждённый в TTY email прежнего SUPER_ADMIN; пароль проверяется до первой записи в БД. Наличие активной записи диагностируется через `sgr_active_super_admins()` (SECURITY DEFINER, без `passwordHash`), чтобы RLS migrator/runtime не скрыл строку. Публичный API, панель пользователей и seed production не создают `SUPER_ADMIN`.
+Роль не wildcard и не иерархия «выше ADMIN». Capabilities: `VIEW_ALL_BUSINESS_DATA`, `CREATE_UNASSIGNED_USER`, `MANAGE_ADMIN_GRANTS`, `CHANGE_OWN_PASSWORD`, `VIEW_OWN_PROFILE`. Полный SELECT бизнес-данных через подписанный RLS-контекст; мутации процесса запрещены в API, interceptor, service, GRANT, RLS и SECURITY DEFINER. Создание `PENDING_ROLE` — `POST /api/super-admin/users` (strict DTO без `role`). Назначение и снятие обычного `ADMIN` — только через `/api/super-admin/admins/:userId`. Учётка SUPER_ADMIN создаётся только локальной командой `pnpm super-admin:provision` (masked TTY-пароль, 8–128 символов, для non-test цели требуется `SGR_SUPER_ADMIN_PROVISION_CONFIRM=<имя БД>`). `--replace` атомарно архивирует только подтверждённый в TTY email прежнего SUPER_ADMIN; пароль проверяется до первой записи в БД. Наличие активной записи диагностируется через `sgr_active_super_admins()` (SECURITY DEFINER, без `passwordHash`), чтобы RLS migrator/runtime не скрыл строку. Публичный API, панель пользователей и seed production не создают `SUPER_ADMIN`.
 
 ## Пароль
 
@@ -85,15 +85,15 @@
 
 `mustChangePassword` блокирует продуктовые API до смены пароля на `/change-password`.
 
-`/registry` доступна активной бизнес-сессии без обязательной смены пароля. `SUPER_ADMIN` туда не попадает: после входа и при прямом переходе на бизнес-маршруты сервер возвращает на `/super-admin`, API бизнес-модулей — `403`. `/system-status` и `/users` — только `ADMIN`. `/acts/new` — ADMIN, SGR_MANAGER и `RESPONSIBLE_ENGINEER` (последнему только на закреплённых объектах). `/reference-data` — ADMIN, SGR_MANAGER и `RESPONSIBLE_ENGINEER` (последнему только просмотр объектов и организаций). `GET /api/health` и `GET /api/ready` остаются машинными.
+`/registry` доступна активной бизнес-сессии и `SUPER_ADMIN` (read-only) без обязательной смены пароля. Пользователь `PENDING_ROLE` попадает на `/pending-role` и не читает бизнес-API. `/system-status` и `/users` доступны ADMIN и SUPER_ADMIN (просмотр; SUPER_ADMIN на `/users` может только создать `PENDING_ROLE`). `/acts/new` — ADMIN, SGR_MANAGER и `RESPONSIBLE_ENGINEER` (последнему только на закреплённых объектах); SUPER_ADMIN получает экран 403. `/reference-data` — ADMIN, SGR_MANAGER, SUPER_ADMIN (просмотр) и `RESPONSIBLE_ENGINEER` (только объекты и организации). `GET /api/health` и `GET /api/ready` остаются машинными.
 
 История изменений: `VIEW_HISTORY` у ADMIN и SGR_MANAGER (полный журнал), `VIEW_ASSIGNED_HISTORY` у RESPONSIBLE_ENGINEER (акты закреплённых объектов). `CONTRACTOR_ENGINEER` не имеет ни одной history-capability: вкладка скрыта, прямые запросы `/history` и `/audit-log` возвращают `403`.
 
 ## Аудит
 
-Append-only `AuditLog`: `LOGIN_SUCCEEDED`, `LOGIN_FAILED`, `LOGIN_RATE_LIMITED`, `LOGOUT`, `LOGOUT_ALL`, `SESSION_REJECTED_ARCHIVED_USER`, `SESSION_REJECTED_VERSION_MISMATCH`, `ADMIN_GRANTED`, `ADMIN_REVOKED`, `SUPER_ADMIN_PROVISIONED`.
+Append-only `AuditLog`: `LOGIN_SUCCEEDED`, `LOGIN_FAILED`, `LOGIN_RATE_LIMITED`, `LOGOUT`, `LOGOUT_ALL`, `SESSION_REJECTED_ARCHIVED_USER`, `SESSION_REJECTED_VERSION_MISMATCH`, `ADMIN_GRANTED`, `ADMIN_REVOKED`, `SUPER_ADMIN_PROVISIONED`, `USER_CREATED_PENDING_ROLE`, `USER_ROLE_ASSIGNED`.
 
-Не записываются пароль, cookie, session id, csrfToken, passwordHash, temporaryPassword. `SUPER_ADMIN` не читает AuditLog.
+Не записываются пароль, cookie, session id, csrfToken, passwordHash, temporaryPassword. `SUPER_ADMIN` читает AuditLog и не может его изменять.
 
 ## Тесты
 

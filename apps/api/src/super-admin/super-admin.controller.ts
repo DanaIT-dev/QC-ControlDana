@@ -23,22 +23,36 @@ import { SuperAdminService } from './super-admin.service';
 
 @Controller('super-admin')
 @UseGuards(AuthenticationGuard, CapabilityGuard)
-@RequireCapability('MANAGE_ADMIN_GRANTS')
 export class SuperAdminController {
   constructor(@Inject(SuperAdminService) private readonly superAdminService: SuperAdminService) {}
 
   @Get('admins')
+  @RequireCapability('MANAGE_ADMIN_GRANTS')
   listAdmins(@Query() query: Record<string, unknown>) {
     return this.superAdminService.listAdmins(query);
   }
 
   @Get('eligible-users')
+  @RequireCapability('MANAGE_ADMIN_GRANTS')
   listEligible(@Query() query: Record<string, unknown>) {
     return this.superAdminService.listEligible(query);
   }
 
+  @Post('users')
+  @HttpCode(201)
+  @RequireCapability('CREATE_UNASSIGNED_USER')
+  @UseGuards(BrowserOriginGuard, CsrfGuard, SuperAdminMutationRateLimitGuard)
+  createUser(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: unknown,
+    @Req() request: FastifyRequest,
+  ) {
+    return this.superAdminService.createPendingUser(user, body, request);
+  }
+
   @Post('admins/:userId')
   @HttpCode(200)
+  @RequireCapability('MANAGE_ADMIN_GRANTS')
   @UseGuards(BrowserOriginGuard, CsrfGuard, SuperAdminMutationRateLimitGuard)
   grant(
     @CurrentUser() user: AuthenticatedUser,
@@ -51,6 +65,7 @@ export class SuperAdminController {
 
   @Delete('admins/:userId')
   @HttpCode(200)
+  @RequireCapability('MANAGE_ADMIN_GRANTS')
   @UseGuards(BrowserOriginGuard, CsrfGuard, SuperAdminMutationRateLimitGuard)
   revoke(
     @CurrentUser() user: AuthenticatedUser,

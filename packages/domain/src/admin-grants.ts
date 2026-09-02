@@ -1,7 +1,10 @@
 import {
   ADMIN_BACKFILL_PREVIOUS_ROLE,
   ADMIN_ELIGIBLE_ROLES,
+  ADMIN_PREVIOUS_ROLES,
+  STAFF_ASSIGNABLE_ROLES,
   type AdminEligibleRole,
+  type AdminPreviousRole,
   type UserRole,
   type UserStatus,
 } from '@sgr-registry/contracts';
@@ -22,6 +25,14 @@ export function isAdminEligibleRole(role: UserRole): role is AdminEligibleRole {
   return (ADMIN_ELIGIBLE_ROLES as readonly string[]).includes(role);
 }
 
+export function isAdminPreviousRole(role: UserRole): role is AdminPreviousRole {
+  return (ADMIN_PREVIOUS_ROLES as readonly string[]).includes(role);
+}
+
+export function isWorkingStaffRole(role: UserRole): boolean {
+  return (STAFF_ASSIGNABLE_ROLES as readonly string[]).includes(role);
+}
+
 export function previousRoleAfterAdminRevoke(target: {
   role: UserRole;
   roleBeforeAdmin: UserRole | null;
@@ -29,10 +40,10 @@ export function previousRoleAfterAdminRevoke(target: {
   if (target.role !== 'ADMIN') {
     return target.role;
   }
-  if (target.roleBeforeAdmin && isAdminEligibleRole(target.roleBeforeAdmin)) {
+  if (target.roleBeforeAdmin && isWorkingStaffRole(target.roleBeforeAdmin)) {
     return target.roleBeforeAdmin;
   }
-  return ADMIN_BACKFILL_PREVIOUS_ROLE;
+  return 'PENDING_ROLE';
 }
 
 export function isEligibleAdminGrantTarget(target: AdminGrantTarget): boolean {
@@ -72,17 +83,23 @@ export function assertCanRevokeAdmin(input: {
 
 export function nextAdminGrantState(target: AdminGrantTarget): {
   role: 'ADMIN';
-  roleBeforeAdmin: AdminEligibleRole;
+  roleBeforeAdmin: AdminPreviousRole;
 } {
   if (target.role === 'ADMIN') {
     const stored = target.roleBeforeAdmin;
     return {
       role: 'ADMIN',
       roleBeforeAdmin:
-        stored && isAdminEligibleRole(stored) ? stored : ADMIN_BACKFILL_PREVIOUS_ROLE,
+        stored && isAdminPreviousRole(stored) ? stored : ADMIN_BACKFILL_PREVIOUS_ROLE,
     };
   }
   if (!isEligibleAdminGrantTarget(target) || !isAdminEligibleRole(target.role)) {
+    throw new AdminGrantNotEligibleError();
+  }
+  if (target.role === 'PENDING_ROLE') {
+    return { role: 'ADMIN', roleBeforeAdmin: 'UNASSIGNED' };
+  }
+  if (!isWorkingStaffRole(target.role) || !isAdminPreviousRole(target.role)) {
     throw new AdminGrantNotEligibleError();
   }
   return { role: 'ADMIN', roleBeforeAdmin: target.role };

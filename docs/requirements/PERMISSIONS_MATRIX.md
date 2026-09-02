@@ -2,7 +2,7 @@
 
 Источник истины — `packages/domain/src/capabilities.ts`. Роль берётся из сессии, не из тела запроса.
 
-`SUPER_ADMIN` не является расширенной версией `ADMIN` и не наследует его capabilities. У суперадминистратора только `MANAGE_ADMIN_GRANTS`, `CHANGE_OWN_PASSWORD` и `VIEW_OWN_PROFILE`. Он не видит реестр, акты, предложения, чат, вложения, историю, справочники, уведомления и настройки. Назначение и снятие обычного `ADMIN` доступны только ему.
+`SUPER_ADMIN` не является расширенной версией `ADMIN` и не наследует его capabilities. Ему выдаются только `VIEW_ALL_BUSINESS_DATA`, `CREATE_UNASSIGNED_USER`, `MANAGE_ADMIN_GRANTS`, `CHANGE_OWN_PASSWORD` и `VIEW_OWN_PROFILE`. Полный просмотр бизнес-данных идёт через `satisfiesCapability` для read-only capabilities, без wildcard и без мутаций процесса. Создание сотрудника без рабочей роли (`PENDING_ROLE`) и grant/revoke `ADMIN` доступны только ему. Назначение рабочих ролей выполняет обычный `ADMIN`.
 
 Граница доступа `RESPONSIBLE_ENGINEER` — закреплённые объекты (`PropertyObjectEngineer`, активные строки с `unassignedAt IS NULL`). Назначение инженера на `DefectItem` — операционная принадлежность работы, а не security scope.
 
@@ -42,9 +42,9 @@
 | CHANGE_OWN_PASSWORD          | да    | да          | да                  | да                                       |
 | VIEW_OWN_PROFILE             | да    | да          | да                  | да                                       |
 
-Обычный `ADMIN` управляет только обычными сотрудниками (`SGR_MANAGER`, `RESPONSIBLE_ENGINEER`, `CONTRACTOR_ENGINEER`). Он не назначает и не снимает `ADMIN`, не создаёт `SUPER_ADMIN`, не меняет и не архивирует `ADMIN`/`SUPER_ADMIN` через общий users API.
+Обычный `ADMIN` управляет обычными сотрудниками (`SGR_MANAGER`, `RESPONSIBLE_ENGINEER`, `CONTRACTOR_ENGINEER`) и назначает рабочую роль пользователю в `PENDING_ROLE`. Он не назначает и не снимает `ADMIN`, не создаёт `SUPER_ADMIN`, не меняет и не архивирует `ADMIN`/`SUPER_ADMIN` через общий users API.
 
-Сумма Proposal A видна ADMIN и SGR_MANAGER (`canViewProposalASum`). B/C видны всем, кроме RESPONSIBLE_ENGINEER. Для каждого видимого слота в реестре показываются наименование организации и стоимость. RESPONSIBLE не мутирует A/B/C.
+Сумма Proposal A видна ADMIN, SGR_MANAGER и SUPER_ADMIN (`canViewProposalASum`). B/C видны всем, кроме RESPONSIBLE_ENGINEER. Для каждого видимого слота в реестре показываются наименование организации и стоимость. RESPONSIBLE не мутирует A/B/C.
 
 `VIEW_HISTORY` — полный журнал акта. `VIEW_ASSIGNED_HISTORY` — события всех дефектов актов закреплённых объектов (и безопасный объём шапки акта); B/C исключаются. `CONTRACTOR_ENGINEER` не читает историю: вкладка и history API недоступны (`403`), прямой SQL под runtime-ролью тоже пуст. Действия подрядчика по-прежнему пишутся в AuditLog и видны ADMIN и SGR_MANAGER.
 
@@ -52,4 +52,4 @@
 
 Capability без доступа к строке недостаточна: RESPONSIBLE с COMPLETE_DEFECT получает безопасный `404` на акт/дефект чужого объекта. Отсутствие capability → `403`. Завершённый дефект не редактирует RESPONSIBLE; ADMIN и SGR_MANAGER — только с подтверждением и причиной.
 
-PostgreSQL RLS дублирует эту матрицу как второй уровень (объектный scope, слот A vs B/C, запрет истории подрядчику, неизменяемый AuditLog, пустой бизнес-доступ SUPER_ADMIN). Хеш пароля не входит в user directory и недоступен `ADMIN`/`SUPER_ADMIN`. Подробности: [RLS_POLICY_MATRIX.md](../security/RLS_POLICY_MATRIX.md).
+PostgreSQL RLS дублирует эту матрицу как второй уровень (объектный scope, слот A vs B/C, запрет истории подрядчику, неизменяемый AuditLog, SELECT-only SUPER_ADMIN). Хеш пароля не входит в user directory и недоступен `ADMIN`/`SUPER_ADMIN`. Подробности: [RLS_POLICY_MATRIX.md](../security/RLS_POLICY_MATRIX.md).

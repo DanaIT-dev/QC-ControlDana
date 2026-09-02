@@ -32,7 +32,7 @@ export class HistoryReadController {
 
   @Get('audit-log')
   @RequireCapability('VIEW_HISTORY')
-  auditLog() {
-    return { items: [], totalCount: 0, nextCursor: null };
+  auditLog(@CurrentUser() user: AuthenticatedUser, @Query() query: Record<string, unknown>) {
+    return this.operationsService.listAuditLog(user, query);
   }
 }

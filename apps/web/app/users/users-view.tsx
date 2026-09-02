@@ -1,6 +1,10 @@
 'use client';
 
-import { MANAGED_USER_ROLES, STAFF_ASSIGNABLE_ROLES, USER_STATUSES } from '@sgr-registry/contracts';
+import {
+  LISTABLE_USER_ROLES,
+  STAFF_ASSIGNABLE_ROLES,
+  USER_STATUSES,
+} from '@sgr-registry/contracts';
 import { roleLabel } from '@sgr-registry/domain';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CopyIcon, MoreHorizontal } from 'lucide-react';
@@ -43,7 +47,7 @@ interface UserRow {
   id: string;
   fullName: string;
   email: string;
-  role: (typeof MANAGED_USER_ROLES)[number];
+  role: (typeof LISTABLE_USER_ROLES)[number];
   roleLabel: string;
   status: (typeof USER_STATUSES)[number];
   createdAt: string;
@@ -56,9 +60,13 @@ interface UserRow {
 export function UsersView({
   csrfToken,
   currentUserId,
+  canManage,
+  canCreateUnassigned,
 }: {
   csrfToken: string;
   currentUserId: string;
+  canManage: boolean;
+  canCreateUnassigned: boolean;
 }) {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
@@ -117,9 +125,11 @@ export function UsersView({
         title="Пользователи"
         description="Учётные записи и роли доступа к реестру."
         actions={
-          <Button type="button" onClick={() => setCreateOpen(true)}>
-            Добавить пользователя
-          </Button>
+          canManage || canCreateUnassigned ? (
+            <Button type="button" onClick={() => setCreateOpen(true)}>
+              Добавить пользователя
+            </Button>
+          ) : null
         }
       />
       <div className="flex flex-col gap-2 md:flex-row">
@@ -136,7 +146,7 @@ export function UsersView({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="ALL">Все роли</SelectItem>
-            {MANAGED_USER_ROLES.map((item) => (
+            {LISTABLE_USER_ROLES.map((item) => (
               <SelectItem key={item} value={item}>
                 {roleLabel(item)}
               </SelectItem>
@@ -182,7 +192,7 @@ export function UsersView({
               <th className="px-3 py-3">Роль</th>
               <th className="px-3 py-3">Статус</th>
               <th className="px-3 py-3">Последний вход</th>
-              <th className="px-3 py-3">Действия</th>
+              {canManage ? <th className="px-3 py-3">Действия</th> : null}
             </tr>
           </thead>
           <tbody>
@@ -206,9 +216,11 @@ export function UsersView({
                 <td className="px-3 py-3 text-muted-foreground">
                   {formatTimestamp(item.lastLoginAt)}
                 </td>
-                <td className="px-3 py-3">
-                  <UserActions user={item} currentUserId={currentUserId} onMutate={mutate} />
-                </td>
+                {canManage ? (
+                  <td className="px-3 py-3">
+                    <UserActions user={item} currentUserId={currentUserId} onMutate={mutate} />
+                  </td>
+                ) : null}
               </tr>
             ))}
           </tbody>
@@ -236,16 +248,23 @@ export function UsersView({
               <p className="text-sm text-muted-foreground">
                 Вход: {formatTimestamp(item.lastLoginAt)}
               </p>
-              <UserActions user={item} currentUserId={currentUserId} onMutate={mutate} />
+              {canManage ? (
+                <UserActions user={item} currentUserId={currentUserId} onMutate={mutate} />
+              ) : null}
             </CardContent>
           </Card>
         ))}
       </div>
       {createOpen ? (
         <CreateUserDialog
+          unassigned={canCreateUnassigned && !canManage}
           onClose={() => setCreateOpen(false)}
           onCreate={async (body) => {
-            await mutate('/api/users', 'POST', body);
+            await mutate(
+              canCreateUnassigned && !canManage ? '/api/super-admin/users' : '/api/users',
+              'POST',
+              body,
+            );
             setCreateOpen(false);
           }}
         />
@@ -338,9 +357,11 @@ function UserActions({
 }
 
 function CreateUserDialog({
+  unassigned = false,
   onClose,
   onCreate,
 }: {
+  unassigned?: boolean;
   onClose: () => void;
   onCreate: (body: unknown) => Promise<void>;
 }) {
@@ -354,11 +375,16 @@ function CreateUserDialog({
           className="grid gap-3"
           onSubmit={(event) => {
             event.preventDefault();
-            void onCreate({ fullName, email, role });
+            void onCreate(unassigned ? { fullName, email } : { fullName, email, role });
           }}
         >
           <DialogHeader>
             <DialogTitle id="create-user-title">Новый пользователь</DialogTitle>
+            {unassigned ? (
+              <DialogDescription>
+                Учётная запись будет создана без рабочей роли. Роль назначит администратор.
+              </DialogDescription>
+            ) : null}
           </DialogHeader>
           <div className="grid gap-1.5">
             <Label htmlFor="new-user-name">ФИО</Label>
@@ -379,24 +405,26 @@ function CreateUserDialog({
               required
             />
           </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="new-user-role">Роль</Label>
-            <Select
-              value={role}
-              onValueChange={(value) => setRole(value as (typeof STAFF_ASSIGNABLE_ROLES)[number])}
-            >
-              <SelectTrigger id="new-user-role">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {STAFF_ASSIGNABLE_ROLES.map((item) => (
-                  <SelectItem key={item} value={item}>
-                    {roleLabel(item)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {unassigned ? null : (
+            <div className="grid gap-1.5">
+              <Label htmlFor="new-user-role">Роль</Label>
+              <Select
+                value={role}
+                onValueChange={(value) => setRole(value as (typeof STAFF_ASSIGNABLE_ROLES)[number])}
+              >
+                <SelectTrigger id="new-user-role">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {STAFF_ASSIGNABLE_ROLES.map((item) => (
+                    <SelectItem key={item} value={item}>
+                      {roleLabel(item)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
               Отмена

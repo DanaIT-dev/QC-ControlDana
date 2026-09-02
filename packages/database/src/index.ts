@@ -72,4 +72,6 @@ export {
   upsertUserCredentialsViaDefiner,
   createUserWithPassword,
 } from './user-credentials';
+export { createPendingUserViaDefiner } from './pending-user';
+export type { PendingUserRow } from './pending-user';
 export { insertAuditLogRow, insertOutboxEventRow, upsertSlaClockRow } from './rls-writes';

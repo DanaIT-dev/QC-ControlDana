@@ -22,17 +22,18 @@ import { UsersService } from './users.service';
 
 @Controller('users')
 @UseGuards(AuthenticationGuard, CapabilityGuard)
-@RequireCapability('MANAGE_USERS')
 export class UsersController {
   constructor(@Inject(UsersService) private readonly usersService: UsersService) {}
 
   @Get()
+  @RequireCapability('MANAGE_USERS', 'VIEW_ALL_BUSINESS_DATA', 'CREATE_UNASSIGNED_USER')
   list(@Query() query: Record<string, unknown>) {
     return this.usersService.list(query);
   }
 
   @Post()
   @HttpCode(201)
+  @RequireCapability('MANAGE_USERS')
   @UseGuards(BrowserOriginGuard, CsrfGuard)
   create(
     @CurrentUser() user: AuthenticatedUser,
@@ -43,6 +44,7 @@ export class UsersController {
   }
 
   @Patch(':userId')
+  @RequireCapability('MANAGE_USERS')
   @UseGuards(BrowserOriginGuard, CsrfGuard)
   update(
     @CurrentUser() user: AuthenticatedUser,
@@ -55,6 +57,7 @@ export class UsersController {
 
   @Post(':userId/archive')
   @HttpCode(200)
+  @RequireCapability('MANAGE_USERS')
   @UseGuards(BrowserOriginGuard, CsrfGuard)
   archive(
     @CurrentUser() user: AuthenticatedUser,
@@ -67,6 +70,7 @@ export class UsersController {
 
   @Post(':userId/restore')
   @HttpCode(200)
+  @RequireCapability('MANAGE_USERS')
   @UseGuards(BrowserOriginGuard, CsrfGuard)
   restore(
     @CurrentUser() user: AuthenticatedUser,
@@ -79,6 +83,7 @@ export class UsersController {
 
   @Post(':userId/reset-password')
   @HttpCode(200)
+  @RequireCapability('MANAGE_USERS')
   @UseGuards(BrowserOriginGuard, CsrfGuard)
   resetPassword(
     @CurrentUser() user: AuthenticatedUser,
@@ -90,6 +95,7 @@ export class UsersController {
   }
 
   @Get(':userId/history')
+  @RequireCapability('MANAGE_USERS', 'VIEW_ALL_BUSINESS_DATA')
   history(@Param('userId') userId: string, @Query() query: Record<string, unknown>) {
     return this.usersService.history(userId, query);
   }

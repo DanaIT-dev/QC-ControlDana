@@ -1,4 +1,4 @@
-import { hasCapability } from '@sgr-registry/domain';
+import { canManageUsers, hasCapability } from '@sgr-registry/domain';
 import { requireBusinessUser } from '../../lib/server-auth';
 import { AppShell } from '../app-shell';
 import { ForbiddenState } from '@/components/forbidden-state';
@@ -8,7 +8,11 @@ export const dynamic = 'force-dynamic';
 
 export default async function UsersPage() {
   const user = await requireBusinessUser();
-  if (!hasCapability(user.role, 'MANAGE_USERS')) {
+  const canManage = canManageUsers(user.role);
+  const canCreateUnassigned = hasCapability(user.role, 'CREATE_UNASSIGNED_USER');
+  const canView =
+    canManage || canCreateUnassigned || hasCapability(user.role, 'VIEW_ALL_BUSINESS_DATA');
+  if (!canView) {
     return (
       <AppShell user={user}>
         <ForbiddenState description="Раздел доступен только администратору." />
@@ -17,7 +21,12 @@ export default async function UsersPage() {
   }
   return (
     <AppShell user={user}>
-      <UsersView csrfToken={user.csrfToken} currentUserId={user.id} />
+      <UsersView
+        csrfToken={user.csrfToken}
+        currentUserId={user.id}
+        canManage={canManage}
+        canCreateUnassigned={canCreateUnassigned}
+      />
     </AppShell>
   );
 }

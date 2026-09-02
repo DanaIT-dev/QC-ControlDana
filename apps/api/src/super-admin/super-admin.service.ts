@@ -2,21 +2,27 @@ import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nest
 import type { FastifyRequest } from 'fastify';
 import {
   adminGrantRequestSchema,
+  createUnassignedUserRequestSchema,
   superAdminDirectoryQuerySchema,
   type SuperAdminDirectoryUser,
 } from '@sgr-registry/contracts';
 import {
   AdminGrantNotEligibleError,
+  DuplicateValueError,
   LastAdminRevokeError,
+  normalizeUserEmail,
+  normalizeUserFullName,
   roleLabel,
   StaleWriteError,
 } from '@sgr-registry/domain';
-import type { Prisma } from '@sgr-registry/database';
+import { createPendingUserViaDefiner, type Prisma } from '@sgr-registry/database';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
+import { generateTemporaryPassword } from '../auth/crypto';
+import { Argon2PasswordHasher } from '../auth/password-hasher';
 import { PrismaService } from '../auth/prisma.tokens';
 import { RedisSessionStore } from '../auth/redis-session.store';
 import { toJsonValue, writeAuditLog } from '../common/audit-writer';
-import { parseCommandBody } from '../common/command-body';
+import { isPrismaUniqueConflict, parseCommandBody } from '../common/command-body';
 import { actorContext } from '../common/request-context';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -40,6 +46,7 @@ export class SuperAdminService {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(RedisSessionStore) private readonly sessions: RedisSessionStore,
+    @Inject(Argon2PasswordHasher) private readonly hasher: Argon2PasswordHasher,
   ) {}
 
   listAdmins(rawQuery: Record<string, unknown>) {
@@ -122,6 +129,49 @@ export class SuperAdminService {
       await this.sessions.deleteAllForUser(targetId);
     }
     return result.dto;
+  }
+
+  async createPendingUser(actor: AuthenticatedUser, body: unknown, request: FastifyRequest) {
+    const input = parseCommandBody(createUnassignedUserRequestSchema, body);
+    const fullName = normalizeUserFullName(input.fullName);
+    const email = normalizeUserEmail(input.email);
+    const temporaryPassword = generateTemporaryPassword(16, { email, fullName });
+    const passwordHash = await this.hasher.hash(temporaryPassword, { email, fullName });
+    const ctx = actorContext(actor, request);
+    try {
+      const created = await this.prisma.client.$transaction(async (tx) => {
+        return createPendingUserViaDefiner(tx, {
+          fullName,
+          email,
+          passwordHash,
+          actorUserId: actor.id,
+          actorName: actor.fullName,
+          requestId: ctx.requestId ?? null,
+        });
+      });
+      return {
+        user: {
+          id: created.id,
+          fullName: created.full_name,
+          email: created.email,
+          role: created.current_role,
+          roleLabel: roleLabel(created.current_role),
+          status: created.status,
+          createdAt: new Date(created.created_at).toISOString(),
+          updatedAt: new Date(created.updated_at).toISOString(),
+          lastLoginAt: created.last_login_at ? new Date(created.last_login_at).toISOString() : null,
+          mustChangePassword: created.must_change_password,
+          version: created.version,
+          archivedAt: created.archived_at ? new Date(created.archived_at).toISOString() : null,
+        },
+        temporaryPassword,
+      };
+    } catch (error) {
+      if (isPrismaUniqueConflict(error) || prismaRawMessage(error).includes('duplicate key')) {
+        throw new DuplicateValueError('Пользователь с такой почтой уже существует');
+      }
+      throw error;
+    }
   }
 
   private async listDirectory(kind: 'admins' | 'eligible', rawQuery: Record<string, unknown>) {

@@ -3,6 +3,8 @@ import type { UserRole } from '@sgr-registry/contracts';
 export const CAPABILITIES = [
   'MANAGE_ADMIN_GRANTS',
   'MANAGE_USERS',
+  'CREATE_UNASSIGNED_USER',
+  'VIEW_ALL_BUSINESS_DATA',
   'MANAGE_REFERENCE_DATA',
   'VIEW_REFERENCE_DATA',
   'VIEW_SYSTEM_STATUS',
@@ -39,7 +41,15 @@ export const CAPABILITIES = [
 export type Capability = (typeof CAPABILITIES)[number];
 
 const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
-  SUPER_ADMIN: ['MANAGE_ADMIN_GRANTS', 'CHANGE_OWN_PASSWORD', 'VIEW_OWN_PROFILE'],
+  SUPER_ADMIN: [
+    'VIEW_ALL_BUSINESS_DATA',
+    'CREATE_UNASSIGNED_USER',
+    'MANAGE_ADMIN_GRANTS',
+    'CHANGE_OWN_PASSWORD',
+    'VIEW_OWN_PROFILE',
+  ],
+  PENDING_ROLE: ['CHANGE_OWN_PASSWORD', 'VIEW_OWN_PROFILE'],
+  UNASSIGNED: [],
   ADMIN: [
     'MANAGE_USERS',
     'MANAGE_REFERENCE_DATA',
@@ -143,9 +153,28 @@ const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
   ],
 };
 
+export const OVERSIGHT_READ_CAPABILITIES: readonly Capability[] = [
+  'VIEW_REFERENCE_DATA',
+  'VIEW_SYSTEM_STATUS',
+  'VIEW_ALL_ACTS',
+  'VIEW_ASSIGNED_DEFECTS',
+  'VIEW_PROPOSAL_A',
+  'VIEW_HISTORY',
+  'VIEW_ASSIGNED_HISTORY',
+  'VIEW_ACT_CHAT',
+  'VIEW_ATTACHMENTS',
+  'DOWNLOAD_ATTACHMENT',
+  'VIEW_NOTIFICATIONS',
+  'VIEW_DEADLINE_CONTROL',
+];
+
+const OVERSIGHT_READ_SET = new Set<Capability>(OVERSIGHT_READ_CAPABILITIES);
+
 export const CAPABILITY_LABELS: Record<Capability, string> = {
   MANAGE_ADMIN_GRANTS: 'Назначение и снятие администраторов',
   MANAGE_USERS: 'Управление пользователями',
+  CREATE_UNASSIGNED_USER: 'Создание учётной записи без рабочей роли',
+  VIEW_ALL_BUSINESS_DATA: 'Полный просмотр бизнес-данных',
   MANAGE_REFERENCE_DATA: 'Управление справочниками',
   VIEW_REFERENCE_DATA: 'Просмотр справочников',
   VIEW_SYSTEM_STATUS: 'Состояние системы',
@@ -187,6 +216,28 @@ export function hasCapability(role: UserRole, capability: Capability): boolean {
   return ROLE_CAPABILITIES[role].includes(capability);
 }
 
+export function satisfiesCapability(role: UserRole, capability: Capability): boolean {
+  if (hasCapability(role, capability)) {
+    return true;
+  }
+  return hasCapability(role, 'VIEW_ALL_BUSINESS_DATA') && OVERSIGHT_READ_SET.has(capability);
+}
+
+export function satisfiesAnyCapability(
+  role: UserRole,
+  capabilities: readonly Capability[],
+): boolean {
+  return capabilities.some((capability) => satisfiesCapability(role, capability));
+}
+
+export function isOversightRole(role: UserRole): boolean {
+  return hasCapability(role, 'VIEW_ALL_BUSINESS_DATA');
+}
+
+export function isPendingRole(role: UserRole): boolean {
+  return role === 'PENDING_ROLE';
+}
+
 export function canManageUsers(role: UserRole): boolean {
   return hasCapability(role, 'MANAGE_USERS');
 }
@@ -196,7 +247,7 @@ export function canManageReferenceData(role: UserRole): boolean {
 }
 
 export function canViewReferenceData(role: UserRole): boolean {
-  return hasCapability(role, 'VIEW_REFERENCE_DATA');
+  return satisfiesCapability(role, 'VIEW_REFERENCE_DATA');
 }
 
 export const MANAGED_REFERENCE_KINDS = [
@@ -211,7 +262,10 @@ export const VIEW_ONLY_REFERENCE_KINDS = ['property-objects', 'organizations'] a
 export type ReferenceCatalogKind = (typeof MANAGED_REFERENCE_KINDS)[number];
 
 export function canAccessReferenceKind(role: UserRole, kind: string): boolean {
-  if (hasCapability(role, 'MANAGE_REFERENCE_DATA')) {
+  if (
+    hasCapability(role, 'MANAGE_REFERENCE_DATA') ||
+    hasCapability(role, 'VIEW_ALL_BUSINESS_DATA')
+  ) {
     return (MANAGED_REFERENCE_KINDS as readonly string[]).includes(kind);
   }
   if (hasCapability(role, 'VIEW_REFERENCE_DATA')) {
@@ -225,7 +279,7 @@ export function canCreateAct(role: UserRole): boolean {
 }
 
 export function canViewFullHistory(role: UserRole): boolean {
-  return hasCapability(role, 'VIEW_HISTORY');
+  return satisfiesCapability(role, 'VIEW_HISTORY');
 }
 
 export function canViewAssignedHistory(role: UserRole): boolean {
@@ -237,7 +291,7 @@ export function canViewHistory(role: UserRole): boolean {
 }
 
 export function canViewActChat(role: UserRole): boolean {
-  return hasCapability(role, 'VIEW_ACT_CHAT');
+  return satisfiesCapability(role, 'VIEW_ACT_CHAT');
 }
 
 export function canManageAdminGrants(role: UserRole): boolean {
@@ -248,7 +302,13 @@ export function postLoginPath(role: UserRole, mustChangePassword = false): strin
   if (mustChangePassword) {
     return '/change-password';
   }
-  if (hasCapability(role, 'MANAGE_ADMIN_GRANTS') && !hasCapability(role, 'VIEW_ALL_ACTS')) {
+  if (isPendingRole(role)) {
+    return '/pending-role';
+  }
+  if (hasCapability(role, 'VIEW_ALL_BUSINESS_DATA') || hasCapability(role, 'VIEW_ALL_ACTS')) {
+    return '/registry';
+  }
+  if (hasCapability(role, 'MANAGE_ADMIN_GRANTS')) {
     return '/super-admin';
   }
   return '/registry';

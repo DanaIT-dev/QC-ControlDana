@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import {
-  MANAGED_USER_ROLES,
+  LISTABLE_USER_ROLES,
   ORGANIZATION_ROLES,
   STAFF_ASSIGNABLE_ROLES,
   USER_STATUSES,
@@ -38,7 +38,7 @@ export const versionedReasonSchema = z
 export const usersListQuerySchema = z
   .object({
     search: z.string().optional(),
-    role: z.enum(MANAGED_USER_ROLES).optional(),
+    role: z.enum(LISTABLE_USER_ROLES).optional(),
     status: z.enum(USER_STATUSES).optional(),
     page: z.coerce.number().int().positive().optional(),
     pageSize: z.coerce.number().int().positive().max(100).optional(),

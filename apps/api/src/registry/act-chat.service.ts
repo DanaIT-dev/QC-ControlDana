@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, ForbiddenException, NotFoundException } from '@nestjs/common';
 import {
   actChatListQuerySchema,
   actChatMentionCandidatesQuerySchema,
@@ -21,6 +21,7 @@ import {
   decodeChatCursor,
   dedupeMentionUserIds,
   encodeChatCursor,
+  hasCapability,
   isChatMentionableRole,
   mentionRecipientIds,
   notificationTitle,
@@ -143,6 +144,9 @@ export class ActChatService {
     body: unknown,
     request: FastifyRequest,
   ): Promise<ActChatMessageDto> {
+    if (!hasCapability(user.role, 'VIEW_ACT_CHAT')) {
+      throw new ForbiddenException('Недостаточно прав');
+    }
     const act = await this.requireVisibleAct(user, actId);
     const input = parseCommandBody(createActChatMessageRequestSchema, body);
     const text = normalizeChatBody(input.body);

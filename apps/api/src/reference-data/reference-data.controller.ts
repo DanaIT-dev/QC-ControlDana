@@ -95,13 +95,14 @@ export class ReferenceDataController {
   }
 
   @Get(':kind/:id/history')
-  @RequireCapability('MANAGE_REFERENCE_DATA')
+  @RequireCapability('MANAGE_REFERENCE_DATA', 'VIEW_ALL_BUSINESS_DATA')
   history(
+    @CurrentUser() user: AuthenticatedUser,
     @Param('kind') kind: ReferenceKind,
     @Param('id') id: string,
     @Query() query: Record<string, unknown>,
   ) {
-    return this.referenceDataService.history(assertKind(kind), id, query);
+    return this.referenceDataService.history(assertReadableKind(kind, user.role), id, query);
   }
 }
 

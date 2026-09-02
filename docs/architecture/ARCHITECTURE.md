@@ -66,13 +66,13 @@ Docker Compose поднимает:
 
 Список, count, summary, filter-options и карточка акта используют прикладной `RegistryAccessScope` (Guards, capabilities, Prisma `where`) и второй уровень — PostgreSQL RLS (`FORCE ROW LEVEL SECURITY`, verified HMAC-контекст, отдельные runtime-роли). Коммерческие поля B/C скрываются и serializer’ом, и row policy / slot predicate: RESPONSIBLE_ENGINEER не читает B/C даже прямым SQL под `sgr_app`. Пагинация выполняется в PostgreSQL (`skip`/`take`). Для сортировки по `effectiveDeadline` используется generated stored column `COALESCE(claimDeadline, plannedDeadline)`.
 
-Роли БД, provisioning и rotation секрета: [RLS_OPERATIONS.md](../security/RLS_OPERATIONS.md), матрица: [RLS_POLICY_MATRIX.md](../security/RLS_POLICY_MATRIX.md). `SUPER_ADMIN` не входит в `sgr_is_staff()` / `sgr_is_admin()`: бизнес-таблицы пусты, назначение ADMIN только через `sgr_grant_admin` / `sgr_revoke_admin`, учётка создаётся командой `pnpm super-admin:provision` (одна транзакция, TTY-пароль).
+Роли БД, provisioning и rotation секрета: [RLS_OPERATIONS.md](../security/RLS_OPERATIONS.md), матрица: [RLS_POLICY_MATRIX.md](../security/RLS_POLICY_MATRIX.md). `SUPER_ADMIN` не входит в `sgr_is_staff()` / `sgr_is_admin()`: SELECT бизнес-таблиц через `sgr_is_super_admin()`, прямые INSERT/UPDATE/DELETE запрещены. Узкие SECURITY DEFINER: `sgr_grant_admin` / `sgr_revoke_admin` / `sgr_create_pending_user`. Учётка SUPER_ADMIN создаётся командой `pnpm super-admin:provision` (одна транзакция, TTY-пароль).
 
 Интерактивная Prisma-транзакция запроса держит одно PostgreSQL-соединение. Параллельный `Promise.all` и вложенные `include` сериализуются на этом client (не глобальным mutex): иначе `pg@9` отвергнет второй `client.query()`. Разные HTTP-запросы по-прежнему параллельны на разных соединениях пула. RLS-контекст transaction-local; после commit/rollback client не покидает транзакцию и не переносится в ALS.
 
 ## Внутренний чат акта
 
-Карточка акта содержит вкладку «Обсуждение» для `ADMIN`, `SGR_MANAGER` и `RESPONSIBLE_ENGINEER` (последнему — только закреплённые объекты). `CONTRACTOR_ENGINEER` не видит UI и получает `403` на API. Сообщения — plain text, без редактирования, удаления и вложений. `@` создаёт только внутреннее уведомление `ACT_CHAT_MENTION` (без SMTP, SMS, Telegram и Web Push). Упоминание не расширяет доступ к акту. Пагинация keyset, обновление — polling открытой вкладки, без WebSocket.
+Карточка акта содержит вкладку «Обсуждение» для `ADMIN`, `SGR_MANAGER`, `RESPONSIBLE_ENGINEER` и read-only для `SUPER_ADMIN` (последнему ответственному — только закреплённые объекты). `CONTRACTOR_ENGINEER` не видит UI и получает `403` на API. Сообщения — plain text, без редактирования, удаления и вложений. `@` создаёт только внутреннее уведомление `ACT_CHAT_MENTION` (без SMTP, SMS, Telegram и Web Push). Упоминание не расширяет доступ к акту. Пагинация keyset, обновление — polling открытой вкладки, без WebSocket. `SUPER_ADMIN` не отправляет сообщения.
 
 Worker не имеет GRANT на таблицы чата и не читает содержимое переписки.
 

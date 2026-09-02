@@ -15,7 +15,13 @@ import {
 import { queryKeys } from '@/lib/query-keys';
 import { formatTimestamp } from '@/lib/registry-url';
 
-export function NotificationsView({ csrfToken }: { csrfToken: string }) {
+export function NotificationsView({
+  csrfToken,
+  canMutate = true,
+}: {
+  csrfToken: string;
+  canMutate?: boolean;
+}) {
   const router = useRouter();
   const params = useSearchParams();
   const filter = params.get('filter') === 'unread' ? 'unread' : 'all';
@@ -50,10 +56,12 @@ export function NotificationsView({ csrfToken }: { csrfToken: string }) {
     actId: string | null;
     defectItemId: string | null;
   }) {
-    try {
-      await markRead.mutateAsync(item.id);
-    } catch {
-      /* destination handles missing access */
+    if (canMutate) {
+      try {
+        await markRead.mutateAsync(item.id);
+      } catch {
+        /* destination handles missing access */
+      }
     }
     const href = notificationDestination(item);
     if (href) {
@@ -69,15 +77,17 @@ export function NotificationsView({ csrfToken }: { csrfToken: string }) {
         title="Уведомления"
         description="Внутренние сообщения по срокам, назначениям и файлам."
         actions={
-          <Button
-            type="button"
-            variant="outline"
-            className="min-h-11"
-            onClick={() => readAll.mutate()}
-            disabled={readAll.isPending}
-          >
-            Прочитать все
-          </Button>
+          canMutate ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="min-h-11"
+              onClick={() => readAll.mutate()}
+              disabled={readAll.isPending}
+            >
+              Прочитать все
+            </Button>
+          ) : null
         }
       />
       <div className="mb-4 flex gap-2">
@@ -126,7 +136,7 @@ export function NotificationsView({ csrfToken }: { csrfToken: string }) {
                     <Button type="button" className="min-h-11" onClick={() => void openItem(item)}>
                       Открыть
                     </Button>
-                    {!item.readAt ? (
+                    {canMutate && !item.readAt ? (
                       <Button
                         type="button"
                         variant="outline"
@@ -135,9 +145,9 @@ export function NotificationsView({ csrfToken }: { csrfToken: string }) {
                       >
                         Отметить прочитанным
                       </Button>
-                    ) : (
+                    ) : item.readAt ? (
                       <p className="self-center text-xs text-muted-foreground">Прочитано</p>
-                    )}
+                    ) : null}
                   </div>
                 </CardContent>
               </Card>

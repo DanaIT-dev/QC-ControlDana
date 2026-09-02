@@ -6,6 +6,8 @@ export const USER_ROLE_LABELS: Record<UserRole, string> = {
   SGR_MANAGER: 'Руководитель СГР',
   RESPONSIBLE_ENGINEER: 'Ответственный инженер',
   CONTRACTOR_ENGINEER: 'Инженер по работе с подрядчиками',
+  PENDING_ROLE: 'Ожидает назначение роли',
+  UNASSIGNED: 'Роль не назначена',
 };
 
 export function roleLabel(role: UserRole): string {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   adminGrantRequestSchema,
   createActRequestSchema,
+  createUnassignedUserRequestSchema,
   createUserRequestSchema,
   patchActHeaderRequestSchema,
   patchDeadlinesRequestSchema,
@@ -107,12 +108,14 @@ describe('user lifecycle rules', () => {
     });
     const responsible = { ...manager, id: 'r1', role: 'RESPONSIBLE_ENGINEER' as const };
     expect(nextAdminGrantState(responsible).roleBeforeAdmin).toBe('RESPONSIBLE_ENGINEER');
-    expect(() =>
-      assertCanGrantAdmin({
-        actorId: 'sa',
-        target: { ...manager, role: 'CONTRACTOR_ENGINEER' },
-      }),
-    ).toThrow(AdminGrantNotEligibleError);
+    expect(nextAdminGrantState({ ...manager, role: 'CONTRACTOR_ENGINEER' })).toEqual({
+      role: 'ADMIN',
+      roleBeforeAdmin: 'CONTRACTOR_ENGINEER',
+    });
+    expect(nextAdminGrantState({ ...manager, role: 'PENDING_ROLE' })).toEqual({
+      role: 'ADMIN',
+      roleBeforeAdmin: 'UNASSIGNED',
+    });
     expect(() =>
       assertCanGrantAdmin({
         actorId: 'sa',
@@ -132,7 +135,10 @@ describe('user lifecycle rules', () => {
     assertCanGrantAdmin({ actorId: 'sa', target: admin });
     expect(previousRoleAfterAdminRevoke(admin)).toBe('RESPONSIBLE_ENGINEER');
     expect(previousRoleAfterAdminRevoke({ role: 'ADMIN', roleBeforeAdmin: null })).toBe(
-      'SGR_MANAGER',
+      'PENDING_ROLE',
+    );
+    expect(previousRoleAfterAdminRevoke({ role: 'ADMIN', roleBeforeAdmin: 'UNASSIGNED' })).toBe(
+      'PENDING_ROLE',
     );
     expect(() =>
       assertCanRevokeAdmin({ actorId: 'sa', target: admin, activeAdminCount: 1 }),
@@ -153,6 +159,26 @@ describe('user lifecycle rules', () => {
         fullName: 'Иван Иванов',
         email: 'ivan@example.sgr.local',
         role: 'SUPER_ADMIN',
+      }).success,
+    ).toBe(false);
+    expect(
+      createUnassignedUserRequestSchema.safeParse({
+        fullName: 'Иван Иванов',
+        email: 'ivan@example.sgr.local',
+      }).success,
+    ).toBe(true);
+    expect(
+      createUnassignedUserRequestSchema.safeParse({
+        fullName: 'Иван Иванов',
+        email: 'ivan@example.sgr.local',
+        role: 'ADMIN',
+      }).success,
+    ).toBe(false);
+    expect(
+      createUnassignedUserRequestSchema.safeParse({
+        fullName: 'Иван Иванов',
+        email: 'ivan@example.sgr.local',
+        status: 'ACTIVE',
       }).success,
     ).toBe(false);
   });

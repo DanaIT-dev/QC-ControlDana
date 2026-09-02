@@ -1,6 +1,11 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { hasCapability, postLoginPath, SESSION_COOKIE_NAME } from '@sgr-registry/domain';
+import {
+  hasCapability,
+  isPendingRole,
+  postLoginPath,
+  SESSION_COOKIE_NAME,
+} from '@sgr-registry/domain';
 import type { CapabilitiesResponse, SafeUserProfile } from '@sgr-registry/contracts';
 
 function apiBaseUrl(): string {
@@ -49,8 +54,8 @@ export async function requireAppUser(): Promise<SafeUserProfile> {
 
 export async function requireBusinessUser(): Promise<SafeUserProfile> {
   const user = await requireAppUser();
-  if (postLoginPath(user.role) === '/super-admin') {
-    redirect('/super-admin');
+  if (isPendingRole(user.role)) {
+    redirect('/pending-role');
   }
   return user;
 }

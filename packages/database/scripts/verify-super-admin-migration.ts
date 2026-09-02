@@ -93,6 +93,12 @@ async function main(): Promise<void> {
     if (!labels.rows.some((row) => row.enumlabel === 'SUPER_ADMIN')) {
       throw new Error('SUPER_ADMIN enum value missing');
     }
+    if (!labels.rows.some((row) => row.enumlabel === 'PENDING_ROLE')) {
+      throw new Error('PENDING_ROLE enum value missing');
+    }
+    if (!labels.rows.some((row) => row.enumlabel === 'UNASSIGNED')) {
+      throw new Error('UNASSIGNED enum value missing');
+    }
     const column = await verify.query<{ data_type: string }>(`
       SELECT data_type FROM information_schema.columns
       WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'roleBeforeAdmin'
@@ -115,8 +121,8 @@ async function main(): Promise<void> {
       SELECT role::text, "roleBeforeAdmin"::text AS previous
       FROM users WHERE email = 'backfill.admin@example.sgr.local'
     `);
-    if (backfill.rows[0]?.role !== 'ADMIN' || backfill.rows[0]?.previous !== 'SGR_MANAGER') {
-      throw new Error('Existing ADMIN backfill to SGR_MANAGER failed');
+    if (backfill.rows[0]?.role !== 'ADMIN' || backfill.rows[0]?.previous !== 'UNASSIGNED') {
+      throw new Error('Existing ADMIN backfill to UNASSIGNED failed');
     }
     const chk = await verify.query(`
       SELECT 1 FROM pg_constraint WHERE conname = 'users_role_before_admin_chk'
@@ -125,9 +131,14 @@ async function main(): Promise<void> {
       throw new Error('users_role_before_admin_chk missing');
     }
     const fn = await verify.query(`
-      SELECT 1 FROM pg_proc WHERE proname IN ('sgr_is_super_admin', 'sgr_grant_admin', 'sgr_super_admin_directory')
+      SELECT 1 FROM pg_proc WHERE proname IN (
+        'sgr_is_super_admin',
+        'sgr_grant_admin',
+        'sgr_super_admin_directory',
+        'sgr_create_pending_user'
+      )
     `);
-    if (fn.rows.length < 3) {
+    if (fn.rows.length < 4) {
       throw new Error('SUPER_ADMIN SQL functions missing');
     }
     console.log('Isolated SUPER_ADMIN migration verification passed.');

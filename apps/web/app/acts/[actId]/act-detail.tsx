@@ -1,7 +1,13 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { canViewProposalGroupBC, canViewHistory, canViewActChat } from '@sgr-registry/domain';
+import {
+  canViewProposalGroupBC,
+  canViewHistory,
+  canViewActChat,
+  canUploadCategory,
+  hasCapability,
+} from '@sgr-registry/domain';
 import type { SafeUserProfile } from '@sgr-registry/contracts';
 import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
@@ -159,7 +165,7 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
         listPath={`/api/acts/${act.id}/attachments`}
         uploadPath={`/api/acts/${act.id}/attachments`}
         categories={['ACT_DOCUMENT', 'ACT_SCAN', 'OTHER']}
-        canUpload={user.role === 'ADMIN' || user.role === 'SGR_MANAGER'}
+        canUpload={canUploadCategory(user.role, 'ACT', 'ACT_DOCUMENT')}
         csrfToken={user.csrfToken}
       />
       <Tabs value={tab} onValueChange={setTab} className="min-w-0 max-w-full">
@@ -242,12 +248,9 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
                         ? ['DEFECT_PHOTO', 'OTHER']
                         : ['DEFECT_PHOTO', 'CLAIM_DOCUMENT', 'THIRD_PARTY_DOCUMENT', 'OTHER']
                   }
-                  canUpload={
-                    user.role === 'ADMIN' ||
-                    user.role === 'SGR_MANAGER' ||
-                    user.role === 'CONTRACTOR_ENGINEER' ||
-                    user.role === 'RESPONSIBLE_ENGINEER'
-                  }
+                  canUpload={(
+                    ['DEFECT_PHOTO', 'CLAIM_DOCUMENT', 'THIRD_PARTY_DOCUMENT', 'OTHER'] as const
+                  ).some((category) => canUploadCategory(user.role, 'DEFECT_ITEM', category))}
                   csrfToken={user.csrfToken}
                   compact
                 />
@@ -257,7 +260,7 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
                     listPath={`/api/proposals/${item.proposalA.id}/attachments`}
                     uploadPath={`/api/proposals/${item.proposalA.id}/attachments`}
                     categories={['PROPOSAL_DOCUMENT']}
-                    canUpload={user.role !== 'RESPONSIBLE_ENGINEER'}
+                    canUpload={canUploadCategory(user.role, 'PROPOSAL', 'PROPOSAL_DOCUMENT')}
                     csrfToken={user.csrfToken}
                     compact
                   />
@@ -271,7 +274,7 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
                           listPath={`/api/proposals/${proposal.id}/attachments`}
                           uploadPath={`/api/proposals/${proposal.id}/attachments`}
                           categories={['PROPOSAL_DOCUMENT']}
-                          canUpload
+                          canUpload={canUploadCategory(user.role, 'PROPOSAL', 'PROPOSAL_DOCUMENT')}
                           csrfToken={user.csrfToken}
                           compact
                         />
@@ -302,7 +305,11 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
             className="mt-4 min-w-0 flex-none data-[state=inactive]:hidden"
           >
             {tab === 'discussion' ? (
-              <ActDiscussion actId={act.id} csrfToken={user.csrfToken} />
+              <ActDiscussion
+                actId={act.id}
+                csrfToken={user.csrfToken}
+                canPost={hasCapability(user.role, 'VIEW_ACT_CHAT')}
+              />
             ) : null}
           </TabsContent>
         ) : null}

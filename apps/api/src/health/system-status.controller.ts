@@ -4,14 +4,13 @@ import type { FastifyRequest } from 'fastify';
 import { AuthenticationGuard } from '../auth/authentication.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
-import { Roles } from '../auth/roles.decorator';
-import { RolesGuard } from '../auth/roles.guard';
+import { CapabilityGuard, RequireCapability } from '../common/capability.guard';
 import { SkipRlsTransaction } from '../auth/skip-rls-transaction';
 import { HealthService } from './health.service';
 
 @Controller('system-status')
-@UseGuards(AuthenticationGuard, RolesGuard)
-@Roles('ADMIN')
+@UseGuards(AuthenticationGuard, CapabilityGuard)
+@RequireCapability('VIEW_SYSTEM_STATUS')
 export class SystemStatusController {
   constructor(@Inject(HealthService) private readonly healthService: HealthService) {}
 

@@ -22,7 +22,13 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
-export function NotificationBell({ csrfToken }: { csrfToken: string }) {
+export function NotificationBell({
+  csrfToken,
+  canMutate = true,
+}: {
+  csrfToken: string;
+  canMutate?: boolean;
+}) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const unread = useQuery({
@@ -53,10 +59,12 @@ export function NotificationBell({ csrfToken }: { csrfToken: string }) {
     actId: string | null;
     defectItemId: string | null;
   }) {
-    try {
-      await markRead.mutateAsync(item.id);
-    } catch {
-      /* 404 is handled by the destination */
+    if (canMutate) {
+      try {
+        await markRead.mutateAsync(item.id);
+      } catch {
+        /* 404 is handled by the destination */
+      }
     }
     const href = notificationDestination(item);
     router.push(href ?? '/notifications');

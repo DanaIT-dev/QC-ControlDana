@@ -35,6 +35,8 @@ async function restoreManagerIfAdmin(page: Page) {
     await page.getByLabel('Электронная почта').fill(SUPER_ADMIN_EMAIL);
     await page.getByLabel('Пароль', { exact: true }).fill(DEMO_PASSWORD);
     await page.getByRole('button', { name: 'Войти' }).click();
+    await expect(page).toHaveURL(/\/registry/);
+    await page.goto('/super-admin');
   }
   await expect(page).toHaveURL(/\/super-admin/);
   const revoke = page.locator('li').filter({ hasText: MANAGER_EMAIL }).getByRole('button', {
@@ -48,7 +50,7 @@ async function restoreManagerIfAdmin(page: Page) {
   await expect(page.getByText('Права администратора сняты')).toBeVisible();
 }
 
-test.describe('isolated SUPER_ADMIN', () => {
+test.describe('read-only SUPER_ADMIN oversight', () => {
   test.beforeAll(() => {
     const result = spawnSync(
       'pnpm',
@@ -64,30 +66,96 @@ test.describe('isolated SUPER_ADMIN', () => {
     }
   });
 
-  test('logs in, isolates navigation, grants and revokes ADMIN', async ({ browser, page }) => {
-    test.setTimeout(60_000);
+  test('sees business data, creates pending users, grants and revokes ADMIN', async ({
+    browser,
+    page,
+  }) => {
+    test.setTimeout(90_000);
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
+    page.on('console', (message) => {
+      if (message.type() === 'error') {
+        errors.push(message.text());
+      }
+    });
     await page.setViewportSize({ width: 1440, height: 900 });
     await restoreManagerIfAdmin(page);
     await expect(page.getByRole('heading', { name: 'Администраторы', exact: true })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Реестр' })).toHaveCount(0);
-    await expect(page.getByRole('link', { name: 'Справочники' })).toHaveCount(0);
-    await expect(page.getByRole('link', { name: 'Пользователи' })).toHaveCount(0);
-    await expect(page.getByRole('link', { name: 'Состояние системы' })).toHaveCount(0);
+    await expect(page.getByText('Бизнес-данные реестра недоступны')).toHaveCount(0);
+    await expect(page.getByText('Режим просмотра')).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Реестр' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Справочники' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Пользователи' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Состояние системы' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Администраторы' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Создать акт' })).toHaveCount(0);
     await expect(page.getByText('Удалить администратора')).toHaveCount(0);
     await expect(
       page.getByRole('button', { name: 'Снять права администратора' }).first(),
     ).toBeVisible();
 
     await page.goto('/registry');
-    await expect(page).toHaveURL(/\/super-admin/);
-    await page.goto('/reference-data');
-    await expect(page).toHaveURL(/\/super-admin/);
-    await page.goto('/history');
-    await expect(page).toHaveURL(/\/super-admin/);
-    await page.goto('/acts/11111111-1111-4111-8111-111111111111');
-    await expect(page).toHaveURL(/\/super-admin/);
+    await expect(page).toHaveURL(/\/registry/);
+    await expect(page.locator('.registry-table tbody tr').first()).toBeVisible();
+    await page.locator('.registry-table tbody tr').first().click();
+    await expect(page).toHaveURL(/\/acts\//);
+    await expect(page.locator('.act-detail')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Отправить' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Загрузить' })).toHaveCount(0);
+    await expect(page.getByLabel('Сообщение')).toHaveCount(0);
+
+    await page.goto('/acts/new');
+    await expect(page.getByText('Недостаточно прав для создания акта.')).toBeVisible();
+
+    await page.goto('/users');
+    await expect(page.getByRole('button', { name: 'Добавить пользователя' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Действия' })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Добавить пользователя' }).click();
+    await expect(page.getByRole('dialog').locator('#new-user-role')).toHaveCount(0);
+    const stamp = Date.now();
+    const pendingEmail = `e2e.pending.${stamp}@example.sgr.local`;
+    await page.getByLabel('ФИО').fill(`Е2Е Без роли ${stamp}`);
+    await page.getByLabel('Электронная почта').fill(pendingEmail);
+    await page.getByRole('button', { name: 'Создать', exact: true }).click();
+    await expect(page.getByText('Временный пароль показывается один раз')).toBeVisible();
+    const pendingPassword = (await page.locator('.temp-password').innerText()).trim();
+    expect(pendingPassword.length).toBeGreaterThan(8);
+    await page.getByRole('button', { name: 'Закрыть' }).click();
+
+    await page.getByRole('button', { name: 'Меню пользователя' }).click();
+    await page.getByRole('menuitem', { name: 'Выйти' }).click();
+    await expect(page).toHaveURL(/\/login/);
+    await login(page, pendingEmail, pendingPassword);
+    await expect(page).toHaveURL(/\/change-password/);
+    await page.getByLabel('Текущий пароль').fill(pendingPassword);
+    await page.getByLabel('Новый пароль').fill('Dana-SGR-WaitRole-2026!');
+    await page.getByRole('button', { name: 'Сменить пароль' }).click();
+    await expect(page).toHaveURL(/\/pending-role/);
+    await expect(
+      page.getByText('Учетная запись создана. Ожидается назначение роли администратором'),
+    ).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Реестр' })).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'Меню пользователя' }).click();
+    await page.getByRole('menuitem', { name: 'Выйти' }).click();
+    await login(page, ADMIN_EMAIL);
+    await expect(page).toHaveURL(/\/registry/);
+    await page.getByRole('link', { name: 'Пользователи' }).click();
+    await page.getByLabel('Поиск пользователей').fill(pendingEmail);
+    const pendingRow = page.locator('tr').filter({ hasText: pendingEmail });
+    await expect(pendingRow).toBeVisible();
+    await pendingRow.getByRole('button', { name: 'Действия' }).click();
+    await page.getByRole('menuitem', { name: 'Изменить роль' }).click();
+    await page.getByRole('combobox', { name: 'Новая роль' }).click();
+    await page.getByRole('option', { name: 'Руководитель СГР' }).click();
+    await page.getByRole('button', { name: 'Сохранить' }).click();
+    await expect(page.getByText('Изменения сохранены')).toBeVisible();
+
+    await page.getByRole('button', { name: 'Меню пользователя' }).click();
+    await page.getByRole('menuitem', { name: 'Выйти' }).click();
+    await login(page, SUPER_ADMIN_EMAIL);
+    await expect(page).toHaveURL(/\/registry/);
+    await page.goto('/super-admin');
 
     const revokeButtons = page.getByRole('button', { name: 'Снять права администратора' });
     if ((await revokeButtons.count()) === 1) {
@@ -162,9 +230,12 @@ test.describe('isolated SUPER_ADMIN', () => {
 
   test('fits required viewports without overflow', async ({ page }) => {
     await login(page, SUPER_ADMIN_EMAIL);
-    await expect(page).toHaveURL(/\/super-admin/);
+    await expect(page).toHaveURL(/\/registry/);
     for (const viewport of VIEWPORTS) {
       await page.setViewportSize(viewport);
+      await page.goto('/registry');
+      await noHorizontalOverflow(page);
+      await page.goto('/super-admin');
       await noHorizontalOverflow(page);
       await expect(
         page.getByRole('heading', { name: 'Администраторы', exact: true }),

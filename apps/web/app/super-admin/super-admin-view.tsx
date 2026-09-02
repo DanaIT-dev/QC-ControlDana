@@ -104,7 +104,7 @@ export function SuperAdminView({ csrfToken }: { csrfToken: string }) {
     <section className="grid gap-6">
       <PageHeader
         title="Администраторы"
-        description="Назначение и снятие прав обычного администратора. Бизнес-данные реестра недоступны."
+        description="Назначение и снятие прав обычного администратора."
       />
       <div className="grid gap-3">
         <h2 className="text-lg font-semibold">Текущие администраторы</h2>

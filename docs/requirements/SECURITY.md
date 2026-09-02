@@ -9,7 +9,7 @@
 - Helmet CSP на JSON API (`default-src 'none'`); Next.js CSP с `frame-ancestors 'none'` и без `unsafe-eval` в production
 - инструментальный аудит 2026-09-01: [SECURITY_AUDIT.md](../security/SECURITY_AUDIT.md); предыдущий прогон 2026-08-28: [SECURITY_AUDIT_2026-08-28.md](../security/SECURITY_AUDIT_2026-08-28.md)
 - capability проверяется на сервере (deny-by-default, без `role !== CONTRACTOR` fallthrough)
-- `SUPER_ADMIN` не наследует права `ADMIN`; бизнес-API и RLS отдают пустой результат / `403`
+- `SUPER_ADMIN` не наследует права `ADMIN`; чтение бизнес-данных через `VIEW_ALL_BUSINESS_DATA` и RLS SELECT, мутации процесса — `403` / 0 строк
 - вне scope запись уведомления неотличима от отсутствия (404)
 - HTML писем экранируется, subject без CRLF
 - секреты (SMTP password, MinIO, session, CSRF, B/C) не попадают в payload уведомлений, email, hydration, audit detail и client bundle

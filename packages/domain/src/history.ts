@@ -34,6 +34,8 @@ export const AUDIT_ACTIONS = [
   'ADMIN_GRANTED',
   'ADMIN_REVOKED',
   'SUPER_ADMIN_PROVISIONED',
+  'USER_CREATED_PENDING_ROLE',
+  'USER_ROLE_ASSIGNED',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
@@ -70,6 +72,8 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction | string, string> = {
   ADMIN_GRANTED: 'Назначены права администратора',
   ADMIN_REVOKED: 'Сняты права администратора',
   SUPER_ADMIN_PROVISIONED: 'Создана учётная запись суперадминистратора',
+  USER_CREATED_PENDING_ROLE: 'Создана учётная запись без рабочей роли',
+  USER_ROLE_ASSIGNED: 'Назначена рабочая роль',
   LOGIN_SUCCEEDED: 'Вход выполнен',
   LOGIN_FAILED: 'Неудачная попытка входа',
   LOGIN_RATE_LIMITED: 'Превышен лимит попыток входа',
