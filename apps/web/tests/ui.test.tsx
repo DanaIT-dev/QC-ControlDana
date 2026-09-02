@@ -216,18 +216,27 @@ describe('role-aware navigation', () => {
     const contractor = navItemsForRole('CONTRACTOR_ENGINEER').map((item) => item.label);
     expect(admin).toEqual([
       'Реестр',
+      'Объекты',
       'Создать акт',
       'Контроль сроков',
       'Справочники',
       'Пользователи',
       'Состояние системы',
     ]);
-    expect(responsible).toEqual(['Реестр', 'Создать акт', 'Контроль сроков', 'Справочники']);
+    expect(responsible).toEqual([
+      'Реестр',
+      'Объекты',
+      'Создать акт',
+      'Контроль сроков',
+      'Справочники',
+    ]);
     expect(contractor).toEqual(['Реестр', 'Контроль сроков']);
     expect(contractor).not.toContain('Справочники');
+    expect(contractor).not.toContain('Объекты');
     expect(contractor).not.toContain('Создать акт');
     expect(navItemsForRole('SUPER_ADMIN').map((item) => item.label)).toEqual([
       'Реестр',
+      'Объекты',
       'Контроль сроков',
       'Справочники',
       'Пользователи',

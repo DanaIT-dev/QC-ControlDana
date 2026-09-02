@@ -36,4 +36,8 @@ export const queryKeys = {
     summary: (query: unknown) => ['registry', 'summary', query] as const,
     filterOptions: ['registry', 'filter-options'] as const,
   },
+  objects: {
+    all: ['objects'] as const,
+    list: (query: unknown) => ['objects', 'list', query] as const,
+  },
 } as const;

@@ -191,7 +191,7 @@ export class ReferenceDataService {
       items: items.map((item) => ({
         id: item.id,
         name: item.name,
-        address: item.address,
+        address: item.address ?? '',
         commissionedAt: item.commissionedAt
           ? calendarDateInTimeZone(item.commissionedAt, BUSINESS_TIME_ZONE)
           : null,
@@ -661,7 +661,7 @@ export class ReferenceDataService {
     options: {
       data: Prisma.PropertyObjectUpdateManyMutationInput;
       entityType: string;
-      snapshot: (row: { name: string; address: string }) => unknown;
+      snapshot: (row: { name: string; address: string | null }) => unknown;
       nextSnapshot: unknown;
     },
   ) {

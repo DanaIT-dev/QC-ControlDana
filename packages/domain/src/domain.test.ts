@@ -16,6 +16,7 @@ import {
   canAddProposalSlot,
   capabilitiesForRole,
   canAccessReferenceKind,
+  canViewObjectsDirectory,
   canViewAssignedHistory,
   canViewActChat,
   canViewFullHistory,
@@ -681,6 +682,11 @@ describe('property object linked selection', () => {
     expect(canAccessReferenceKind('RESPONSIBLE_ENGINEER', 'work-types')).toBe(false);
     expect(canAccessReferenceKind('RESPONSIBLE_ENGINEER', 'defect-types')).toBe(false);
     expect(canAccessReferenceKind('CONTRACTOR_ENGINEER', 'property-objects')).toBe(false);
+    expect(canViewObjectsDirectory('ADMIN')).toBe(true);
+    expect(canViewObjectsDirectory('SGR_MANAGER')).toBe(true);
+    expect(canViewObjectsDirectory('RESPONSIBLE_ENGINEER')).toBe(true);
+    expect(canViewObjectsDirectory('SUPER_ADMIN')).toBe(true);
+    expect(canViewObjectsDirectory('CONTRACTOR_ENGINEER')).toBe(false);
     expect(canAccessReferenceKind('ADMIN', 'defect-types')).toBe(true);
     expect(canAccessReferenceKind('SGR_MANAGER', 'organizations')).toBe(true);
   });

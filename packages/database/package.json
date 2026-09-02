@@ -24,8 +24,10 @@
     "test:sla:performance": "tsx scripts/sla-performance.ts",
     "roles:provision": "tsx scripts/provision-roles.ts",
     "super-admin:provision": "tsx scripts/provision-super-admin.ts",
+    "objects:import": "tsx scripts/import-property-objects.ts",
     "isolation:verify": "tsx scripts/verify-isolation-hardening.ts",
-    "verify:act-start": "tsx scripts/verify-act-start-migration.ts"
+    "verify:act-start": "tsx scripts/verify-act-start-migration.ts",
+    "verify:objects-directory": "tsx scripts/verify-objects-directory-migration.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1119.0",
@@ -33,6 +35,7 @@
     "@prisma/client": "7.10.0",
     "@sgr-registry/domain": "workspace:*",
     "argon2": "^0.44.0",
+    "exceljs": "^4.4.0",
     "ioredis": "^5.8.2",
     "pg": "^8.16.3"
   },

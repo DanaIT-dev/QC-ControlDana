@@ -24,6 +24,13 @@ export function navItemsForRole(role: UserRole): AppNavItem[] {
         pathname === '/registry' || (pathname.startsWith('/acts/') && pathname !== '/acts/new'),
     });
   }
+  if (hasCapability(role, 'VIEW_REFERENCE_DATA') || hasCapability(role, 'VIEW_ALL_BUSINESS_DATA')) {
+    items.push({
+      href: '/objects',
+      label: 'Объекты',
+      match: (pathname) => pathname === '/objects' || pathname.startsWith('/objects/'),
+    });
+  }
   if (hasCapability(role, 'CREATE_ACT')) {
     items.push({
       href: '/acts/new',

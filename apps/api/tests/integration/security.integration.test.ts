@@ -97,6 +97,7 @@ describe('API security harness', () => {
   it('rejects unauthenticated product routes and attachment download', async () => {
     const urls = [
       '/api/registry/defects',
+      '/api/objects',
       '/api/system-status',
       '/api/notifications',
       '/api/sla/items',

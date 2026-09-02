@@ -137,7 +137,7 @@ export class OperationsService {
       propertyObjects: objects.map((object) => ({
         id: object.id,
         name: object.name,
-        address: object.address,
+        address: object.address ?? '',
         responsibleEngineerIds: object.engineers.map((row) => row.userId),
       })),
       customers,

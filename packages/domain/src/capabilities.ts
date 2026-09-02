@@ -255,6 +255,10 @@ export function canViewReferenceData(role: UserRole): boolean {
   return satisfiesCapability(role, 'VIEW_REFERENCE_DATA');
 }
 
+export function canViewObjectsDirectory(role: UserRole): boolean {
+  return satisfiesCapability(role, 'VIEW_REFERENCE_DATA');
+}
+
 export const MANAGED_REFERENCE_KINDS = [
   'property-objects',
   'organizations',

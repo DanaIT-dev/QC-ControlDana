@@ -13,6 +13,7 @@ import { ReferenceDataModule } from './reference-data/reference-data.module';
 import { OperationsModule } from './operations/operations.module';
 import { AttachmentsModule } from './attachments/attachments.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { ObjectsModule } from './objects/objects.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     OperationsModule,
     AttachmentsModule,
     NotificationsModule,
+    ObjectsModule,
   ],
   providers: [
     {

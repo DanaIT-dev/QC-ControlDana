@@ -104,7 +104,7 @@ export function toRegistryRow(
     defectStatusLabel: defectItemStatusLabel(item.status as DefectItemStatus),
     objectId: item.act.objectId,
     objectName: item.act.propertyObject.name,
-    objectAddress: item.act.propertyObject.address,
+    objectAddress: item.act.propertyObject.address ?? '',
     location: item.location,
     defectTypeId: item.defectType.id,
     defectTypeName: item.defectType.name,
@@ -152,7 +152,7 @@ export function toActHeader(act: {
   startedBy?: { id: string; fullName: string } | null;
   propertyObject: {
     name: string;
-    address: string;
+    address: string | null;
     commissionedAt: Date | null;
     warrantyEndsAt: Date | null;
   };
@@ -168,7 +168,7 @@ export function toActHeader(act: {
     version: act.version ?? 1,
     objectId: act.objectId ?? '',
     objectName: act.propertyObject.name,
-    objectAddress: act.propertyObject.address,
+    objectAddress: act.propertyObject.address ?? '',
     commissionedAt: calendarField(act.propertyObject.commissionedAt),
     warrantyEndsAt: calendarField(act.propertyObject.warrantyEndsAt),
     customerOrganizationId: act.customerOrganizationId ?? '',

@@ -547,6 +547,7 @@ describe('super-admin admin grants', () => {
       '/api/users',
       '/api/notifications',
       '/api/reference-data/property-objects',
+      '/api/objects',
       '/api/audit-log',
     ]) {
       expect(

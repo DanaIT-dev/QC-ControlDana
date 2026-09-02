@@ -42,6 +42,7 @@ export function proxy(request: NextRequest) {
       pathname === '/change-password' ||
       pathname === '/notifications' ||
       pathname === '/deadlines' ||
+      pathname === '/objects' ||
       pathname === '/pending-role' ||
       pathname.startsWith('/acts/')) &&
     !hasSession

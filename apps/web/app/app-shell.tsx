@@ -21,9 +21,9 @@ export function AppShell({ user, children }: { user: SafeUserProfile; children: 
   return (
     <div className="min-h-dvh bg-background">
       <header className="sticky top-0 z-40 border-b bg-white">
-        <div className="mx-auto flex h-16 max-w-[1600px] items-center gap-3 px-4 md:h-[64px] md:px-6 lg:px-8">
+        <div className="mx-auto flex h-16 w-full min-w-0 max-w-[1600px] items-center gap-3 px-4 md:h-[64px] md:px-6 lg:px-8">
           <QcLogo href={homeHref} />
-          <AppNav role={user.role} className="hidden md:flex" />
+          <AppNav role={user.role} className="hidden min-w-0 flex-1 overflow-x-auto md:flex" />
           {readOnly ? (
             <span className="hidden rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground md:inline">
               Режим просмотра
@@ -77,7 +77,7 @@ export function AppShell({ user, children }: { user: SafeUserProfile; children: 
           </Sheet>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-[1600px] px-4 py-6 md:px-6 md:py-6 lg:px-8">
+      <main className="mx-auto w-full min-w-0 max-w-[1600px] px-4 py-6 md:px-6 md:py-6 lg:px-8">
         {children}
       </main>
     </div>

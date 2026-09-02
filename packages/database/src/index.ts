@@ -77,3 +77,10 @@ export type { PendingUserRow } from './pending-user';
 export { startActViaDefiner } from './start-act';
 export type { StartedActRow } from './start-act';
 export { insertAuditLogRow, insertOutboxEventRow, upsertSlaClockRow } from './rls-writes';
+export { readObjectsWorkbook, assertLocalObjectsWorkbookPath } from './objects-xlsx';
+export { importPropertyObjects } from './objects-import';
+export type { ObjectsImportReport } from './objects-import';
+export {
+  assertObjectsImportDatabaseTarget,
+  ObjectsImportTargetError,
+} from './objects-import-target';

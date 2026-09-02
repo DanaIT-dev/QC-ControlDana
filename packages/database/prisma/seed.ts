@@ -278,6 +278,10 @@ async function seed(): Promise<void> {
         await ensureActiveObjectEngineer(tx, northPark.id, engineerNorth.id);
         await ensureActiveObjectEngineer(tx, riverQuarter.id, engineerRiver.id);
 
+        if (process.env.SGR_REQUIRE_E2E_TARGET === '1') {
+          await seedE2eObjectsDirectory(tx, engineerNorth.id);
+        }
+
         await tx.propertyObjectEngineer.updateMany({
           where: {
             unassignedAt: null,
@@ -1047,6 +1051,118 @@ async function ensureActiveObjectEngineer(
     create: { propertyObjectId, userId },
     update: { unassignedAt: null, assignedAt: new Date() },
   });
+}
+
+async function seedE2eObjectsDirectory(
+  tx: Prisma.TransactionClient,
+  responsibleEngineerId: string,
+): Promise<void> {
+  const fixtures: Array<{
+    id: string;
+    name: string;
+    address: string | null;
+    sortOrder: number;
+    commissionedAt: Date | null;
+    warrantyEndsAt: Date | null;
+    engineer: string | null;
+    assign?: boolean;
+  }> = [
+    {
+      id: '44444444-4444-4444-8444-000000000001',
+      name: 'E2E «Очень длинное название объекта для проверки переноса строк без обрезки на карточке»',
+      address: 'ул. Длинная, 1',
+      sortOrder: 1,
+      commissionedAt: calendarDateToUtcNoon('2024-01-15'),
+      warrantyEndsAt: calendarDateToUtcNoon('2029-01-15'),
+      engineer: 'Василевич М.В.',
+    },
+    {
+      id: '44444444-4444-4444-8444-000000000002',
+      name: 'E2E «Пустые даты»',
+      address: 'ул. Пустая, 2',
+      sortOrder: 2,
+      commissionedAt: null,
+      warrantyEndsAt: null,
+      engineer: null,
+    },
+    {
+      id: '44444444-4444-4444-8444-000000000003',
+      name: 'E2E «Без адреса»',
+      address: null,
+      sortOrder: 3,
+      commissionedAt: calendarDateToUtcNoon('2023-06-01'),
+      warrantyEndsAt: calendarDateToUtcNoon('2028-06-01'),
+      engineer: null,
+    },
+    {
+      id: '44444444-4444-4444-8444-000000000004',
+      name: 'E2E «Северный корпус»',
+      address: 'ул. Общая, 10',
+      sortOrder: 4,
+      commissionedAt: null,
+      warrantyEndsAt: null,
+      engineer: null,
+    },
+    {
+      id: '44444444-4444-4444-8444-000000000005',
+      name: 'E2E «Северный корпус» (1-й ПК)',
+      address: 'ул. Общая, 10',
+      sortOrder: 5,
+      commissionedAt: null,
+      warrantyEndsAt: null,
+      engineer: null,
+    },
+    {
+      id: '44444444-4444-4444-8444-000000000006',
+      name: 'E2E связанный инженер',
+      address: 'ул. Назначенная, 3',
+      sortOrder: 6,
+      commissionedAt: calendarDateToUtcNoon('2022-03-10'),
+      warrantyEndsAt: calendarDateToUtcNoon('2027-03-10'),
+      engineer: 'Дмитрий Орлов',
+      assign: true,
+    },
+  ];
+  for (let index = 7; index <= 24; index += 1) {
+    const suffix = String(index).padStart(2, '0');
+    fixtures.push({
+      id: `44444444-4444-4444-8444-0000000000${suffix}`,
+      name: `E2E каталог ${suffix}`,
+      address: `ул. Каталожная, ${index}`,
+      sortOrder: index,
+      commissionedAt: null,
+      warrantyEndsAt: null,
+      engineer: index === 7 ? 'Богданович И.А.' : null,
+    });
+  }
+
+  for (const item of fixtures) {
+    await tx.propertyObject.upsert({
+      where: { id: item.id },
+      update: {
+        name: item.name,
+        address: item.address,
+        sortOrder: item.sortOrder,
+        commissionedAt: item.commissionedAt,
+        warrantyEndsAt: item.warrantyEndsAt,
+        sourceResponsibleEngineerName: item.engineer,
+        active: true,
+        archivedAt: null,
+      },
+      create: {
+        id: item.id,
+        name: item.name,
+        address: item.address,
+        sortOrder: item.sortOrder,
+        commissionedAt: item.commissionedAt,
+        warrantyEndsAt: item.warrantyEndsAt,
+        sourceResponsibleEngineerName: item.engineer,
+      },
+    });
+    if (item.assign) {
+      await ensureActiveObjectEngineer(tx, item.id, responsibleEngineerId);
+    }
+  }
 }
 
 async function upsertOrganization(
