@@ -111,7 +111,8 @@ test.describe('act discussion chat', () => {
       chatThread(page)
         .locator('li')
         .filter({ hasText: `смотрите ${token}` })
-        .getByText('@Дмитрий Орлов', { exact: true }),
+        .getByText('@Дмитрий Орлов', { exact: true })
+        .first(),
     ).toBeVisible();
 
     const long = `длинное-${token}-${'слово'.repeat(80)} https://example.sgr.local/path`;

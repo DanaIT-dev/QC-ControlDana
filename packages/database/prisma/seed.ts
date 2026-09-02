@@ -1136,6 +1136,27 @@ async function seedE2eObjectsDirectory(
     });
   }
 
+  fixtures.push(
+    {
+      id: '44444444-4444-4444-8444-000000000025',
+      name: 'E2E уникальная привязка',
+      address: 'ул. Единственная, 25',
+      sortOrder: 25,
+      commissionedAt: null,
+      warrantyEndsAt: null,
+      engineer: 'Единственный Э.Э.',
+    },
+    {
+      id: '44444444-4444-4444-8444-000000000026',
+      name: 'E2E неоднозначная привязка',
+      address: 'ул. Двойная, 26',
+      sortOrder: 26,
+      commissionedAt: null,
+      warrantyEndsAt: null,
+      engineer: 'Двойник Д.Д.',
+    },
+  );
+
   for (const item of fixtures) {
     await tx.propertyObject.upsert({
       where: { id: item.id },

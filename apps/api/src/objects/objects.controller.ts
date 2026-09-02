@@ -1,7 +1,9 @@
-import { Controller, Get, Inject, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Param, Patch, Req, UseGuards } from '@nestjs/common';
 import type { FastifyRequest } from 'fastify';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { AuthenticationGuard } from '../auth/authentication.guard';
+import { BrowserOriginGuard } from '../auth/browser-origin.guard';
+import { CsrfGuard } from '../auth/csrf.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { CapabilityGuard, RequireCapability } from '../common/capability.guard';
 import { ObjectsService } from './objects.service';
@@ -15,5 +17,17 @@ export class ObjectsController {
   @RequireCapability('VIEW_REFERENCE_DATA')
   list(@CurrentUser() user: AuthenticatedUser, @Req() request: FastifyRequest) {
     return this.objectsService.list(user, (request.query ?? {}) as Record<string, unknown>);
+  }
+
+  @Patch(':objectId/responsible-engineer')
+  @RequireCapability('MANAGE_USERS')
+  @UseGuards(BrowserOriginGuard, CsrfGuard)
+  linkResponsibleEngineer(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('objectId') objectId: string,
+    @Body() body: unknown,
+    @Req() request: FastifyRequest,
+  ) {
+    return this.objectsService.linkResponsibleEngineer(user, objectId, body, request);
   }
 }

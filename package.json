@@ -26,6 +26,7 @@
     "db:roles:provision": "pnpm --filter @sgr-registry/database roles:provision",
     "super-admin:provision": "pnpm --filter @sgr-registry/database super-admin:provision",
     "objects:import": "pnpm --filter @sgr-registry/database objects:import",
+    "objects:reconcile-engineers": "pnpm --filter @sgr-registry/database objects:reconcile-engineers",
     "db:seed": "pnpm --filter @sgr-registry/contracts build && pnpm --filter @sgr-registry/domain build && pnpm --filter @sgr-registry/database generate && pnpm --filter @sgr-registry/database seed",
     "infra:up": "node scripts/dev/sync-redis-secrets.mjs && docker compose -f infra/docker/compose.yaml --env-file .env up -d",
     "infra:down": "docker compose -f infra/docker/compose.yaml --env-file .env down"

@@ -12,7 +12,31 @@ export const objectsListQuerySchema = z
 
 export type ObjectsListQuery = z.infer<typeof objectsListQuerySchema>;
 
+export const linkObjectResponsibleEngineerSchema = z
+  .object({
+    userId: z.uuid().nullable(),
+  })
+  .strict();
+
+export type LinkObjectResponsibleEngineerRequest = z.infer<
+  typeof linkObjectResponsibleEngineerSchema
+>;
+
 export type ObjectsResponsibleAccountStatus = 'EMPTY' | 'LINKED' | 'UNRESOLVED' | 'AMBIGUOUS';
+
+export type ObjectsResponsibleEngineer =
+  | {
+      id: string;
+      fullName: string;
+      status: 'ACTIVE' | 'ARCHIVED';
+      linked: true;
+      accessActive: boolean;
+    }
+  | {
+      fullName: string;
+      linked: false;
+      linkState: 'UNMATCHED' | 'AMBIGUOUS' | 'INVALID';
+    };
 
 export interface ObjectsDirectoryItem {
   id: string;
@@ -20,8 +44,7 @@ export interface ObjectsDirectoryItem {
   address: string | null;
   commissionedAt: string | null;
   warrantyEndsAt: string | null;
-  sourceResponsibleEngineerName: string | null;
-  responsibleEngineerAccountStatus: ObjectsResponsibleAccountStatus;
+  responsibleEngineer: ObjectsResponsibleEngineer | null;
 }
 
 export interface ObjectsDirectoryResponse {

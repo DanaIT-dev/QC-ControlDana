@@ -182,4 +182,133 @@ test.describe('objects directory', () => {
     await responsiblePage.close();
     await contractorPage.close();
   });
+
+  test('ADMIN auto-links a unique engineer and scopes the engineer to assigned objects', async ({
+    page,
+    browser,
+  }) => {
+    test.setTimeout(90_000);
+    const errors = attachConsole(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await login(page, ACCOUNTS.admin);
+    await page.goto('/objects');
+    await page.getByLabel('Поиск по объектам').fill('уникальная привязка');
+    await expect(page.getByText('E2E уникальная привязка').filter({ visible: true })).toBeVisible();
+    await expect(page.getByText('Единственный Э.Э.').filter({ visible: true })).toBeVisible();
+    await expect(
+      page.getByText('Не связан с учетной записью').filter({ visible: true }),
+    ).toHaveCount(1);
+
+    await page.getByRole('link', { name: 'Пользователи' }).click();
+    await page.getByRole('button', { name: 'Добавить пользователя' }).click();
+    const stamp = Date.now();
+    const email = `e2e.unique.${stamp}@example.sgr.local`;
+    await page.getByLabel('ФИО').fill('Единственный Эдуард Эдуардович');
+    await page.getByLabel('Электронная почта').fill(email);
+    await page.locator('#new-user-role').click();
+    await page.getByRole('option', { name: 'Ответственный инженер' }).click();
+    await page.getByRole('button', { name: 'Создать', exact: true }).click();
+    await expect(page.getByText('Временный пароль показывается один раз')).toBeVisible();
+    const tempPassword = (await page.locator('.temp-password').innerText()).trim();
+    await page.getByRole('button', { name: 'Закрыть' }).click();
+
+    await page.getByRole('link', { name: 'Объекты' }).click();
+    await page.getByLabel('Поиск по объектам').fill('уникальная привязка');
+    await expect(
+      page.getByText('Единственный Эдуард Эдуардович').filter({ visible: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText('Не связан с учетной записью').filter({ visible: true }),
+    ).toHaveCount(0);
+    await page.getByLabel('Поиск по объектам').fill('Эдуард Эдуардович');
+    await expect(page.getByText('E2E уникальная привязка').filter({ visible: true })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Меню пользователя' }).click();
+    await page.getByRole('menuitem', { name: 'Выйти' }).click();
+    await page.getByLabel('Электронная почта').fill(email);
+    await page.getByLabel('Пароль', { exact: true }).fill(tempPassword);
+    await page.getByRole('button', { name: 'Войти' }).click();
+    await expect(page).toHaveURL(/\/change-password/);
+    await page.getByLabel('Текущий пароль').fill(tempPassword);
+    await page.getByLabel('Новый пароль').fill(DEMO_PASSWORD);
+    await page.getByRole('button', { name: 'Сменить пароль' }).click();
+    await expect(page).toHaveURL(/\/registry/);
+    await page.goto('/objects');
+    await expect(page.getByText('E2E уникальная привязка').filter({ visible: true })).toBeVisible();
+    await expect(page.getByText('E2E «Пустые даты»').filter({ visible: true })).toHaveCount(0);
+    await expect(page.getByText('E2E связанный инженер').filter({ visible: true })).toHaveCount(0);
+    expect(applicationErrors(errors).filter(isHydrationError)).toEqual([]);
+    expect(applicationErrors(errors)).toEqual([]);
+    await expectNoHorizontalOverflow(page);
+
+    const mobile = await browser.newPage();
+    const mobileErrors = attachConsole(mobile);
+    await mobile.setViewportSize({ width: 390, height: 844 });
+    await login(mobile, email);
+    await mobile.goto('/objects');
+    await expect(
+      mobile.getByText('E2E уникальная привязка').filter({ visible: true }),
+    ).toBeVisible();
+    await expectNoHorizontalOverflow(mobile);
+    expect(applicationErrors(mobileErrors)).toEqual([]);
+    await mobile.close();
+
+    const compact = await browser.newPage();
+    const compactErrors = attachConsole(compact);
+    await compact.setViewportSize({ width: 360, height: 800 });
+    await login(compact, email);
+    await compact.goto('/objects');
+    await expect(
+      compact.getByText('E2E уникальная привязка').filter({ visible: true }),
+    ).toBeVisible();
+    await expectNoHorizontalOverflow(compact);
+    expect(applicationErrors(compactErrors)).toEqual([]);
+    await compact.close();
+  });
+
+  test('ambiguous engineer match requires ADMIN confirmation', async ({ page }) => {
+    test.setTimeout(90_000);
+    const errors = attachConsole(page);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await login(page, ACCOUNTS.admin);
+    await page.getByRole('link', { name: 'Пользователи' }).click();
+    const stamp = Date.now();
+    for (const [index, fullName] of [
+      'Двойник Дмитрий Дмитриевич',
+      'Двойник Данила Данилович',
+    ].entries()) {
+      await page.getByRole('button', { name: 'Добавить пользователя' }).click();
+      await page.getByLabel('ФИО').fill(fullName);
+      await page
+        .getByLabel('Электронная почта')
+        .fill(`e2e.twin.${stamp}.${index}@example.sgr.local`);
+      await page.getByRole('button', { name: 'Создать', exact: true }).click();
+      await expect(page.getByText('Временный пароль показывается один раз')).toBeVisible();
+      await page.getByRole('button', { name: 'Закрыть' }).click();
+    }
+    await page.getByRole('link', { name: 'Объекты' }).click();
+    await page.getByLabel('Поиск по объектам').fill('неоднозначная привязка');
+    await expect(
+      page.getByText('E2E неоднозначная привязка').filter({ visible: true }),
+    ).toBeVisible();
+    await expect(page.getByText('Двойник Д.Д.').filter({ visible: true })).toBeVisible();
+    await expect(
+      page.getByText('Требуется подтверждение администратора').filter({ visible: true }),
+    ).toBeVisible();
+    await page
+      .locator('tr, li')
+      .filter({ hasText: 'E2E неоднозначная привязка' })
+      .getByRole('button', { name: 'Связать' })
+      .click();
+    await page.getByRole('combobox', { name: 'Учётная запись инженера' }).click();
+    await page.getByRole('option', { name: 'Двойник Дмитрий Дмитриевич' }).click();
+    await page.getByRole('button', { name: 'Сохранить' }).click();
+    await expect(
+      page.getByText('Двойник Дмитрий Дмитриевич').filter({ visible: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText('Требуется подтверждение администратора').filter({ visible: true }),
+    ).toHaveCount(0);
+    expect(applicationErrors(errors)).toEqual([]);
+  });
 });

@@ -213,6 +213,17 @@ describe('objects directory API', () => {
     expect(responsibleBody.items.some((item) => item.id === assigned.id)).toBe(true);
     expect(responsibleBody.items.some((item) => item.id === hidden.id)).toBe(false);
 
+    const assignedItem = adminBody.items.find((item) => item.id === assigned.id) as {
+      responsibleEngineer: Record<string, unknown>;
+    };
+    expect(assignedItem.responsibleEngineer).toMatchObject({
+      fullName: 'Василевич М.В.',
+      linked: false,
+      linkState: 'UNMATCHED',
+    });
+    expect(assignedItem.responsibleEngineer).not.toHaveProperty('email');
+    expect(JSON.stringify(assignedItem)).not.toMatch(/passwordHash|sourceImportKey|credentials/);
+
     const missingWrite = await inject({
       method: 'POST',
       url: '/api/objects',
@@ -229,5 +240,189 @@ describe('objects directory API', () => {
       cookies: { [SESSION_COOKIE_NAME]: adminSession.cookie },
     });
     expect(await prisma.user.count()).toBe(usersBefore);
+  });
+
+  it('lets ADMIN confirm a link, blocks other roles, and hides credentials', async () => {
+    const admin = await createUser('ADMIN');
+    const manager = await createUser('SGR_MANAGER');
+    const responsible = await createUser('RESPONSIBLE_ENGINEER');
+    const contractor = await createUser('CONTRACTOR_ENGINEER');
+    const existingSuper = await prisma.user.findFirst({
+      where: { role: 'SUPER_ADMIN', status: 'ACTIVE' },
+      select: { id: true, email: true },
+    });
+    let superAdmin: { id: string; email: string };
+    if (existingSuper) {
+      await prisma.user.update({
+        where: { id: existingSuper.id },
+        data: { mustChangePassword: false },
+      });
+      await upsertUserCredentials(prisma, {
+        userId: existingSuper.id,
+        passwordHash: await hashArgon2id(DEMO_PASSWORD, { memoryCost: 4096, timeCost: 1 }),
+      });
+      superAdmin = existingSuper;
+    } else {
+      superAdmin = await createUser('SUPER_ADMIN');
+    }
+    const target = await prisma.user.create({
+      data: {
+        fullName: 'Богданович Иван Александрович',
+        email: `objects.link.${Date.now()}@example.sgr.local`,
+        role: 'RESPONSIBLE_ENGINEER',
+        status: 'ACTIVE',
+        mustChangePassword: false,
+      },
+    });
+    createdUserIds.push(target.id);
+    await upsertUserCredentials(prisma, {
+      userId: target.id,
+      passwordHash: await hashArgon2id(DEMO_PASSWORD, { memoryCost: 4096, timeCost: 1 }),
+    });
+    const object = await prisma.propertyObject.create({
+      data: {
+        name: `Objects link ${Date.now()}`,
+        address: 'ул. Связь, 3',
+        sortOrder: 30,
+        sourceResponsibleEngineerName: 'Богданович И.А.',
+      },
+    });
+    createdObjectIds.push(object.id);
+
+    const adminSession = await login(admin.email);
+    const managerSession = await login(manager.email);
+    const responsibleSession = await login(responsible.email);
+    const contractorSession = await login(contractor.email);
+    const superSession = await login(superAdmin.email);
+
+    const unknownFields = await inject({
+      method: 'PATCH',
+      url: `/api/objects/${object.id}/responsible-engineer`,
+      cookies: { [SESSION_COOKIE_NAME]: adminSession.cookie },
+      headers: { [CSRF_HEADER_NAME]: adminSession.csrfToken },
+      payload: { userId: target.id, extra: true },
+    });
+    expect(unknownFields.statusCode).toBe(400);
+
+    const idor = await inject({
+      method: 'PATCH',
+      url: `/api/objects/${object.id}/responsible-engineer`,
+      cookies: { [SESSION_COOKIE_NAME]: adminSession.cookie },
+      headers: { [CSRF_HEADER_NAME]: adminSession.csrfToken },
+      payload: { userId: admin.id },
+    });
+    expect([400, 403, 422]).toContain(idor.statusCode);
+
+    for (const session of [managerSession, responsibleSession, contractorSession, superSession]) {
+      const denied = await inject({
+        method: 'PATCH',
+        url: `/api/objects/${object.id}/responsible-engineer`,
+        cookies: { [SESSION_COOKIE_NAME]: session.cookie },
+        headers: { [CSRF_HEADER_NAME]: session.csrfToken },
+        payload: { userId: target.id },
+      });
+      expect(denied.statusCode).toBe(403);
+    }
+
+    const confirmed = await inject({
+      method: 'PATCH',
+      url: `/api/objects/${object.id}/responsible-engineer`,
+      cookies: { [SESSION_COOKIE_NAME]: adminSession.cookie },
+      headers: { [CSRF_HEADER_NAME]: adminSession.csrfToken },
+      payload: { userId: target.id },
+    });
+    expect(confirmed.statusCode).toBe(200);
+    expect(JSON.stringify(confirmed.json())).not.toMatch(/passwordHash|credentials|csrfToken/);
+
+    const adminList = await inject({
+      method: 'GET',
+      url: `/api/objects?search=${encodeURIComponent(object.name)}&pageSize=50`,
+      cookies: { [SESSION_COOKIE_NAME]: adminSession.cookie },
+    });
+    const adminItem = (
+      adminList.json() as {
+        items: Array<{ id: string; responsibleEngineer: Record<string, unknown> }>;
+      }
+    ).items.find((item) => item.id === object.id);
+    expect(adminItem?.responsibleEngineer).toMatchObject({
+      id: target.id,
+      fullName: 'Богданович Иван Александрович',
+      linked: true,
+      accessActive: true,
+    });
+
+    const superList = await inject({
+      method: 'GET',
+      url: `/api/objects?search=${encodeURIComponent(object.name)}&pageSize=50`,
+      cookies: { [SESSION_COOKIE_NAME]: superSession.cookie },
+    });
+    expect(superList.statusCode).toBe(200);
+
+    const targetSession = await login(target.email);
+    const engineerList = await inject({
+      method: 'GET',
+      url: '/api/objects?pageSize=50',
+      cookies: { [SESSION_COOKIE_NAME]: targetSession.cookie },
+    });
+    const engineerItems = (engineerList.json() as { items: Array<{ id: string }> }).items;
+    expect(engineerItems.some((item) => item.id === object.id)).toBe(true);
+    expect(JSON.stringify(engineerList.json())).not.toMatch(/passwordHash|sourceImportKey/);
+  });
+
+  it('auto-links objects when ADMIN creates a uniquely matching RESPONSIBLE_ENGINEER', async () => {
+    const admin = await createUser('ADMIN');
+    const object = await prisma.propertyObject.create({
+      data: {
+        name: `Objects autolink ${Date.now()}`,
+        address: 'ул. Автопривязка, 1',
+        sortOrder: 40,
+        sourceResponsibleEngineerName: 'Единственный Э.Э.',
+      },
+    });
+    createdObjectIds.push(object.id);
+    const adminSession = await login(admin.email);
+    const created = await inject({
+      method: 'POST',
+      url: '/api/users',
+      cookies: { [SESSION_COOKIE_NAME]: adminSession.cookie },
+      headers: { [CSRF_HEADER_NAME]: adminSession.csrfToken },
+      payload: {
+        fullName: 'Единственный Эдуард Эдуардович',
+        email: `objects.autolink.${Date.now()}@example.sgr.local`,
+        role: 'RESPONSIBLE_ENGINEER',
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    const body = created.json() as {
+      user: { id: string; fullName: string };
+      temporaryPassword?: string;
+    };
+    createdUserIds.push(body.user.id);
+    expect(body.temporaryPassword).toBeTruthy();
+    const link = await prisma.propertyObjectEngineer.findFirst({
+      where: {
+        propertyObjectId: object.id,
+        unassignedAt: null,
+        directoryLinkMethod: 'AUTO_EXACT',
+      },
+    });
+    expect(link?.userId).toBe(body.user.id);
+
+    const listed = await inject({
+      method: 'GET',
+      url: `/api/objects?search=${encodeURIComponent(object.name)}&pageSize=50`,
+      cookies: { [SESSION_COOKIE_NAME]: adminSession.cookie },
+    });
+    const item = (
+      listed.json() as {
+        items: Array<{ id: string; responsibleEngineer: Record<string, unknown> }>;
+      }
+    ).items.find((row) => row.id === object.id);
+    expect(item?.responsibleEngineer).toMatchObject({
+      id: body.user.id,
+      fullName: 'Единственный Эдуард Эдуардович',
+      linked: true,
+      accessActive: true,
+    });
   });
 });

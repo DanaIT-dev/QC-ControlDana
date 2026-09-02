@@ -41,6 +41,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ApiError, commandFetch } from '../../lib/command-api';
+import { queryKeys } from '../../lib/query-keys';
 import { formatTimestamp } from '../../lib/registry-url';
 
 interface UserRow {
@@ -108,6 +109,7 @@ export function UsersView({
       }
       toast.success('Изменения сохранены');
       await queryClient.invalidateQueries({ queryKey: ['users'] });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.objects.all });
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
         setConflict(true);

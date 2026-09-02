@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { classifyEngineerMatch } from './engineer-name';
 import { ValidationError } from './errors';
 import { foldKey, normalizeUnicode } from './text';
 
@@ -386,19 +387,14 @@ export function classifyResponsibleEngineerName(
   sourceName: string | null,
   candidates: readonly ResponsibleEngineerCandidate[],
 ): ResponsibleEngineerLinkStatus {
-  if (!sourceName) {
+  const classified = classifyEngineerMatch(sourceName, candidates);
+  if (classified.result === 'EMPTY') {
     return 'EMPTY';
   }
-  const matches = candidates.filter(
-    (item) =>
-      item.role === 'RESPONSIBLE_ENGINEER' &&
-      item.status === 'ACTIVE' &&
-      foldKey(item.fullName) === foldKey(sourceName),
-  );
-  if (matches.length === 1) {
+  if (classified.result === 'MATCHED') {
     return 'LINKED';
   }
-  if (matches.length > 1) {
+  if (classified.result === 'AMBIGUOUS') {
     return 'AMBIGUOUS';
   }
   return 'UNRESOLVED';

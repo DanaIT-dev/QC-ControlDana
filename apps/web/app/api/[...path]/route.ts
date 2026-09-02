@@ -44,6 +44,7 @@ async function proxy(
     method,
     headers,
     redirect: 'manual',
+    cache: 'no-store',
   };
   if (method !== 'GET' && method !== 'HEAD') {
     init.body = request.body;
@@ -61,6 +62,7 @@ async function proxy(
       responseHeaders.set(key, value);
     }
   });
+  responseHeaders.set('cache-control', 'no-store');
 
   const response = new NextResponse(upstream.body, {
     status: upstream.status,
@@ -72,6 +74,7 @@ async function proxy(
   return response;
 }
 
+export const dynamic = 'force-dynamic';
 export const GET = proxy;
 export const POST = proxy;
 export const PUT = proxy;

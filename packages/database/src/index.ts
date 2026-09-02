@@ -81,6 +81,13 @@ export { readObjectsWorkbook, assertLocalObjectsWorkbookPath } from './objects-x
 export { importPropertyObjects } from './objects-import';
 export type { ObjectsImportReport } from './objects-import';
 export {
+  applyDirectoryEngineerLink,
+  clearDirectoryEngineerLink,
+  revokeEngineerObjectAccess,
+} from './directory-engineer-link';
+export { reconcileDirectoryEngineerLinks } from './reconcile-object-engineers';
+export type { ReconcileDirectoryEngineerLinksResult } from './reconcile-object-engineers';
+export {
   assertObjectsImportDatabaseTarget,
   ObjectsImportTargetError,
 } from './objects-import-target';

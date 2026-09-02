@@ -16,7 +16,12 @@ import {
   normalizeUserFullName,
   roleLabel,
 } from '@sgr-registry/domain';
-import { upsertUserCredentialsViaDefiner, type Prisma } from '@sgr-registry/database';
+import {
+  reconcileDirectoryEngineerLinks,
+  revokeEngineerObjectAccess,
+  upsertUserCredentialsViaDefiner,
+  type Prisma,
+} from '@sgr-registry/database';
 import type { FastifyRequest } from 'fastify';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { generateTemporaryPassword } from '../auth/crypto';
@@ -123,6 +128,13 @@ export class UsersService {
             mustChangePassword: true,
           }),
         });
+        await syncDirectoryEngineerLinks(tx, actor, ctx.requestId, {
+          userId: created.id,
+          fullName: created.fullName,
+          previousRole: created.role,
+          nextRole: created.role,
+          nextStatus: created.status,
+        });
         return created;
       });
       return { user: toUserDto(user), temporaryPassword };
@@ -195,6 +207,13 @@ export class UsersService {
           actorId: actor.id,
         }),
       });
+      await syncDirectoryEngineerLinks(tx, actor, ctx.requestId, {
+        userId,
+        fullName: fresh.fullName,
+        previousRole: current.role,
+        nextRole: fresh.role,
+        nextStatus: fresh.status,
+      });
       return { dto: toUserDto(fresh), invalidateSessions };
     });
     if (result.invalidateSessions) {
@@ -251,6 +270,13 @@ export class UsersService {
         newValue: toJsonValue({ status: 'ARCHIVED' }),
         reason: input.reason ?? null,
       });
+      await syncDirectoryEngineerLinks(tx, actor, ctx.requestId, {
+        userId,
+        fullName: fresh.fullName,
+        previousRole: current.role,
+        nextRole: current.role,
+        nextStatus: 'ARCHIVED',
+      });
       return toUserDto(fresh);
     });
     await this.sessions.deleteAllForUser(userId);
@@ -289,6 +315,13 @@ export class UsersService {
         oldValue: toJsonValue({ status: current.status }),
         newValue: toJsonValue({ status: 'ACTIVE' }),
         reason: input.reason ?? null,
+      });
+      await syncDirectoryEngineerLinks(tx, actor, ctx.requestId, {
+        userId,
+        fullName: fresh.fullName,
+        previousRole: current.role,
+        nextRole: current.role,
+        nextStatus: 'ACTIVE',
       });
       return toUserDto(fresh);
     });
@@ -388,6 +421,44 @@ function assertOrdinaryStaffAccount(role: AuthenticatedUser['role']): void {
   if (role === 'ADMIN' || role === 'SUPER_ADMIN' || role === 'UNASSIGNED') {
     throw new AccountProtectedError();
   }
+}
+
+async function syncDirectoryEngineerLinks(
+  tx: Prisma.TransactionClient,
+  actor: AuthenticatedUser,
+  requestId: string | null,
+  input: {
+    userId: string;
+    fullName: string;
+    previousRole: AuthenticatedUser['role'];
+    nextRole: AuthenticatedUser['role'];
+    nextStatus: 'ACTIVE' | 'ARCHIVED';
+  },
+): Promise<void> {
+  const ctx = {
+    actorUserId: actor.id,
+    actorName: actor.fullName,
+    requestId,
+    source: 'WEB' as const,
+  };
+  const lostEngineerAccess =
+    input.previousRole === 'RESPONSIBLE_ENGINEER' &&
+    (input.nextRole !== 'RESPONSIBLE_ENGINEER' || input.nextStatus !== 'ACTIVE');
+  if (lostEngineerAccess) {
+    await revokeEngineerObjectAccess(tx, { ...ctx, userId: input.userId });
+  }
+  const extraCandidates =
+    input.nextRole === 'RESPONSIBLE_ENGINEER' && input.nextStatus === 'ACTIVE'
+      ? [
+          {
+            id: input.userId,
+            fullName: input.fullName,
+            role: input.nextRole,
+            status: input.nextStatus,
+          },
+        ]
+      : [];
+  await reconcileDirectoryEngineerLinks(tx, ctx, { extraCandidates });
 }
 
 function toUserDto(user: {

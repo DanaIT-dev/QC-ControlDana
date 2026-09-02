@@ -152,10 +152,23 @@ describe('property objects importer', () => {
       expect(first.created).toBe(5);
       expect(first.duplicatesSkipped).toBe(1);
       expect(first.responsibleEngineers.linked).toContain('Василевич М.В.');
-      expect(first.responsibleEngineers.accessAssignmentsCreated).toBe(0);
+      expect(first.responsibleEngineers.accessAssignmentsCreated).toBeGreaterThanOrEqual(1);
       expect(await prisma.user.count()).toBe(usersBefore);
       expect(await prisma.userCredential.count()).toBe(credentialsBefore);
-      expect(await prisma.propertyObjectEngineer.count()).toBe(assignmentsBefore);
+      const assignmentsAfterFirst = await prisma.propertyObjectEngineer.count();
+      expect(assignmentsAfterFirst).toBeGreaterThanOrEqual(assignmentsBefore + 1);
+      const imported = await prisma.propertyObject.findFirstOrThrow({
+        where: { name: `${MARKER} 2.1 «Волна»` },
+      });
+      expect(
+        await prisma.propertyObjectEngineer.findFirst({
+          where: {
+            propertyObjectId: imported.id,
+            directoryLinkMethod: 'AUTO_EXACT',
+            unassignedAt: null,
+          },
+        }),
+      ).toBeTruthy();
 
       const act = await prisma.act.findUniqueOrThrow({ where: { id: createdActIds[0] } });
       expect(act.objectId).toBe(actObjectId);
@@ -164,6 +177,8 @@ describe('property objects importer', () => {
       expect(second.created).toBe(0);
       expect(second.unchanged).toBe(5);
       expect(second.duplicatesSkipped).toBe(1);
+      expect(second.responsibleEngineers.accessAssignmentsCreated).toBe(0);
+      expect(await prisma.propertyObjectEngineer.count()).toBe(assignmentsAfterFirst);
 
       const emptyAddress = await prisma.propertyObject.findFirst({
         where: { name: `${MARKER} без адреса` },

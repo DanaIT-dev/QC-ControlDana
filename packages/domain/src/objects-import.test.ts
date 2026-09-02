@@ -230,6 +230,15 @@ describe('objects import parser', () => {
       ]),
     ).toBe('UNRESOLVED');
     expect(
+      classifyResponsibleEngineerName('Василевич М.В.', [
+        {
+          fullName: 'Василевич Михаил Викторович',
+          role: 'RESPONSIBLE_ENGINEER',
+          status: 'ACTIVE',
+        },
+      ]),
+    ).toBe('LINKED');
+    expect(
       classifyResponsibleEngineerName('Дмитрий Орлов', [
         { fullName: 'Дмитрий Орлов', role: 'RESPONSIBLE_ENGINEER', status: 'ACTIVE' },
       ]),

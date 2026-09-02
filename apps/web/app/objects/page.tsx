@@ -1,4 +1,4 @@
-import { canViewObjectsDirectory } from '@sgr-registry/domain';
+import { canManageUsers, canViewObjectsDirectory } from '@sgr-registry/domain';
 import { requireBusinessUser } from '../../lib/server-auth';
 import { AppShell } from '../app-shell';
 import { ForbiddenState } from '@/components/forbidden-state';
@@ -20,7 +20,7 @@ export default async function ObjectsPage() {
   return (
     <AppShell user={user}>
       <Suspense fallback={<TableSkeleton />}>
-        <ObjectsView />
+        <ObjectsView csrfToken={user.csrfToken} canManageLinks={canManageUsers(user.role)} />
       </Suspense>
     </AppShell>
   );

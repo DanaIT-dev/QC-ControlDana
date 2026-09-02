@@ -1,4 +1,5 @@
 import type { ObjectsDirectoryResponse } from '@sgr-registry/contracts';
+import { commandFetch } from './command-api';
 
 async function getJson<T>(path: string): Promise<T> {
   const response = await fetch(path, { credentials: 'include', cache: 'no-store' });
@@ -27,4 +28,16 @@ export function fetchObjectsDirectory(query: {
   params.set('pageSize', String(query.pageSize));
   params.set('sort', 'source');
   return getJson(`/api/objects?${params.toString()}`);
+}
+
+export function linkObjectResponsibleEngineer(
+  objectId: string,
+  userId: string | null,
+  csrfToken: string,
+): Promise<{ ok: true }> {
+  return commandFetch(`/api/objects/${objectId}/responsible-engineer`, {
+    method: 'PATCH',
+    csrfToken,
+    body: { userId },
+  });
 }

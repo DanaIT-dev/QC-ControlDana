@@ -160,7 +160,8 @@ model PropertyObjectEngineer {
   userId           String    @db.Uuid
   assignedAt       DateTime  @default(now()) @db.Timestamptz(3)
   unassignedAt     DateTime? @db.Timestamptz(3)
-  assignedByUserId String?   @db.Uuid
+  assignedByUserId    String?   @db.Uuid
+  directoryLinkMethod String?
 
   propertyObject PropertyObject @relation(fields: [propertyObjectId], references: [id], onDelete: Restrict)
   user           User           @relation(fields: [userId], references: [id], onDelete: Restrict)

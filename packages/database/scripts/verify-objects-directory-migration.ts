@@ -110,7 +110,7 @@ async function main(): Promise<void> {
       WHERE polname = 'objects_select'
         AND polrelid = 'public.property_objects'::regclass
     `);
-    if (!objectsSelect.rows[0]?.qual.includes('sgr_is_business_user')) {
+    if (!objectsSelect.rows[0]?.qual.includes('sgr_app_visible_object')) {
       throw new Error('objects_select policy was rewritten unexpectedly');
     }
 

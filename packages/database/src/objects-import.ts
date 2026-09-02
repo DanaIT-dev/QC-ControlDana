@@ -11,6 +11,7 @@ import {
   type ResponsibleEngineerLinkStatus,
 } from '@sgr-registry/domain';
 import { insertAuditLogRow } from './rls-writes';
+import { reconcileDirectoryEngineerLinks } from './reconcile-object-engineers';
 
 export interface ObjectsImportReport {
   plan: ObjectsImportPlan;
@@ -81,6 +82,7 @@ async function loadExisting(prisma: PrismaClient) {
 function classifyEngineers(
   rows: readonly ParsedObjectImportRow[],
   candidates: Array<{ fullName: string; role: string; status: string }>,
+  created = 0,
 ) {
   const sourceNames = [
     ...new Set(
@@ -114,7 +116,7 @@ function classifyEngineers(
       unresolved.push(name);
     }
   }
-  return { sourceNames, linked, unresolved, ambiguous, empty, accessAssignmentsCreated: 0 };
+  return { sourceNames, linked, unresolved, ambiguous, empty, accessAssignmentsCreated: created };
 }
 
 export async function importPropertyObjects(options: {
@@ -163,6 +165,7 @@ export async function importPropertyObjects(options: {
     };
   }
 
+  let accessAssignmentsCreated = 0;
   await options.prisma.$transaction(async (tx) => {
     for (const item of plan.items) {
       if (item.action === 'create' && item.row) {
@@ -198,6 +201,13 @@ export async function importPropertyObjects(options: {
         });
       }
     }
+    const reconciled = await reconcileDirectoryEngineerLinks(tx, {
+      actorUserId: null,
+      actorName: 'objects-import',
+      requestId: null,
+      source: 'SYSTEM',
+    });
+    accessAssignmentsCreated = reconciled.linked;
     await insertAuditLogRow(tx, {
       actorUserId: null,
       actorName: 'objects-import',
@@ -231,7 +241,11 @@ export async function importPropertyObjects(options: {
     unchanged: plan.unchanged,
     duplicatesSkipped: plan.duplicatesSkipped,
     conflicts: plan.conflicts,
-    responsibleEngineers,
+    responsibleEngineers: classifyEngineers(
+      options.parsed.uniqueRows,
+      engineers,
+      accessAssignmentsCreated,
+    ),
     usersCountBefore,
     usersCountAfter: await options.prisma.user.count(),
     credentialsCountBefore,

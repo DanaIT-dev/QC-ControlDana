@@ -1,15 +1,23 @@
 'use client';
 
 import type { ObjectsDirectoryResponse } from '@sgr-registry/contracts';
-import { OBJECTS_DIRECTORY_PAGE_SIZES } from '@sgr-registry/domain';
-import { useQuery } from '@tanstack/react-query';
+import { OBJECTS_DIRECTORY_PAGE_SIZES, responsibleEngineerNotice } from '@sgr-registry/domain';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { PageHeader } from '@/components/page-header';
 import { EmptyState, ErrorState, TableSkeleton } from '@/components/states';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -18,15 +26,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { ApiError } from '../../lib/command-api';
 import { formatCalendarDate } from '../../lib/registry-url';
 import { queryKeys } from '../../lib/query-keys';
-import { fetchObjectsDirectory } from '../../lib/objects-api';
+import { fetchObjectsDirectory, linkObjectResponsibleEngineer } from '../../lib/objects-api';
 
 function emptyDash(value: string | null | undefined): string {
   return value && value.trim().length > 0 ? value : '—';
 }
 
-export function ObjectsView() {
+export function ObjectsView({
+  csrfToken,
+  canManageLinks,
+}: {
+  csrfToken: string;
+  canManageLinks: boolean;
+}) {
   const router = useRouter();
   const params = useSearchParams();
   const query = useMemo(() => {
@@ -70,6 +85,24 @@ export function ObjectsView() {
     queryKey: queryKeys.objects.list(query),
     queryFn: () => fetchObjectsDirectory(query),
   });
+  const queryClient = useQueryClient();
+  const engineersQuery = useQuery({
+    queryKey: ['users', 'responsible-engineers'],
+    enabled: canManageLinks,
+    queryFn: async () => {
+      const response = await fetch(
+        '/api/users?role=RESPONSIBLE_ENGINEER&status=ACTIVE&pageSize=100',
+        { credentials: 'include' },
+      );
+      if (!response.ok) {
+        throw new Error('users');
+      }
+      return (await response.json()) as { items: Array<{ id: string; fullName: string }> };
+    },
+  });
+  const [linkTarget, setLinkTarget] = useState<ObjectsDirectoryResponse['items'][number] | null>(
+    null,
+  );
 
   function navigate(next: typeof query) {
     const nextParams = new URLSearchParams();
@@ -155,10 +188,10 @@ export function ObjectsView() {
       {!listQuery.isError && !listQuery.isLoading && rows.length > 0 ? (
         <>
           <div className="hidden min-w-0 md:block">
-            <ObjectsTable data={data!} />
+            <ObjectsTable data={data!} canManageLinks={canManageLinks} onManage={setLinkTarget} />
           </div>
           <div className="md:hidden">
-            <ObjectsCards data={data!} />
+            <ObjectsCards data={data!} canManageLinks={canManageLinks} onManage={setLinkTarget} />
           </div>
         </>
       ) : null}
@@ -213,11 +246,31 @@ export function ObjectsView() {
           </div>
         </div>
       </div>
+      {linkTarget ? (
+        <LinkEngineerDialog
+          object={linkTarget}
+          engineers={engineersQuery.data?.items ?? []}
+          csrfToken={csrfToken}
+          onClose={() => setLinkTarget(null)}
+          onSaved={async () => {
+            setLinkTarget(null);
+            await queryClient.invalidateQueries({ queryKey: queryKeys.objects.list(query) });
+          }}
+        />
+      ) : null}
     </div>
   );
 }
 
-function ObjectsTable({ data }: { data: ObjectsDirectoryResponse }) {
+function ObjectsTable({
+  data,
+  canManageLinks,
+  onManage,
+}: {
+  data: ObjectsDirectoryResponse;
+  canManageLinks: boolean;
+  onManage: (item: ObjectsDirectoryResponse['items'][number]) => void;
+}) {
   return (
     <div className="min-w-0 overflow-x-auto rounded-[10px] border bg-card">
       <table className="w-full min-w-[720px] text-sm">
@@ -245,8 +298,9 @@ function ObjectsTable({ data }: { data: ObjectsDirectoryResponse }) {
               </td>
               <td className="px-3 py-3">
                 <ResponsibleCell
-                  name={item.sourceResponsibleEngineerName}
-                  status={item.responsibleEngineerAccountStatus}
+                  engineer={item.responsibleEngineer}
+                  canManageLinks={canManageLinks}
+                  onManage={() => onManage(item)}
                 />
               </td>
             </tr>
@@ -257,7 +311,15 @@ function ObjectsTable({ data }: { data: ObjectsDirectoryResponse }) {
   );
 }
 
-function ObjectsCards({ data }: { data: ObjectsDirectoryResponse }) {
+function ObjectsCards({
+  data,
+  canManageLinks,
+  onManage,
+}: {
+  data: ObjectsDirectoryResponse;
+  canManageLinks: boolean;
+  onManage: (item: ObjectsDirectoryResponse['items'][number]) => void;
+}) {
   return (
     <ul className="grid gap-3">
       {data.items.map((item) => (
@@ -271,8 +333,9 @@ function ObjectsCards({ data }: { data: ObjectsDirectoryResponse }) {
               </p>
               <p className="text-sm">Гарантия до: {formatCalendarDate(item.warrantyEndsAt)}</p>
               <ResponsibleCell
-                name={item.sourceResponsibleEngineerName}
-                status={item.responsibleEngineerAccountStatus}
+                engineer={item.responsibleEngineer}
+                canManageLinks={canManageLinks}
+                onManage={() => onManage(item)}
               />
             </CardContent>
           </Card>
@@ -283,21 +346,115 @@ function ObjectsCards({ data }: { data: ObjectsDirectoryResponse }) {
 }
 
 function ResponsibleCell({
-  name,
-  status,
+  engineer,
+  canManageLinks,
+  onManage,
 }: {
-  name: string | null;
-  status: ObjectsDirectoryResponse['items'][number]['responsibleEngineerAccountStatus'];
+  engineer: ObjectsDirectoryResponse['items'][number]['responsibleEngineer'];
+  canManageLinks: boolean;
+  onManage: () => void;
 }) {
-  if (!name) {
-    return <span>—</span>;
+  if (!engineer) {
+    return (
+      <div className="grid min-w-0 gap-0.5">
+        <span>—</span>
+        {canManageLinks ? (
+          <Button type="button" variant="outline" size="sm" className="w-fit" onClick={onManage}>
+            Связать
+          </Button>
+        ) : null}
+      </div>
+    );
   }
+  const notice = responsibleEngineerNotice(engineer);
   return (
     <div className="grid min-w-0 gap-0.5">
-      <p className="break-words">Ответственный: {name}</p>
-      {status === 'UNRESOLVED' || status === 'AMBIGUOUS' ? (
-        <p className="text-[12px] text-muted-foreground">Не связан с учетной записью</p>
+      <p className="break-words">Ответственный: {engineer.fullName}</p>
+      {notice ? <p className="text-[12px] text-muted-foreground">{notice}</p> : null}
+      {canManageLinks ? (
+        <Button type="button" variant="outline" size="sm" className="mt-1 w-fit" onClick={onManage}>
+          {engineer.linked ? 'Изменить привязку' : 'Связать'}
+        </Button>
       ) : null}
     </div>
+  );
+}
+
+function LinkEngineerDialog({
+  object,
+  engineers,
+  csrfToken,
+  onClose,
+  onSaved,
+}: {
+  object: ObjectsDirectoryResponse['items'][number];
+  engineers: Array<{ id: string; fullName: string }>;
+  csrfToken: string;
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const currentId = object.responsibleEngineer?.linked ? object.responsibleEngineer.id : '';
+  const [userId, setUserId] = useState(currentId || engineers[0]?.id || '');
+  return (
+    <Dialog open onOpenChange={(open) => (!open ? onClose() : undefined)}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Ответственный инженер</DialogTitle>
+        </DialogHeader>
+        <Select value={userId} onValueChange={setUserId}>
+          <SelectTrigger aria-label="Учётная запись инженера" className="min-h-11">
+            <SelectValue placeholder="Выберите учётную запись" />
+          </SelectTrigger>
+          <SelectContent>
+            {engineers.map((item) => (
+              <SelectItem key={item.id} value={item.id}>
+                {item.fullName}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <DialogFooter className="flex-col gap-2 sm:flex-row">
+          {object.responsibleEngineer?.linked ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                void (async () => {
+                  try {
+                    await linkObjectResponsibleEngineer(object.id, null, csrfToken);
+                    toast.success('Привязка снята');
+                    await onSaved();
+                  } catch (error) {
+                    toast.error(error instanceof ApiError ? error.message : 'Ошибка');
+                  }
+                })();
+              }}
+            >
+              Снять привязку
+            </Button>
+          ) : null}
+          <Button type="button" variant="outline" onClick={onClose}>
+            Отмена
+          </Button>
+          <Button
+            type="button"
+            disabled={!userId}
+            onClick={() => {
+              void (async () => {
+                try {
+                  await linkObjectResponsibleEngineer(object.id, userId, csrfToken);
+                  toast.success('Привязка сохранена');
+                  await onSaved();
+                } catch (error) {
+                  toast.error(error instanceof ApiError ? error.message : 'Ошибка');
+                }
+              })();
+            }}
+          >
+            Сохранить
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

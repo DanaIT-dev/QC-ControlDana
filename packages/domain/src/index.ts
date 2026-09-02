@@ -26,6 +26,7 @@ export * from './user-commands';
 export * from './admin-grants';
 export * from './reference';
 export * from './objects-import';
+export * from './engineer-name';
 export * from './objects-directory';
 export * from './act-commands';
 export * from './attachments';

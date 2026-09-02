@@ -399,6 +399,17 @@ describe('operations integration', () => {
       name: string;
       address: string;
     };
+    const unassigned = await read(
+      responsibleSession,
+      `/api/reference-data/property-objects?search=${encodeURIComponent(createdBody.name)}`,
+    );
+    expect(unassigned.statusCode).toBe(200);
+    expect(
+      (unassigned.json() as { items: Array<{ id: string }> }).items.some(
+        (item) => item.id === createdBody.id,
+      ),
+    ).toBe(false);
+    await assignObjectEngineers(createdBody.id, [responsible.id]);
     const objects = await read(
       responsibleSession,
       `/api/reference-data/property-objects?search=${encodeURIComponent(createdBody.name)}`,
