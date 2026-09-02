@@ -1,5 +1,5 @@
 import type { RegistryFilterOption } from '@sgr-registry/contracts';
-import { DEADLINE_STATE_LABELS, DEFECT_ITEM_STATUS_LABELS } from '@sgr-registry/domain';
+import { ACT_STATUS_LABELS, DEADLINE_STATE_LABELS } from '@sgr-registry/domain';
 import type { RegistryListQuery } from '@sgr-registry/domain';
 
 export interface FilterChip {
@@ -78,7 +78,7 @@ export function buildRegistryFilterChips(
       query.statuses,
       query.statuses.map((id) => ({
         id,
-        label: DEFECT_ITEM_STATUS_LABELS[id] ?? id,
+        label: ACT_STATUS_LABELS[id] ?? id,
       })),
       { statuses: [] },
     ),

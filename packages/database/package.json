@@ -24,7 +24,8 @@
     "test:sla:performance": "tsx scripts/sla-performance.ts",
     "roles:provision": "tsx scripts/provision-roles.ts",
     "super-admin:provision": "tsx scripts/provision-super-admin.ts",
-    "isolation:verify": "tsx scripts/verify-isolation-hardening.ts"
+    "isolation:verify": "tsx scripts/verify-isolation-hardening.ts",
+    "verify:act-start": "tsx scripts/verify-act-start-migration.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1119.0",

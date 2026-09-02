@@ -184,6 +184,8 @@ export const restoreProposalRequestSchema = z
   })
   .strict();
 
+export const startActRequestSchema = z.object({}).strict();
+
 export const historyQuerySchema = z
   .object({
     cursor: z.string().optional(),
@@ -201,3 +203,5 @@ export type PatchDeadlinesRequest = z.infer<typeof patchDeadlinesRequestSchema>;
 export type CompleteDefectRequest = z.infer<typeof completeDefectRequestSchema>;
 export type ReopenDefectRequest = z.infer<typeof reopenDefectRequestSchema>;
 export type UpsertProposalRequest = z.infer<typeof upsertProposalRequestSchema>;
+export type RestoreProposalRequest = z.infer<typeof restoreProposalRequestSchema>;
+export type StartActRequest = z.infer<typeof startActRequestSchema>;

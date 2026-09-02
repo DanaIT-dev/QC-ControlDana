@@ -54,8 +54,8 @@ async function main(): Promise<void> {
     });
 
     await prisma.$executeRawUnsafe(`
-      INSERT INTO acts (id, "officialNumber", "formCode", year, sequence, "objectId", "customerOrganizationId", status, version, "issuedOn", "createdAt", "updatedAt")
-      SELECT gen_random_uuid(), '${MARKER}-' || g, 'S1', 2099, g, '${object.id}'::uuid, '${customer.id}'::uuid, 'IN_PROGRESS', 1, TIMESTAMPTZ '2026-08-20 12:00:00+00', NOW(), NOW()
+      INSERT INTO acts (id, "officialNumber", "formCode", year, sequence, "objectId", "customerOrganizationId", status, version, "issuedOn", "startedAt", "createdAt", "updatedAt")
+      SELECT gen_random_uuid(), '${MARKER}-' || g, 'S1', 2099, g, '${object.id}'::uuid, '${customer.id}'::uuid, 'IN_PROGRESS', 1, TIMESTAMPTZ '2026-08-20 12:00:00+00', TIMESTAMPTZ '2026-08-20 12:00:00+00', NOW(), NOW()
       FROM generate_series(1, 200) AS g
     `);
 

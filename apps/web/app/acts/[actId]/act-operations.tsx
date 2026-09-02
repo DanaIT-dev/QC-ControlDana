@@ -5,9 +5,14 @@ import type {
   ActDetailResponse,
   SafeUserProfile,
 } from '@sgr-registry/contracts';
-import { AUDIT_ACTION_LABELS, canViewProposalGroupBC, hasCapability } from '@sgr-registry/domain';
+import {
+  AUDIT_ACTION_LABELS,
+  canStartAct,
+  canViewProposalGroupBC,
+  hasCapability,
+} from '@sgr-registry/domain';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { ConflictDialog } from '@/components/conflict-dialog';
 import { EmptyState, ErrorState } from '@/components/states';
@@ -54,6 +59,8 @@ export function ActOperations({
 }) {
   const queryClient = useQueryClient();
   const [conflict, setConflict] = useState(false);
+  const startingRef = useRef(false);
+  const [starting, setStarting] = useState(false);
 
   async function run(path: string, method: 'POST' | 'PATCH' | 'PUT', body: unknown) {
     try {
@@ -85,6 +92,25 @@ export function ActOperations({
   if (!item) {
     return (
       <div className="action-row flex flex-wrap gap-2">
+        {canStartAct(user.role) && act.status === 'NEW' ? (
+          <Button
+            type="button"
+            disabled={starting}
+            onClick={() => {
+              if (startingRef.current) {
+                return;
+              }
+              startingRef.current = true;
+              setStarting(true);
+              void run(`/api/acts/${act.id}/start`, 'POST', {}).finally(() => {
+                startingRef.current = false;
+                setStarting(false);
+              });
+            }}
+          >
+            Взять в работу
+          </Button>
+        ) : null}
         {hasCapability(user.role, 'EDIT_ACT_HEADER') ? (
           <HeaderEditor
             act={act}
@@ -120,7 +146,9 @@ export function ActOperations({
         user={user}
         onSave={(body) => run(`/api/defects/${item.id}/deadlines`, 'PATCH', body)}
       />
-      {hasCapability(user.role, 'COMPLETE_DEFECT') && item.status === 'IN_PROGRESS' ? (
+      {hasCapability(user.role, 'COMPLETE_DEFECT') &&
+      item.status === 'IN_PROGRESS' &&
+      act.status !== 'NEW' ? (
         <Button
           type="button"
           onClick={() =>
@@ -750,13 +778,24 @@ export function ActHistory({ actId }: { actId: string }) {
       {(history.data?.items ?? []).map((item) => (
         <li key={item.id} className="timeline__item grid gap-1">
           <strong>{AUDIT_ACTION_LABELS[item.action] ?? item.action}</strong>
-          <p className="text-sm text-muted-foreground">
-            {item.actorName ?? 'Система'} · {new Date(item.occurredAt).toLocaleString('ru-BY')}
-          </p>
-          {item.reason ? <p className="text-sm">Причина: {item.reason}</p> : null}
-          <p className="text-sm">
-            Было: {summarize(item.oldValue)} → Стало: {summarize(item.newValue)}
-          </p>
+          {item.action === 'ACT_STARTED' ? (
+            <>
+              <p className="text-sm">Кто: {item.actorName ?? 'Система'}</p>
+              <p className="text-sm">
+                Дата и время: {new Date(item.occurredAt).toLocaleString('ru-BY')}
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground">
+                {item.actorName ?? 'Система'} · {new Date(item.occurredAt).toLocaleString('ru-BY')}
+              </p>
+              {item.reason ? <p className="text-sm">Причина: {item.reason}</p> : null}
+              <p className="text-sm">
+                Было: {summarize(item.oldValue)} → Стало: {summarize(item.newValue)}
+              </p>
+            </>
+          )}
         </li>
       ))}
     </ol>

@@ -27,6 +27,7 @@ const LIST_SELECT = {
       officialNumber: true,
       formCode: true,
       signedDocumentRef: true,
+      status: true,
       objectId: true,
       customerOrganizationId: true,
       propertyObject: { select: { id: true, name: true, address: true } },
@@ -97,6 +98,8 @@ export function toRegistryRow(
     formCode: item.act.formCode as ActFormCode,
     formLabel: formLabel(item.act.formCode as ActFormCode),
     actNumber: item.act.officialNumber,
+    actStatus: item.act.status as ActStatus,
+    actStatusLabel: actStatusLabel(item.act.status as ActStatus),
     defectStatus: item.status as DefectItemStatus,
     defectStatusLabel: defectItemStatusLabel(item.status as DefectItemStatus),
     objectId: item.act.objectId,
@@ -145,6 +148,8 @@ export function toActHeader(act: {
   cancelledAt: Date | null;
   cancellationReason: string | null;
   signedDocumentRef: string | null;
+  startedAt?: Date | null;
+  startedBy?: { id: string; fullName: string } | null;
   propertyObject: {
     name: string;
     address: string;
@@ -171,6 +176,8 @@ export function toActHeader(act: {
     issuedOn: act.issuedOn ? calendarField(act.issuedOn) : null,
     signedDocumentRef: act.signedDocumentRef,
     createdAt: act.createdAt.toISOString(),
+    startedAt: timestampField(act.startedAt ?? null),
+    startedBy: act.startedBy ?? null,
     cancelledAt: timestampField(act.cancelledAt),
     cancellationReason: act.cancellationReason,
   };

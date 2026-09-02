@@ -6,11 +6,22 @@ export interface ActDefectItemRef {
   active: boolean;
 }
 
-export function computeActStatus(items: readonly ActDefectItemRef[]): ActStatus {
-  const activeItems = items.filter((item) => item.active);
-  if (activeItems.some((item) => item.status === 'IN_PROGRESS')) {
-    return 'IN_PROGRESS';
+export interface ActWorkflowState {
+  startedAt: Date | string | null;
+  cancelledAt?: Date | string | null;
+}
+
+export function computeActStatus(
+  items: readonly ActDefectItemRef[],
+  workflow: ActWorkflowState,
+): ActStatus {
+  if (workflow.cancelledAt) {
+    return 'CANCELLED';
   }
+  if (workflow.startedAt == null) {
+    return 'NEW';
+  }
+  const activeItems = items.filter((item) => item.active);
   if (activeItems.length > 0 && activeItems.every((item) => item.status === 'COMPLETED')) {
     return 'COMPLETED';
   }

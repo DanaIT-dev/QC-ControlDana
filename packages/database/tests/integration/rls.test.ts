@@ -142,6 +142,7 @@ describe('PostgreSQL RLS', () => {
         customerOrganizationId: org.id,
         issuedOn: new Date('2026-01-15T12:00:00.000Z'),
         status: 'IN_PROGRESS',
+        startedAt: new Date('2026-01-15T12:00:00.000Z'),
       },
     });
     const otherAct = await owner.act.create({
@@ -154,6 +155,7 @@ describe('PostgreSQL RLS', () => {
         customerOrganizationId: org.id,
         issuedOn: new Date('2026-01-16T12:00:00.000Z'),
         status: 'IN_PROGRESS',
+        startedAt: new Date('2026-01-16T12:00:00.000Z'),
       },
     });
     actId = act.id;
@@ -1168,5 +1170,157 @@ describe('PostgreSQL RLS', () => {
         where: { propertyObjectId: otherObjectId, userId: otherResponsibleId },
       });
     }
+  });
+
+  it('starts acts only for staff or assigned responsible engineers', async () => {
+    const newAct = await owner.act.create({
+      data: {
+        officialNumber: `${MARKER}-new`,
+        formCode: 'S1',
+        year: 2099,
+        sequence: Math.floor(Math.random() * 800_000) + 200_000,
+        objectId,
+        customerOrganizationId: (await owner.act.findUniqueOrThrow({ where: { id: actId } }))
+          .customerOrganizationId,
+        issuedOn: new Date('2026-09-01T12:00:00.000Z'),
+        status: 'NEW',
+      },
+    });
+    const defectType = await owner.defectType.findUniqueOrThrow({ where: { code: 'RLS_TEST' } });
+    const newDefect = await owner.defectItem.create({
+      data: {
+        actId: newAct.id,
+        location: 'new',
+        claimDetails: 'claim',
+        defectTypeId: defectType.id,
+      },
+    });
+
+    await expect(
+      withAuthenticatedDbContext({
+        prisma: appPrisma,
+        secret,
+        user: { id: contractorId, sessionVersion: 1 },
+        callback: (tx) =>
+          tx.$queryRaw`SELECT * FROM public.sgr_start_act(${newAct.id}::uuid, 'rls-contractor')`,
+      }),
+    ).rejects.toThrow();
+
+    const superAdmin = await owner.user.findFirst({
+      where: { role: 'SUPER_ADMIN', status: 'ACTIVE' },
+    });
+    if (superAdmin) {
+      await expect(
+        withAuthenticatedDbContext({
+          prisma: appPrisma,
+          secret,
+          user: { id: superAdmin.id, sessionVersion: superAdmin.sessionVersion },
+          callback: (tx) =>
+            tx.$queryRaw`SELECT * FROM public.sgr_start_act(${newAct.id}::uuid, 'rls-super')`,
+        }),
+      ).rejects.toThrow();
+    }
+
+    await expect(
+      withAuthenticatedDbContext({
+        prisma: appPrisma,
+        secret,
+        user: { id: otherResponsibleId, sessionVersion: 1 },
+        callback: (tx) =>
+          tx.$queryRaw`SELECT * FROM public.sgr_start_act(${newAct.id}::uuid, 'rls-foreign')`,
+      }),
+    ).rejects.toThrow();
+
+    const completeNew = await withAuthenticatedDbContext({
+      prisma: appPrisma,
+      secret,
+      user: { id: adminId, sessionVersion: 1 },
+      callback: async (tx) => {
+        try {
+          await tx.defectItem.update({
+            where: { id: newDefect.id },
+            data: { status: 'COMPLETED' },
+          });
+          return 'updated';
+        } catch {
+          return 'denied';
+        }
+      },
+    });
+    expect(completeNew).toBe('denied');
+    expect((await owner.defectItem.findUniqueOrThrow({ where: { id: newDefect.id } })).status).toBe(
+      'IN_PROGRESS',
+    );
+
+    await expect(
+      withAuthenticatedDbContext({
+        prisma: appPrisma,
+        secret,
+        user: { id: responsibleId, sessionVersion: 1 },
+        callback: async (tx) => {
+          const rows = await tx.$queryRaw<
+            Array<{ status: string; already_started: boolean; started_by_id: string }>
+          >`
+            SELECT status, already_started, started_by_id
+            FROM public.sgr_start_act(${newAct.id}::uuid, 'rls-responsible')
+          `;
+          expect(rows[0]?.status).toBe('IN_PROGRESS');
+          expect(rows[0]?.already_started).toBe(false);
+          expect(rows[0]?.started_by_id).toBe(responsibleId);
+          throw new Error('start-rollback');
+        },
+      }),
+    ).rejects.toThrow('start-rollback');
+    expect((await owner.act.findUniqueOrThrow({ where: { id: newAct.id } })).status).toBe('NEW');
+    expect(
+      await owner.auditLog.count({ where: { entityId: newAct.id, action: 'ACT_STARTED' } }),
+    ).toBe(0);
+
+    await owner.act.update({
+      where: { id: newAct.id },
+      data: { status: 'IN_PROGRESS', startedAt: new Date() },
+    });
+    const repeat = await withAuthenticatedDbContext({
+      prisma: appPrisma,
+      secret,
+      user: { id: adminId, sessionVersion: 1 },
+      callback: (tx) =>
+        tx.$queryRaw<Array<{ already_started: boolean }>>`
+          SELECT already_started
+          FROM public.sgr_start_act(${newAct.id}::uuid, 'rls-repeat')
+        `,
+    });
+    expect(repeat[0]?.already_started).toBe(true);
+    expect(
+      await owner.auditLog.count({ where: { entityId: newAct.id, action: 'ACT_STARTED' } }),
+    ).toBe(0);
+
+    const noContext = await sql(
+      appUrl,
+      `SELECT * FROM public.sgr_start_act($1::uuid, 'no-context')`,
+      [newAct.id],
+    );
+    expect(noContext.error).toBeTruthy();
+
+    const spoofStart = await withAuthenticatedDbContext({
+      prisma: appPrisma,
+      secret,
+      user: { id: responsibleId, sessionVersion: 1 },
+      callback: async (tx) => {
+        try {
+          await tx.act.update({
+            where: { id: newAct.id },
+            data: { startedAt: new Date(), startedById: responsibleId },
+          });
+          return 'updated';
+        } catch {
+          return 'denied';
+        }
+      },
+    });
+    expect(spoofStart).toBe('denied');
+
+    await owner.defectItem.delete({ where: { id: newDefect.id } });
+    await owner.act.delete({ where: { id: newAct.id } });
   });
 });

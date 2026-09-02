@@ -1,8 +1,8 @@
 import {
   ACT_FORM_CODES,
-  DEFECT_ITEM_STATUSES,
+  REGISTRY_STATUS_FILTERS,
   type ActFormCode,
-  type DefectItemStatus,
+  type RegistryStatusFilter,
 } from '@sgr-registry/contracts';
 import { DEADLINE_STATES, type DeadlineState } from '@sgr-registry/contracts';
 
@@ -46,7 +46,7 @@ export interface RegistryListQuery {
   pageSize: RegistryPageSize;
   search: string | null;
   formCodes: ActFormCode[];
-  statuses: DefectItemStatus[];
+  statuses: RegistryStatusFilter[];
   objectIds: string[];
   defectTypeIds: string[];
   customerOrganizationIds: string[];
@@ -149,10 +149,10 @@ export function parseRegistryListQuery(input: RegistryQueryInput): RegistryListQ
   });
 
   const statuses = asList(input.statuses).map((status) => {
-    if (!DEFECT_ITEM_STATUSES.includes(status as DefectItemStatus)) {
+    if (!REGISTRY_STATUS_FILTERS.includes(status as RegistryStatusFilter)) {
       throw new RegistryQueryError('Invalid status');
     }
-    return status as DefectItemStatus;
+    return status as RegistryStatusFilter;
   });
 
   const deadlineState = asList(input.deadlineState).map((state) => {

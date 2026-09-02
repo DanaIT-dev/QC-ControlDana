@@ -15,6 +15,7 @@ export const AUDIT_ACTIONS = [
   'REFERENCE_RESTORED',
   'OBJECT_ENGINEERS_REPLACED',
   'ACT_CREATED',
+  'ACT_STARTED',
   'ACT_HEADER_UPDATED',
   'DEFECT_ADDED',
   'ASSIGNMENTS_REPLACED',
@@ -53,6 +54,7 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction | string, string> = {
   REFERENCE_RESTORED: 'Значение справочника восстановлено',
   OBJECT_ENGINEERS_REPLACED: 'Изменены ответственные инженеры объекта',
   ACT_CREATED: 'Создан акт',
+  ACT_STARTED: 'Акт взят в работу',
   ACT_HEADER_UPDATED: 'Изменены данные акта',
   DEFECT_ADDED: 'Добавлен дефект',
   ASSIGNMENTS_REPLACED: 'Изменены назначения',
@@ -83,7 +85,7 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction | string, string> = {
   SESSION_REJECTED_VERSION_MISMATCH: 'Сессия отклонена: версия сессии устарела',
 };
 
-const HEADER_ACTIONS = new Set(['ACT_CREATED', 'ACT_HEADER_UPDATED']);
+const HEADER_ACTIONS = new Set(['ACT_CREATED', 'ACT_STARTED', 'ACT_HEADER_UPDATED']);
 const PROPOSAL_ACTIONS = new Set(['PROPOSAL_UPSERTED', 'PROPOSAL_ARCHIVED', 'PROPOSAL_RESTORED']);
 const ATTACHMENT_ACTIONS = new Set([
   'ATTACHMENT_UPLOADED',

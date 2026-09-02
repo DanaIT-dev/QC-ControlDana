@@ -1,8 +1,11 @@
 export const ACT_FORM_CODES = ['S1', 'S23'] as const;
 export type ActFormCode = (typeof ACT_FORM_CODES)[number];
 
-export const ACT_STATUSES = ['IN_PROGRESS', 'COMPLETED', 'CANCELLED'] as const;
+export const ACT_STATUSES = ['NEW', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'] as const;
 export type ActStatus = (typeof ACT_STATUSES)[number];
+
+export const REGISTRY_STATUS_FILTERS = ['NEW', 'IN_PROGRESS', 'COMPLETED'] as const;
+export type RegistryStatusFilter = (typeof REGISTRY_STATUS_FILTERS)[number];
 
 export const DEFECT_ITEM_STATUSES = ['IN_PROGRESS', 'COMPLETED'] as const;
 export type DefectItemStatus = (typeof DEFECT_ITEM_STATUSES)[number];

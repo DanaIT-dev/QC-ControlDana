@@ -2,7 +2,15 @@
 
 import type { RegistrySummaryResponse } from '@sgr-registry/contracts';
 import type { RegistryListQuery } from '@sgr-registry/domain';
-import { AlertTriangle, Banknote, CheckCircle2, Clock3, FolderOpen, ListTodo } from 'lucide-react';
+import {
+  AlertTriangle,
+  Banknote,
+  CheckCircle2,
+  Clock3,
+  FolderOpen,
+  ListTodo,
+  Sparkles,
+} from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -38,13 +46,22 @@ export function RegistrySummary({
       tone: 'neutral',
     },
     {
+      key: 'newCount',
+      label: 'Новый акт',
+      value: summary?.newCount,
+      active: query.statuses.length === 1 && query.statuses[0] === 'NEW',
+      apply: () => onChange({ ...query, page: 1, statuses: ['NEW'], deadlineState: [] }),
+      icon: Sparkles,
+      tone: 'info',
+    },
+    {
       key: 'inProgress',
       label: 'В работе',
       value: summary?.inProgress,
       active: query.statuses.length === 1 && query.statuses[0] === 'IN_PROGRESS',
       apply: () => onChange({ ...query, page: 1, statuses: ['IN_PROGRESS'], deadlineState: [] }),
       icon: ListTodo,
-      tone: 'info',
+      tone: 'warning',
     },
     {
       key: 'completed',
@@ -77,7 +94,7 @@ export function RegistrySummary({
 
   return (
     <section
-      className={cn('grid grid-cols-2 gap-3', canViewSum ? 'lg:grid-cols-6' : 'lg:grid-cols-5')}
+      className={cn('grid grid-cols-2 gap-3', canViewSum ? 'lg:grid-cols-7' : 'lg:grid-cols-6')}
       aria-label="Сводка реестра"
     >
       {items.map((item) => (

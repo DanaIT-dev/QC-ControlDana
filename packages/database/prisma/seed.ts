@@ -800,7 +800,10 @@ async function seedDemoRegistry(
     await tx.act.update({
       where: { id: actId },
       data: {
-        status: computeActStatus(items.map((item) => ({ status: item.status, active: true }))),
+        status: computeActStatus(
+          items.map((item) => ({ status: item.status, active: true })),
+          { startedAt: act.startedAt ?? act.createdAt, cancelledAt: act.cancelledAt },
+        ),
       },
     });
   }
@@ -900,6 +903,7 @@ async function ensureNumberedAct(
       issuedOn: input.issuedAt,
       status: input.cancelled ? 'CANCELLED' : 'IN_PROGRESS',
       createdAt: input.issuedAt,
+      startedAt: input.issuedAt,
       cancelledAt: input.cancelled ? input.issuedAt : null,
       cancellationReason: input.cancellationReason ?? null,
     },
@@ -949,6 +953,7 @@ async function ensureDemoAct(
       issuedOn: input.issuedAt,
       status: input.cancelled ? 'CANCELLED' : 'IN_PROGRESS',
       createdAt: input.issuedAt,
+      startedAt: input.issuedAt,
       cancelledAt: input.cancelled ? input.issuedAt : null,
       cancellationReason: input.cancellationReason ?? null,
     },

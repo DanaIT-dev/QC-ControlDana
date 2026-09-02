@@ -263,6 +263,8 @@ const sampleRow: RegistryDefectRow = {
   formCode: 'S1',
   formLabel: 'С-1',
   actNumber: 'С-1-000001',
+  actStatus: 'IN_PROGRESS',
+  actStatusLabel: 'В работе',
   defectStatus: 'IN_PROGRESS',
   defectStatusLabel: 'В работе',
   objectName: 'Объект',

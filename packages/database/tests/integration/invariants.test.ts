@@ -135,6 +135,7 @@ describe('database invariants', () => {
         objectId: object.id,
         customerOrganizationId: customer.id,
         status: 'IN_PROGRESS',
+        startedAt: new Date('2026-08-26T12:00:00.000Z'),
         issuedOn: new Date('2026-08-26T12:00:00.000Z'),
       },
     });
@@ -218,6 +219,7 @@ describe('database invariants', () => {
         objectId: object.id,
         customerOrganizationId: customer.id,
         status: 'IN_PROGRESS',
+        startedAt: new Date('2026-08-26T12:00:00.000Z'),
         issuedOn: new Date('2026-08-26T12:00:00.000Z'),
       },
     });
@@ -315,6 +317,7 @@ describe('database invariants', () => {
         objectId: object.id,
         customerOrganizationId: customer.id,
         status: 'IN_PROGRESS',
+        startedAt: new Date('2026-08-26T12:00:00.000Z'),
         issuedOn: new Date('2026-08-26T12:00:00.000Z'),
       },
     });

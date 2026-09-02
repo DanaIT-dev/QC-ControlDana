@@ -7,11 +7,12 @@ import { RegistryController } from './registry.controller';
 import { RegistryService } from './registry.service';
 import { ActChatService } from './act-chat.service';
 import { ActChatRateLimitGuard } from './act-chat-rate-limit.guard';
+import { ActStartRateLimitGuard } from './act-start-rate-limit.guard';
 
 @Module({
   imports: [PrismaModule, AuthModule, OperationsModule],
   controllers: [RegistryController, ActsController],
-  providers: [RegistryService, ActChatService, ActChatRateLimitGuard],
+  providers: [RegistryService, ActChatService, ActChatRateLimitGuard, ActStartRateLimitGuard],
   exports: [RegistryService],
 })
 export class RegistryModule {}

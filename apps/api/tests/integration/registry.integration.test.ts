@@ -495,6 +495,7 @@ describe('registry integration', () => {
         status,
         issuedOn: issuedAt,
         createdAt: issuedAt,
+        startedAt: status === 'CANCELLED' ? issuedAt : issuedAt,
         cancelledAt: status === 'CANCELLED' ? issuedAt : null,
         cancellationReason: status === 'CANCELLED' ? 'test' : null,
       },

@@ -6,6 +6,7 @@ import {
   createUserRequestSchema,
   patchActHeaderRequestSchema,
   patchDeadlinesRequestSchema,
+  startActRequestSchema,
   upsertProposalRequestSchema,
 } from '@sgr-registry/contracts';
 import {
@@ -53,6 +54,8 @@ describe('permission matrix', () => {
     expect(hasCapability('ADMIN', 'MANAGE_USERS')).toBe(true);
     expect(hasCapability('SGR_MANAGER', 'MANAGE_USERS')).toBe(false);
     expect(hasCapability('RESPONSIBLE_ENGINEER', 'CREATE_ACT')).toBe(true);
+    expect(hasCapability('RESPONSIBLE_ENGINEER', 'START_ACT')).toBe(true);
+    expect(hasCapability('CONTRACTOR_ENGINEER', 'START_ACT')).toBe(false);
     expect(hasCapability('RESPONSIBLE_ENGINEER', 'EDIT_ACT_HEADER')).toBe(true);
     expect(hasCapability('RESPONSIBLE_ENGINEER', 'MANAGE_PROPOSALS')).toBe(false);
     expect(hasCapability('RESPONSIBLE_ENGINEER', 'VIEW_REFERENCE_DATA')).toBe(true);
@@ -240,6 +243,13 @@ describe('act create validation', () => {
       officialNumber: 'С-1-2026-000001',
     });
     expect(unknown.success).toBe(false);
+    expect(startActRequestSchema.safeParse({}).success).toBe(true);
+    expect(startActRequestSchema.safeParse({ startedAt: '2026-01-01T00:00:00.000Z' }).success).toBe(
+      false,
+    );
+    expect(startActRequestSchema.safeParse({ status: 'IN_PROGRESS', userId: 'x' }).success).toBe(
+      false,
+    );
   });
 
   it('rejects duplicate assignment ids', () => {
@@ -378,6 +388,28 @@ describe('history visibility', () => {
       { role: 'CONTRACTOR_ENGINEER', assignedDefectItemIds: new Set(['d1']), actId: 'act' },
     );
     expect(visible).toBe(false);
+  });
+
+  it('shows ACT_STARTED to assigned responsible engineers', () => {
+    const visible = historyVisibleToRole(
+      {
+        id: 'e4',
+        action: 'ACT_STARTED',
+        entityType: 'ACT',
+        entityId: 'act',
+        parentEntityType: null,
+        parentEntityId: null,
+        oldValue: { status: 'NEW' },
+        newValue: { status: 'IN_PROGRESS' },
+        reason: null,
+        actorUserId: 'u',
+        actorName: 'A',
+        occurredAt: new Date(),
+        requestId: null,
+      },
+      { role: 'RESPONSIBLE_ENGINEER', assignedDefectItemIds: new Set(), actId: 'act' },
+    );
+    expect(visible).toBe(true);
   });
 });
 

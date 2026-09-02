@@ -1,5 +1,5 @@
 import type { Prisma } from '@sgr-registry/database';
-import type { DeadlineState } from '@sgr-registry/contracts';
+import type { DeadlineState, RegistryStatusFilter } from '@sgr-registry/contracts';
 import {
   addCalendarDays,
   calendarDateToUtcNoon,
@@ -53,16 +53,25 @@ export function deadlineStateWhere(
     case 'COMPLETED':
       return { status: 'COMPLETED' };
     case 'NO_DEADLINE':
-      return { status: 'IN_PROGRESS', effectiveDeadline: null };
+      return { status: 'IN_PROGRESS', act: { status: 'IN_PROGRESS' }, effectiveDeadline: null };
     case 'OVERDUE':
-      return { status: 'IN_PROGRESS', effectiveDeadline: { lte: todayNoon } };
+      return {
+        status: 'IN_PROGRESS',
+        act: { status: 'IN_PROGRESS' },
+        effectiveDeadline: { lte: todayNoon },
+      };
     case 'WARNING':
       return {
         status: 'IN_PROGRESS',
+        act: { status: 'IN_PROGRESS' },
         effectiveDeadline: { gt: todayNoon, lte: warningLastNoon },
       };
     case 'NORMAL':
-      return { status: 'IN_PROGRESS', effectiveDeadline: { gt: warningLastNoon } };
+      return {
+        status: 'IN_PROGRESS',
+        act: { status: 'IN_PROGRESS' },
+        effectiveDeadline: { gt: warningLastNoon },
+      };
     default:
       return {};
   }
@@ -83,7 +92,9 @@ export function registryListWhere(
     parts.push({ act: { formCode: { in: query.formCodes } } });
   }
   if (query.statuses.length) {
-    parts.push({ status: { in: query.statuses } });
+    parts.push({
+      OR: query.statuses.map((status) => registryStatusFilterWhere(status)),
+    });
   }
   if (query.objectIds.length) {
     parts.push({ act: { objectId: { in: query.objectIds } } });
@@ -124,6 +135,18 @@ export function registryListWhere(
   return { AND: parts };
 }
 
+export function registryStatusFilterWhere(
+  status: RegistryStatusFilter,
+): Prisma.DefectItemWhereInput {
+  if (status === 'NEW') {
+    return { act: { status: 'NEW' } };
+  }
+  if (status === 'IN_PROGRESS') {
+    return { status: 'IN_PROGRESS', act: { status: 'IN_PROGRESS' } };
+  }
+  return { status: 'COMPLETED' };
+}
+
 export function registryOrderBy(
   sortBy: RegistrySortField,
   sortDirection: 'asc' | 'desc',
@@ -135,7 +158,7 @@ export function registryOrderBy(
       case 'actNumber':
         return { act: { officialNumber: dir } };
       case 'status':
-        return { status: dir };
+        return { act: { status: dir } };
       case 'objectName':
         return { act: { propertyObject: { name: dir } } };
       case 'defectTypeName':

@@ -11,10 +11,11 @@ import {
   reopenDefectRequestSchema,
   replaceAssignmentsRequestSchema,
   restoreProposalRequestSchema,
+  startActRequestSchema,
   upsertProposalRequestSchema,
   type ProposalSlot,
 } from '@sgr-registry/contracts';
-import { allocateActNumber, Prisma } from '@sgr-registry/database';
+import { allocateActNumber, Prisma, startActViaDefiner } from '@sgr-registry/database';
 import {
   ASSIGNABLE_ENGINEER_ROLE,
   BUSINESS_TIME_ZONE,
@@ -26,6 +27,7 @@ import {
   assertAtLeastOneEngineer,
   assertDeadlineFieldAllowed,
   assertUniqueIds,
+  actStatusLabel,
   calendarDateInTimeZone,
   calendarDateToUtcNoon,
   canViewAssignedHistory,
@@ -202,7 +204,7 @@ export class OperationsService {
             customerOrganizationId: input.customerOrganizationId,
             issuedOn: issuedAt,
             signedDocumentRef: normalizeDocumentRef(input.signedDocumentRef),
-            status: 'IN_PROGRESS',
+            status: 'NEW',
           },
         });
         const defectIds: string[] = [];
@@ -210,13 +212,6 @@ export class OperationsService {
           const defectId = await this.insertDefect(tx, act.id, item, user, outboxIds);
           defectIds.push(defectId);
         }
-        const items = await tx.defectItem.findMany({ where: { actId: act.id } });
-        await tx.act.update({
-          where: { id: act.id },
-          data: {
-            status: computeActStatus(items.map((row) => ({ status: row.status, active: true }))),
-          },
-        });
         const payload = { id: act.id, officialNumber: act.officialNumber, version: act.version };
         await writeAuditLog(tx, {
           ...ctx,
@@ -356,7 +351,10 @@ export class OperationsService {
       await tx.act.update({
         where: { id: actId },
         data: {
-          status: computeActStatus(items.map((row) => ({ status: row.status, active: true }))),
+          status: computeActStatus(
+            items.map((row) => ({ status: row.status, active: true })),
+            { startedAt: act.startedAt, cancelledAt: act.cancelledAt },
+          ),
           version: { increment: 1 },
         },
       });
@@ -581,6 +579,10 @@ export class OperationsService {
     const input = parseCommandBody(completeDefectRequestSchema, body);
     const ctx = actorContext(user, request);
     const item = await this.requireVisibleDefect(user, defectItemId);
+    const act = await this.requireVisibleAct(user, item.actId);
+    if (act.status === 'NEW' || act.startedAt == null) {
+      throw new InvalidTransitionError('Нельзя исполнить дефект до начала работы по акту');
+    }
     if (item.status === 'COMPLETED') {
       return { id: item.id, version: item.version, status: item.status };
     }
@@ -591,63 +593,96 @@ export class OperationsService {
       { id: item.id, actId: item.actId, status: item.status, readyAt: item.readyAt },
       { readyAt, now: new Date() },
     );
-    const result = await this.prisma.client.$transaction(async (tx) => {
-      if (item.version !== input.expectedVersion) {
-        throw new StaleWriteError();
-      }
-      const updated = await tx.defectItem.updateMany({
-        where: { id: defectItemId, version: input.expectedVersion, status: 'IN_PROGRESS' },
-        data: {
-          status: 'COMPLETED',
-          readyAt: next.readyAt,
-          version: { increment: 1 },
-        },
-      });
-      if (updated.count !== 1) {
-        const latest = await tx.defectItem.findUnique({ where: { id: defectItemId } });
-        if (latest?.status === 'COMPLETED') {
-          return {
-            id: latest.id,
-            version: latest.version,
-            status: latest.status,
-            outboxIds: [] as string[],
-          };
+    let result;
+    try {
+      result = await this.prisma.client.$transaction(async (tx) => {
+        if (item.version !== input.expectedVersion) {
+          throw new StaleWriteError();
         }
-        throw new StaleWriteError();
-      }
-      await this.syncActStatus(tx, item.actId);
-      const fresh = await tx.defectItem.findUniqueOrThrow({ where: { id: defectItemId } });
-      const outboxIds = await notifyDefectStatus(this.outboxWriter, tx, {
-        type: 'DEFECT_COMPLETED',
-        actId: item.actId,
-        defectItemId,
-        actorUserId: user.id,
-        defect: {
-          id: fresh.id,
-          status: fresh.status,
-          claimDeadline: fresh.claimDeadline,
-          plannedDeadline: fresh.plannedDeadline,
-          thirdPartyDeadline: fresh.thirdPartyDeadline,
-        },
+        const updated = await tx.defectItem.updateMany({
+          where: { id: defectItemId, version: input.expectedVersion, status: 'IN_PROGRESS' },
+          data: {
+            status: 'COMPLETED',
+            readyAt: next.readyAt,
+            version: { increment: 1 },
+          },
+        });
+        if (updated.count !== 1) {
+          const latest = await tx.defectItem.findUnique({ where: { id: defectItemId } });
+          if (latest?.status === 'COMPLETED') {
+            return {
+              id: latest.id,
+              version: latest.version,
+              status: latest.status,
+              outboxIds: [] as string[],
+            };
+          }
+          throw new StaleWriteError();
+        }
+        await this.syncActStatus(tx, item.actId);
+        const fresh = await tx.defectItem.findUniqueOrThrow({ where: { id: defectItemId } });
+        const outboxIds = await notifyDefectStatus(this.outboxWriter, tx, {
+          type: 'DEFECT_COMPLETED',
+          actId: item.actId,
+          defectItemId,
+          actorUserId: user.id,
+          defect: {
+            id: fresh.id,
+            status: fresh.status,
+            claimDeadline: fresh.claimDeadline,
+            plannedDeadline: fresh.plannedDeadline,
+            thirdPartyDeadline: fresh.thirdPartyDeadline,
+          },
+        });
+        await writeAuditLog(tx, {
+          ...ctx,
+          action: 'DEFECT_COMPLETED',
+          entityType: 'DEFECT_ITEM',
+          entityId: defectItemId,
+          parentEntityType: 'ACT',
+          parentEntityId: item.actId,
+          oldValue: toJsonValue({ status: 'IN_PROGRESS', readyAt: null }),
+          newValue: toJsonValue({
+            status: 'COMPLETED',
+            readyAt: calendarDateInTimeZone(fresh.readyAt ?? readyAt),
+            comment: normalizeNotes(input.comment),
+          }),
+        });
+        return { id: fresh.id, version: fresh.version, status: fresh.status, outboxIds };
       });
-      await writeAuditLog(tx, {
-        ...ctx,
-        action: 'DEFECT_COMPLETED',
-        entityType: 'DEFECT_ITEM',
-        entityId: defectItemId,
-        parentEntityType: 'ACT',
-        parentEntityId: item.actId,
-        oldValue: toJsonValue({ status: 'IN_PROGRESS', readyAt: null }),
-        newValue: toJsonValue({
-          status: 'COMPLETED',
-          readyAt: calendarDateInTimeZone(fresh.readyAt ?? readyAt),
-          comment: normalizeNotes(input.comment),
-        }),
-      });
-      return { id: fresh.id, version: fresh.version, status: fresh.status, outboxIds };
-    });
+    } catch (error) {
+      rethrowIfActNotStarted(error);
+      throw error;
+    }
     await this.outboxWriter.enqueue(result.outboxIds);
     return { id: result.id, version: result.version, status: result.status };
+  }
+
+  async startAct(user: AuthenticatedUser, actId: string, body: unknown, request: FastifyRequest) {
+    parseCommandBody(startActRequestSchema, body);
+    const ctx = actorContext(user, request);
+    await this.requireVisibleAct(user, actId);
+    try {
+      return await this.prisma.client.$transaction(async (tx) => {
+        const started = await startActViaDefiner(tx, {
+          actId,
+          requestId: ctx.requestId,
+        });
+        return {
+          id: started.id,
+          status: started.status,
+          statusLabel: actStatusLabel(started.status),
+          version: started.version,
+          startedAt: started.startedAt ? started.startedAt.toISOString() : null,
+          startedBy:
+            started.startedById && started.startedByName
+              ? { id: started.startedById, fullName: started.startedByName }
+              : null,
+        };
+      });
+    } catch (error) {
+      mapStartActError(error);
+    }
   }
 
   async reopen(
@@ -1256,7 +1291,7 @@ export class OperationsService {
     const scope = new RegistryAccessScope(user);
     const act = await this.prisma.client.act.findFirst({
       where: scope.actVisibleWhere(actId),
-      select: { id: true, status: true },
+      select: { id: true, status: true, startedAt: true },
     });
     if (!act) {
       throw new NotFoundException('Запись не найдена');
@@ -1296,8 +1331,53 @@ export class OperationsService {
     await tx.act.update({
       where: { id: actId },
       data: {
-        status: computeActStatus(items.map((item) => ({ status: item.status, active: true }))),
+        status: computeActStatus(
+          items.map((item) => ({ status: item.status, active: true })),
+          { startedAt: act.startedAt, cancelledAt: act.cancelledAt },
+        ),
       },
     });
   }
+}
+
+function prismaRawMessage(error: unknown): string {
+  const parts: string[] = [];
+  if (error instanceof Error) {
+    parts.push(error.message);
+  }
+  if (error && typeof error === 'object' && 'meta' in error) {
+    const meta = (error as { meta?: { message?: unknown; cause?: unknown } }).meta;
+    if (typeof meta?.message === 'string') {
+      parts.push(meta.message);
+    }
+    if (typeof meta?.cause === 'string') {
+      parts.push(meta.cause);
+    }
+  }
+  return parts.join('\n');
+}
+
+function rethrowIfActNotStarted(error: unknown): void {
+  if (prismaRawMessage(error).includes('Нельзя исполнить дефект до начала работы по акту')) {
+    throw new InvalidTransitionError('Нельзя исполнить дефект до начала работы по акту');
+  }
+}
+
+function mapStartActError(error: unknown): never {
+  if (
+    error instanceof NotFoundException ||
+    error instanceof ForbiddenException ||
+    error instanceof InvalidTransitionError ||
+    error instanceof StaleWriteError
+  ) {
+    throw error;
+  }
+  const message = prismaRawMessage(error);
+  if (message.includes('Запись не найдена')) {
+    throw new NotFoundException('Запись не найдена');
+  }
+  if (message.includes('Недостаточно прав')) {
+    throw new ForbiddenException('Недостаточно прав');
+  }
+  throw error;
 }

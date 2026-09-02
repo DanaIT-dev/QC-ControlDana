@@ -271,6 +271,7 @@ describe('notification worker SMTP lifecycle', () => {
         customerOrganizationId: org.id,
         issuedOn: new Date('2026-01-15T12:00:00.000Z'),
         status: 'IN_PROGRESS',
+        startedAt: new Date('2026-01-15T12:00:00.000Z'),
       },
     });
     const defectType = await prisma.defectType.upsert({
@@ -498,6 +499,7 @@ describe('notification worker SMTP lifecycle', () => {
         customerOrganizationId: org.id,
         issuedOn: new Date('2026-01-15T12:00:00.000Z'),
         status: 'IN_PROGRESS',
+        startedAt: new Date('2026-01-15T12:00:00.000Z'),
       },
     });
     const defectType = await prisma.defectType.upsert({

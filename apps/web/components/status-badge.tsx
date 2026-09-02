@@ -1,5 +1,5 @@
-import type { DeadlineState, DefectItemStatus } from '@sgr-registry/contracts';
-import { AlertCircle, CheckCircle2, Circle, Clock3 } from 'lucide-react';
+import type { ActStatus, DeadlineState, DefectItemStatus } from '@sgr-registry/contracts';
+import { AlertCircle, CheckCircle2, Circle, Clock3, Sparkles } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
@@ -7,11 +7,18 @@ export function StatusBadge({
   status,
   label,
 }: {
-  status: DefectItemStatus | 'CANCELLED' | 'IN_PROGRESS' | 'COMPLETED';
+  status: DefectItemStatus | ActStatus;
   label: string;
 }) {
-  const variant = status === 'COMPLETED' ? 'success' : status === 'CANCELLED' ? 'error' : 'info';
-  const Icon = status === 'COMPLETED' ? CheckCircle2 : Circle;
+  const variant =
+    status === 'COMPLETED'
+      ? 'success'
+      : status === 'CANCELLED'
+        ? 'error'
+        : status === 'NEW'
+          ? 'info'
+          : 'warning';
+  const Icon = status === 'COMPLETED' ? CheckCircle2 : status === 'NEW' ? Sparkles : Circle;
   return (
     <Badge variant={variant} className="gap-1">
       <Icon className="size-3" aria-hidden />

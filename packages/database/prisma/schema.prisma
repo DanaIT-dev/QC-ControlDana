@@ -12,6 +12,7 @@ enum ActFormCode {
 }
 
 enum ActStatus {
+  NEW
   IN_PROGRESS
   COMPLETED
   CANCELLED
@@ -101,6 +102,7 @@ model User {
   objectEngineerAssignmentsMade  PropertyObjectEngineer[] @relation("ObjectEngineerAssignedBy")
   defectItemAssignments          DefectItemEngineer[]
   cancelledActs         Act[]                    @relation("ActCancelledBy")
+  startedActs           Act[]                    @relation("ActStartedBy")
   uploadedAttachments   Attachment[]             @relation("AttachmentUploadedBy")
   archivedAttachments   Attachment[]             @relation("AttachmentArchivedBy")
   auditLogs             AuditLog[]
@@ -254,16 +256,19 @@ model Act {
   customerOrganizationId String      @db.Uuid
   signedDocumentRef      String?
   issuedOn               DateTime    @db.Timestamptz(3)
-  status                 ActStatus
+  status                 ActStatus   @default(NEW)
   version                Int         @default(1)
   createdAt              DateTime    @default(now()) @db.Timestamptz(3)
   updatedAt              DateTime    @updatedAt @db.Timestamptz(3)
+  startedAt              DateTime?   @db.Timestamptz(3)
+  startedById            String?     @db.Uuid
   cancelledAt            DateTime?   @db.Timestamptz(3)
   cancellationReason     String?
   cancelledByUserId      String?     @db.Uuid
 
   propertyObject PropertyObject @relation(fields: [objectId], references: [id], onDelete: Restrict)
   customer       Organization   @relation("ActCustomer", fields: [customerOrganizationId], references: [id], onDelete: Restrict)
+  startedBy      User?          @relation("ActStartedBy", fields: [startedById], references: [id], onDelete: Restrict)
   cancelledBy    User?          @relation("ActCancelledBy", fields: [cancelledByUserId], references: [id], onDelete: Restrict)
   defectItems    DefectItem[]
   attachments    Attachment[]
@@ -273,6 +278,7 @@ model Act {
   @@unique([formCode, year, sequence])
   @@index([objectId])
   @@index([customerOrganizationId])
+  @@index([status])
   @@map("acts")
 }
 

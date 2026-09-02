@@ -11,6 +11,7 @@ export const CAPABILITIES = [
   'VIEW_ALL_ACTS',
   'VIEW_ASSIGNED_DEFECTS',
   'CREATE_ACT',
+  'START_ACT',
   'EDIT_ACT_HEADER',
   'ADD_DEFECT',
   'EDIT_ASSIGNMENTS',
@@ -57,6 +58,7 @@ const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
     'VIEW_SYSTEM_STATUS',
     'VIEW_ALL_ACTS',
     'CREATE_ACT',
+    'START_ACT',
     'EDIT_ACT_HEADER',
     'ADD_DEFECT',
     'EDIT_ASSIGNMENTS',
@@ -87,6 +89,7 @@ const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
     'VIEW_REFERENCE_DATA',
     'VIEW_ALL_ACTS',
     'CREATE_ACT',
+    'START_ACT',
     'EDIT_ACT_HEADER',
     'ADD_DEFECT',
     'EDIT_ASSIGNMENTS',
@@ -130,6 +133,7 @@ const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
     'VIEW_REFERENCE_DATA',
     'VIEW_ASSIGNED_DEFECTS',
     'CREATE_ACT',
+    'START_ACT',
     'EDIT_ACT_HEADER',
     'ADD_DEFECT',
     'EDIT_ASSIGNMENTS',
@@ -181,6 +185,7 @@ export const CAPABILITY_LABELS: Record<Capability, string> = {
   VIEW_ALL_ACTS: 'Просмотр всех актов',
   VIEW_ASSIGNED_DEFECTS: 'Просмотр актов закреплённых объектов',
   CREATE_ACT: 'Создание актов',
+  START_ACT: 'Взятие акта в работу',
   EDIT_ACT_HEADER: 'Изменение шапки акта',
   ADD_DEFECT: 'Добавление дефектов',
   EDIT_ASSIGNMENTS: 'Назначение инженеров и организаций',
@@ -276,6 +281,10 @@ export function canAccessReferenceKind(role: UserRole, kind: string): boolean {
 
 export function canCreateAct(role: UserRole): boolean {
   return hasCapability(role, 'CREATE_ACT');
+}
+
+export function canStartAct(role: UserRole): boolean {
+  return hasCapability(role, 'START_ACT');
 }
 
 export function canViewFullHistory(role: UserRole): boolean {

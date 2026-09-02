@@ -9,6 +9,7 @@ import type {
 } from '@sgr-registry/contracts';
 import {
   BUSINESS_TIME_ZONE,
+  REGISTRY_STATUS_FILTER_OPTIONS,
   calendarDateInTimeZone,
   canViewProposalASum,
   deadlineStateLabel,
@@ -82,10 +83,17 @@ export class RegistryService {
   ): Promise<RegistrySummaryResponse> {
     const { query, scope, todayIso, warningDays } = await this.prepare(user, rawQuery);
     const where = registryListWhere(scope, query, todayIso, warningDays);
-    const [total, inProgress, completed, warning, overdue, noDeadline, proposalSum] =
+    const [total, newCount, inProgress, completed, warning, overdue, noDeadline, proposalSum] =
       await Promise.all([
         this.prisma.client.defectItem.count({ where }),
-        this.prisma.client.defectItem.count({ where: { AND: [where, { status: 'IN_PROGRESS' }] } }),
+        this.prisma.client.defectItem.count({
+          where: { AND: [where, { act: { status: 'NEW' } }] },
+        }),
+        this.prisma.client.defectItem.count({
+          where: {
+            AND: [where, { status: 'IN_PROGRESS', act: { status: 'IN_PROGRESS' } }],
+          },
+        }),
         this.prisma.client.defectItem.count({ where: { AND: [where, { status: 'COMPLETED' }] } }),
         this.prisma.client.defectItem.count({
           where: { AND: [where, deadlineStateWhere('WARNING', todayIso, warningDays)] },
@@ -106,6 +114,7 @@ export class RegistryService {
     return shapeSummary(
       {
         total,
+        newCount,
         inProgress,
         completed,
         warning,
@@ -123,52 +132,38 @@ export class RegistryService {
   async filterOptions(user: AuthenticatedUser): Promise<RegistryFilterOptionsResponse> {
     const scope = new RegistryAccessScope(user);
     const itemWhere = scope.defectItemWhere();
-    const [
-      formRows,
-      statusRows,
-      objectRows,
-      defectTypeRows,
-      customerRows,
-      liableRows,
-      engineerRows,
-    ] = await Promise.all([
-      this.prisma.client.act.findMany({
-        where: { defectItems: { some: itemWhere } },
-        distinct: ['formCode'],
-        select: { formCode: true },
-      }),
-      this.prisma.client.defectItem.findMany({
-        where: itemWhere,
-        distinct: ['status'],
-        select: { status: true },
-      }),
-      this.prisma.client.propertyObject.findMany({
-        where: { acts: { some: { defectItems: { some: itemWhere } } } },
-        select: { id: true, name: true },
-      }),
-      this.prisma.client.defectType.findMany({
-        where: { defectItems: { some: itemWhere } },
-        select: { id: true, name: true },
-      }),
-      this.prisma.client.organization.findMany({
-        where: { customerActs: { some: { defectItems: { some: itemWhere } } } },
-        select: { id: true, officialName: true },
-      }),
-      this.prisma.client.organization.findMany({
-        where: { liableItems: { some: { defectItem: itemWhere } } },
-        select: { id: true, officialName: true },
-      }),
-      this.prisma.client.user.findMany({
-        where: { defectItemAssignments: { some: { defectItem: itemWhere } } },
-        select: { id: true, fullName: true },
-      }),
-    ]);
+    const [formRows, objectRows, defectTypeRows, customerRows, liableRows, engineerRows] =
+      await Promise.all([
+        this.prisma.client.act.findMany({
+          where: { defectItems: { some: itemWhere } },
+          distinct: ['formCode'],
+          select: { formCode: true },
+        }),
+        this.prisma.client.propertyObject.findMany({
+          where: { acts: { some: { defectItems: { some: itemWhere } } } },
+          select: { id: true, name: true },
+        }),
+        this.prisma.client.defectType.findMany({
+          where: { defectItems: { some: itemWhere } },
+          select: { id: true, name: true },
+        }),
+        this.prisma.client.organization.findMany({
+          where: { customerActs: { some: { defectItems: { some: itemWhere } } } },
+          select: { id: true, officialName: true },
+        }),
+        this.prisma.client.organization.findMany({
+          where: { liableItems: { some: { defectItem: itemWhere } } },
+          select: { id: true, officialName: true },
+        }),
+        this.prisma.client.user.findMany({
+          where: { defectItemAssignments: { some: { defectItem: itemWhere } } },
+          select: { id: true, fullName: true },
+        }),
+      ]);
 
     return {
       formCodes: sortOptions(formRows.map((row) => [row.formCode, formLabel(row.formCode)])),
-      statuses: sortOptions(
-        statusRows.map((row) => [row.status, defectItemStatusLabel(row.status)]),
-      ),
+      statuses: [...REGISTRY_STATUS_FILTER_OPTIONS],
       objects: sortOptions(objectRows.map((row) => [row.id, row.name])),
       defectTypes: sortOptions(defectTypeRows.map((row) => [row.id, row.name])),
       customers: sortOptions(customerRows.map((row) => [row.id, row.officialName])),
@@ -194,6 +189,8 @@ export class RegistryService {
         customerOrganizationId: true,
         issuedOn: true,
         createdAt: true,
+        startedAt: true,
+        startedBy: { select: { id: true, fullName: true } },
         cancelledAt: true,
         cancellationReason: true,
         signedDocumentRef: true,

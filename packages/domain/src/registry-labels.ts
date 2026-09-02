@@ -1,8 +1,10 @@
 import {
   ACT_FORM_DISPLAY,
+  REGISTRY_STATUS_FILTERS,
   type ActFormCode,
   type ActStatus,
   type DefectItemStatus,
+  type RegistryStatusFilter,
 } from '@sgr-registry/contracts';
 import type { DeadlineState } from '@sgr-registry/contracts';
 
@@ -12,10 +14,14 @@ export const DEFECT_ITEM_STATUS_LABELS: Record<DefectItemStatus, string> = {
 };
 
 export const ACT_STATUS_LABELS: Record<ActStatus, string> = {
+  NEW: 'Новый акт',
   IN_PROGRESS: 'В работе',
   COMPLETED: 'Исполнено',
   CANCELLED: 'Аннулирован',
 };
+
+export const REGISTRY_STATUS_FILTER_OPTIONS: Array<{ id: RegistryStatusFilter; label: string }> =
+  REGISTRY_STATUS_FILTERS.map((id) => ({ id, label: ACT_STATUS_LABELS[id] }));
 
 export const DEADLINE_STATE_LABELS: Record<DeadlineState, string> = {
   NO_DEADLINE: 'Срок не установлен',
@@ -35,6 +41,18 @@ export function defectItemStatusLabel(status: DefectItemStatus): string {
 
 export function actStatusLabel(status: ActStatus): string {
   return ACT_STATUS_LABELS[status];
+}
+
+export function displayedRegistryStatus(input: {
+  actStatus: ActStatus;
+  actStatusLabel: string;
+  defectStatus: DefectItemStatus;
+  defectStatusLabel: string;
+}): { status: ActStatus | DefectItemStatus; label: string } {
+  if (input.actStatus === 'NEW') {
+    return { status: 'NEW', label: input.actStatusLabel };
+  }
+  return { status: input.defectStatus, label: input.defectStatusLabel };
 }
 
 export function deadlineStateLabel(state: DeadlineState): string {

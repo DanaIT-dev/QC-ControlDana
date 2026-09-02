@@ -117,14 +117,17 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-semibold">Акт {act.officialNumber}</h1>
             <Badge variant="secondary">{act.formLabel}</Badge>
-            <StatusBadge
-              status={act.status === 'COMPLETED' ? 'COMPLETED' : 'IN_PROGRESS'}
-              label={act.statusLabel}
-            />
+            <StatusBadge status={act.status} label={act.statusLabel} />
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
             {act.objectName} · {act.customerName}
           </p>
+          {act.status === 'NEW' ? (
+            <p className="mt-2 text-sm text-muted-foreground">
+              Работа по акту ещё не начата. Нажмите «Взять в работу», чтобы перевести акт в статус
+              «В работе».
+            </p>
+          ) : null}
         </div>
         <ActOperations act={act} user={user} />
       </div>
@@ -139,6 +142,12 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
           <Meta label="Дата ввода" value={formatCalendarDate(act.commissionedAt)} />
           <Meta label="Окончание гарантии" value={formatCalendarDate(act.warrantyEndsAt)} />
           <Meta label="Создан" value={formatTimestamp(act.createdAt)} />
+          {act.startedAt ? (
+            <Meta
+              label="Взят в работу"
+              value={`${act.startedBy?.fullName ?? '—'} · ${formatTimestamp(act.startedAt)}`}
+            />
+          ) : null}
           {act.cancelledAt ? (
             <Meta
               label="Аннулирован"

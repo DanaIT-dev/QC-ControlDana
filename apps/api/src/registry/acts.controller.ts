@@ -23,6 +23,7 @@ import { OperationsService } from '../operations/operations.service';
 import { RegistryService } from './registry.service';
 import { ActChatService } from './act-chat.service';
 import { ActChatRateLimitGuard } from './act-chat-rate-limit.guard';
+import { ActStartRateLimitGuard } from './act-start-rate-limit.guard';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -45,6 +46,22 @@ export class ActsController {
     @Req() request: FastifyRequest,
   ) {
     return this.operationsService.createAct(user, body, request);
+  }
+
+  @Post(':actId/start')
+  @HttpCode(200)
+  @UseGuards(BrowserOriginGuard, CsrfGuard, CapabilityGuard, ActStartRateLimitGuard)
+  @RequireCapability('START_ACT')
+  start(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('actId') actId: string,
+    @Body() body: unknown,
+    @Req() request: FastifyRequest,
+  ) {
+    if (!UUID_PATTERN.test(actId)) {
+      throw new NotFoundException('Запись не найдена');
+    }
+    return this.operationsService.startAct(user, actId, body, request);
   }
 
   @Get(':actId/chat/mention-candidates')

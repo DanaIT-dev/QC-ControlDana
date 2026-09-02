@@ -1,6 +1,7 @@
 'use client';
 
 import type { RegistryDefectRow } from '@sgr-registry/contracts';
+import { displayedRegistryStatus } from '@sgr-registry/domain';
 import { flexRender, getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table';
 import { ArrowDown, ArrowUp, FileText } from 'lucide-react';
 import { useMemo } from 'react';
@@ -76,9 +77,10 @@ export function RegistryTable({
         id: 'status',
         accessorKey: 'defectStatusLabel',
         header: headerButton('Статус', 'status', sortBy, sortDirection, onSort),
-        cell: ({ row }) => (
-          <StatusBadge status={row.original.defectStatus} label={row.original.defectStatusLabel} />
-        ),
+        cell: ({ row }) => {
+          const displayed = displayedRegistryStatus(row.original);
+          return <StatusBadge status={displayed.status} label={displayed.label} />;
+        },
         meta: { className: 'col-status' },
       },
       column('objectName', 'Объект', 'objectName', 'col-required'),

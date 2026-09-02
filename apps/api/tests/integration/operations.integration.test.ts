@@ -551,6 +551,8 @@ describe('operations integration', () => {
     ).toBe(403);
     const stored = await prisma.act.findUnique({ where: { id: firstBody.id } });
     expect(stored?.objectId).toBe(object.id);
+    expect(stored?.status).toBe('NEW');
+    expect(stored?.startedAt).toBeNull();
     expect(
       (
         await mutate(adminSession, {
@@ -638,6 +640,21 @@ describe('operations integration', () => {
     expect(hidden.statusCode).toBe(404);
 
     const defectId = assignedBody.defectItems[0]!.id;
+    const completeWhileNew = await mutate(responsibleSession, {
+      method: 'POST',
+      url: `/api/defects/${defectId}/complete`,
+      payload: { expectedVersion: assignedBody.defectItems[0]!.version, readyAt: '2026-08-20' },
+    });
+    expect(completeWhileNew.statusCode).toBe(409);
+
+    const started = await mutate(adminSession, {
+      method: 'POST',
+      url: `/api/acts/${firstBody.id}/start`,
+      payload: {},
+    });
+    expect(started.statusCode).toBe(200);
+    expect((started.json() as { status: string }).status).toBe('IN_PROGRESS');
+
     const completeByAssigned = await mutate(responsibleSession, {
       method: 'POST',
       url: `/api/defects/${defectId}/complete`,
@@ -703,13 +720,13 @@ describe('operations integration', () => {
     const header = await mutate(adminSession, {
       method: 'PATCH',
       url: `/api/acts/${firstBody.id}/header`,
-      payload: { expectedVersion: 1, signedDocumentRef: 'док-1' },
+      payload: { expectedVersion: 2, signedDocumentRef: 'док-1' },
     });
     expect(header.statusCode).toBe(200);
     const stale = await mutate(adminSession, {
       method: 'PATCH',
       url: `/api/acts/${firstBody.id}/header`,
-      payload: { expectedVersion: 1, signedDocumentRef: 'stale' },
+      payload: { expectedVersion: 2, signedDocumentRef: 'stale' },
     });
     expect(stale.statusCode).toBe(409);
   });
@@ -1369,5 +1386,192 @@ describe('operations integration', () => {
     const defectHistory = await read(engineerSession, `/api/defects/${addedId}/history`);
     expect(defectHistory.statusCode).toBe(200);
     expect(JSON.stringify(defectHistory.json())).toContain('DEFECT_ADDED');
+  });
+
+  it('starts a new act with RBAC, CSRF, idempotency and concurrency guards', async () => {
+    const admin = await createUser('ADMIN');
+    const manager = await createUser('SGR_MANAGER');
+    const responsible = await createUser('RESPONSIBLE_ENGINEER');
+    const foreign = await createUser('RESPONSIBLE_ENGINEER');
+    const contractor = await createUser('CONTRACTOR_ENGINEER');
+    const superAdmin = await createUser('SUPER_ADMIN');
+    const adminSession = await login(admin.email);
+    const managerSession = await login(manager.email);
+    const responsibleSession = await login(responsible.email);
+    const foreignSession = await login(foreign.email);
+    const contractorSession = await login(contractor.email);
+    const superAdminSession = await login(superAdmin.email);
+    const { object, customer, liable, defectType } = await catalogs();
+    const otherObject = await prisma.propertyObject.create({
+      data: { name: `Чужой объект ${Date.now()}`, address: 'Минск' },
+    });
+    await assignObjectEngineers(object.id, [responsible.id]);
+    await assignObjectEngineers(otherObject.id, [foreign.id]);
+
+    const created = await mutate(adminSession, {
+      method: 'POST',
+      url: '/api/acts',
+      payload: {
+        formCode: 'S1',
+        objectId: object.id,
+        customerOrganizationId: customer.id,
+        issuedOn: '2026-08-20',
+        defectItems: [
+          {
+            location: 'Старт',
+            defectTypeId: defectType.id,
+            claimDetails: 'Новый акт',
+            responsibleEngineerIds: [responsible.id],
+            liableOrganizationIds: [liable.id],
+          },
+        ],
+      },
+      headers: { 'idempotency-key': `start-${Date.now()}` },
+    });
+    expect(created.statusCode).toBe(201);
+    const actId = (created.json() as { id: string }).id;
+    createdActIds.push(actId);
+
+    expect((await read(adminSession, `/api/acts/${actId}`)).json()).toMatchObject({
+      status: 'NEW',
+    });
+    expect(
+      (
+        await mutate(adminSession, {
+          method: 'POST',
+          url: `/api/acts/${actId}/start`,
+          payload: { startedAt: '2026-01-01T00:00:00.000Z' },
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await inject({
+          method: 'POST',
+          url: `/api/acts/${actId}/start`,
+          payload: {},
+          cookies: { [SESSION_COOKIE_NAME]: adminSession.cookie },
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await mutate(contractorSession, {
+          method: 'POST',
+          url: `/api/acts/${actId}/start`,
+          payload: {},
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await mutate(superAdminSession, {
+          method: 'POST',
+          url: `/api/acts/${actId}/start`,
+          payload: {},
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await mutate(foreignSession, {
+          method: 'POST',
+          url: `/api/acts/${actId}/start`,
+          payload: {},
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      (
+        await mutate(adminSession, {
+          method: 'POST',
+          url: '/api/acts/not-a-uuid/start',
+          payload: {},
+        })
+      ).statusCode,
+    ).toBe(404);
+
+    const [first, second] = await Promise.all([
+      mutate(adminSession, { method: 'POST', url: `/api/acts/${actId}/start`, payload: {} }),
+      mutate(managerSession, { method: 'POST', url: `/api/acts/${actId}/start`, payload: {} }),
+    ]);
+    expect([first.statusCode, second.statusCode]).toEqual([200, 200]);
+    const stored = await prisma.act.findUniqueOrThrow({ where: { id: actId } });
+    expect(stored.status).toBe('IN_PROGRESS');
+    expect(stored.startedAt).toBeTruthy();
+    expect([admin.id, manager.id]).toContain(stored.startedById);
+    const firstStarterId = stored.startedById;
+    const startedLogs = await prisma.auditLog.findMany({
+      where: { entityId: actId, action: 'ACT_STARTED' },
+    });
+    expect(startedLogs).toHaveLength(1);
+
+    const repeat = await mutate(responsibleSession, {
+      method: 'POST',
+      url: `/api/acts/${actId}/start`,
+      payload: {},
+    });
+    expect(repeat.statusCode).toBe(200);
+    expect((repeat.json() as { startedBy: { id: string } }).startedBy.id).toBe(firstStarterId);
+    expect(await prisma.auditLog.count({ where: { entityId: actId, action: 'ACT_STARTED' } })).toBe(
+      1,
+    );
+
+    const completedAct = await mutate(adminSession, {
+      method: 'POST',
+      url: '/api/acts',
+      payload: {
+        formCode: 'S1',
+        objectId: object.id,
+        customerOrganizationId: customer.id,
+        issuedOn: '2026-08-21',
+        defectItems: [
+          {
+            location: 'Исполнение',
+            defectTypeId: defectType.id,
+            claimDetails: 'Один дефект',
+            responsibleEngineerIds: [responsible.id],
+            liableOrganizationIds: [liable.id],
+          },
+        ],
+      },
+      headers: { 'idempotency-key': `start-complete-${Date.now()}` },
+    });
+    const completedActId = (completedAct.json() as { id: string }).id;
+    createdActIds.push(completedActId);
+    expect(
+      (
+        await mutate(adminSession, {
+          method: 'POST',
+          url: `/api/acts/${completedActId}/start`,
+          payload: {},
+        })
+      ).statusCode,
+    ).toBe(200);
+    const detail = await read(adminSession, `/api/acts/${completedActId}`);
+    const defect = (detail.json() as { defectItems: Array<{ id: string; version: number }> })
+      .defectItems[0]!;
+    expect(
+      (
+        await mutate(adminSession, {
+          method: 'POST',
+          url: `/api/defects/${defect.id}/complete`,
+          payload: { expectedVersion: defect.version },
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect((await prisma.act.findUniqueOrThrow({ where: { id: completedActId } })).status).toBe(
+      'COMPLETED',
+    );
+    const afterComplete = await mutate(adminSession, {
+      method: 'POST',
+      url: `/api/acts/${completedActId}/start`,
+      payload: {},
+    });
+    expect(afterComplete.statusCode).toBe(200);
+    expect((afterComplete.json() as { status: string }).status).toBe('COMPLETED');
+    expect(
+      await prisma.auditLog.count({ where: { entityId: completedActId, action: 'ACT_STARTED' } }),
+    ).toBe(1);
   });
 });

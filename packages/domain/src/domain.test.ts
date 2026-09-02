@@ -87,28 +87,60 @@ describe('DefectItem lifecycle', () => {
 });
 
 describe('Act status computation', () => {
+  const started = { startedAt: new Date('2026-03-01T09:00:00.000Z') };
+
+  it('keeps Act NEW until work is started', () => {
+    expect(computeActStatus([{ status: 'IN_PROGRESS', active: true }], { startedAt: null })).toBe(
+      'NEW',
+    );
+    expect(computeActStatus([{ status: 'COMPLETED', active: true }], { startedAt: null })).toBe(
+      'NEW',
+    );
+  });
+
   it('keeps Act IN_PROGRESS when at least one active DefectItem is unfinished', () => {
-    const status = computeActStatus([
-      { status: 'COMPLETED', active: true },
-      { status: 'IN_PROGRESS', active: true },
-    ]);
+    const status = computeActStatus(
+      [
+        { status: 'COMPLETED', active: true },
+        { status: 'IN_PROGRESS', active: true },
+      ],
+      started,
+    );
     expect(status).toBe('IN_PROGRESS');
   });
 
   it('marks Act COMPLETED when every active DefectItem is completed', () => {
-    const status = computeActStatus([
-      { status: 'COMPLETED', active: true },
-      { status: 'COMPLETED', active: true },
-    ]);
+    const status = computeActStatus(
+      [
+        { status: 'COMPLETED', active: true },
+        { status: 'COMPLETED', active: true },
+      ],
+      started,
+    );
     expect(status).toBe('COMPLETED');
   });
 
   it('ignores inactive DefectItems when computing Act status', () => {
-    const status = computeActStatus([
-      { status: 'COMPLETED', active: true },
-      { status: 'IN_PROGRESS', active: false },
-    ]);
+    const status = computeActStatus(
+      [
+        { status: 'COMPLETED', active: true },
+        { status: 'IN_PROGRESS', active: false },
+      ],
+      started,
+    );
     expect(status).toBe('COMPLETED');
+  });
+
+  it('returns IN_PROGRESS after a completed defect is reopened', () => {
+    expect(computeActStatus([{ status: 'IN_PROGRESS', active: true }], started)).toBe(
+      'IN_PROGRESS',
+    );
+  });
+
+  it('does not complete an unstarted act even if every defect is completed', () => {
+    expect(computeActStatus([{ status: 'COMPLETED', active: true }], { startedAt: null })).toBe(
+      'NEW',
+    );
   });
 });
 
@@ -307,6 +339,7 @@ describe('capabilities', () => {
       'VIEW_SYSTEM_STATUS',
       'VIEW_ALL_ACTS',
       'CREATE_ACT',
+      'START_ACT',
       'EDIT_ACT_HEADER',
       'ADD_DEFECT',
       'EDIT_ASSIGNMENTS',
@@ -333,6 +366,7 @@ describe('capabilities', () => {
       'VIEW_OWN_PROFILE',
     ]);
     expect(capabilitiesForRole('SGR_MANAGER')).toContain('CREATE_ACT');
+    expect(capabilitiesForRole('SGR_MANAGER')).toContain('START_ACT');
     expect(capabilitiesForRole('SGR_MANAGER')).toContain('VIEW_REFERENCE_DATA');
     expect(capabilitiesForRole('SGR_MANAGER')).toContain('VIEW_HISTORY');
     expect(capabilitiesForRole('SGR_MANAGER')).toContain('VIEW_ACT_CHAT');
@@ -342,6 +376,7 @@ describe('capabilities', () => {
       'VIEW_REFERENCE_DATA',
       'VIEW_ASSIGNED_DEFECTS',
       'CREATE_ACT',
+      'START_ACT',
       'EDIT_ACT_HEADER',
       'ADD_DEFECT',
       'EDIT_ASSIGNMENTS',
@@ -371,6 +406,9 @@ describe('capabilities', () => {
     expect(hasCapability('RESPONSIBLE_ENGINEER', 'VIEW_REFERENCE_DATA')).toBe(true);
     expect(hasCapability('RESPONSIBLE_ENGINEER', 'MANAGE_REFERENCE_DATA')).toBe(false);
     expect(hasCapability('RESPONSIBLE_ENGINEER', 'CREATE_ACT')).toBe(true);
+    expect(hasCapability('RESPONSIBLE_ENGINEER', 'START_ACT')).toBe(true);
+    expect(hasCapability('CONTRACTOR_ENGINEER', 'START_ACT')).toBe(false);
+    expect(hasCapability('SUPER_ADMIN', 'START_ACT')).toBe(false);
     expect(hasCapability('RESPONSIBLE_ENGINEER', 'MANAGE_PROPOSALS')).toBe(false);
     expect(hasCapability('RESPONSIBLE_ENGINEER', 'MANAGE_REFERENCE_DATA')).toBe(false);
     expect(hasCapability('RESPONSIBLE_ENGINEER', 'VIEW_ALL_ACTS')).toBe(false);
@@ -453,6 +491,8 @@ describe('registry query parsing', () => {
     expect(roundTrip.pageSize).toBe(25);
     expect(roundTrip.search).toBe('Северный');
     expect(roundTrip.statuses).toEqual(['IN_PROGRESS']);
+    expect(parseRegistryListQuery({ statuses: 'NEW' }).statuses).toEqual(['NEW']);
+    expect(() => parseRegistryListQuery({ statuses: 'CANCELLED' })).toThrow(RegistryQueryError);
     expect(() => parseRegistryListQuery({ pageSize: '50abc' })).toThrow(RegistryQueryError);
   });
 });

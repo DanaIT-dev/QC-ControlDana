@@ -1,4 +1,4 @@
-import type { ActFormCode, DefectItemStatus, ProposalSlot } from './enums';
+import type { ActFormCode, ActStatus, DefectItemStatus, ProposalSlot } from './enums';
 import type { DeadlineState } from './enums';
 
 export interface RegistryProposalDto {
@@ -19,6 +19,8 @@ export interface RegistryDefectRow {
   formCode: ActFormCode;
   formLabel: string;
   actNumber: string;
+  actStatus: ActStatus;
+  actStatusLabel: string;
   defectStatus: DefectItemStatus;
   defectStatusLabel: string;
   objectId: string;
@@ -53,6 +55,7 @@ export interface RegistryListResponse {
 
 export interface RegistrySummaryResponse {
   total: number;
+  newCount: number;
   inProgress: number;
   completed: number;
   warning: number;
@@ -107,9 +110,11 @@ export interface ActDetailResponse {
   formCode: ActFormCode;
   formLabel: string;
   officialNumber: string;
-  status: string;
+  status: ActStatus;
   statusLabel: string;
   version: number;
+  startedAt: string | null;
+  startedBy: { id: string; fullName: string } | null;
   objectId: string;
   objectName: string;
   objectAddress: string;

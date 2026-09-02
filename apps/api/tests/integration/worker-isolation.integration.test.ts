@@ -178,6 +178,14 @@ async function createActWithDefect(
   }
   const body = response.json() as { id: string };
   createdActIds.push(body.id);
+  const started = await mutate(admin, {
+    method: 'POST',
+    url: `/api/acts/${body.id}/start`,
+    payload: {},
+  });
+  if (started.statusCode !== 200) {
+    throw new Error(`startAct failed ${started.statusCode} ${JSON.stringify(started.json())}`);
+  }
   const defect = await prisma.defectItem.findFirstOrThrow({ where: { actId: body.id } });
   return { actId: body.id, defectItemId: defect.id };
 }

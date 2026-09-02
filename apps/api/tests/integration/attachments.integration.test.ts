@@ -231,6 +231,7 @@ describe('attachments integration', () => {
         objectId: object.id,
         customerOrganizationId: customer.id,
         status: 'IN_PROGRESS',
+        startedAt: issuedAt,
         issuedOn: issuedAt,
         createdAt: issuedAt,
       },

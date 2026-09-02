@@ -1,6 +1,7 @@
 'use client';
 
 import type { RegistryDefectRow } from '@sgr-registry/contracts';
+import { displayedRegistryStatus } from '@sgr-registry/domain';
 import { DeadlineBadge, deadlineToneClass, StatusBadge } from '@/components/status-badge';
 import { ProposalValue, proposalSlotOf } from '@/components/proposal-value';
 import { Button } from '@/components/ui/button';
@@ -34,7 +35,10 @@ export function RegistryCards({
               <h3 className="text-base font-semibold">{row.objectName}</h3>
               <p className="text-sm">{row.location}</p>
               <p className="text-sm">{row.defectTypeName}</p>
-              <StatusBadge status={row.defectStatus} label={row.defectStatusLabel} />
+              <StatusBadge
+                status={displayedRegistryStatus(row).status}
+                label={displayedRegistryStatus(row).label}
+              />
               <p className="text-sm">
                 Эффективный срок: {formatCalendarDate(row.effectiveDeadline)}
               </p>

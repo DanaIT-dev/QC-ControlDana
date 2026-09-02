@@ -74,4 +74,6 @@ export {
 } from './user-credentials';
 export { createPendingUserViaDefiner } from './pending-user';
 export type { PendingUserRow } from './pending-user';
+export { startActViaDefiner } from './start-act';
+export type { StartedActRow } from './start-act';
 export { insertAuditLogRow, insertOutboxEventRow, upsertSlaClockRow } from './rls-writes';

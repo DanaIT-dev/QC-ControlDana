@@ -38,6 +38,7 @@ describe('registry query builder', () => {
   it('encodes overdue-on-the-due-date in the database predicate', () => {
     const where = deadlineStateWhere('OVERDUE', '2026-08-26', 3);
     expect(where.status).toBe('IN_PROGRESS');
+    expect(where.act).toEqual({ status: 'IN_PROGRESS' });
     expect(where.effectiveDeadline).toMatchObject({ lte: expect.any(Date) });
   });
 });
