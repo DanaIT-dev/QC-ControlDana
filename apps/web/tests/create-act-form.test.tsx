@@ -145,6 +145,7 @@ describe('create act draft ids', () => {
             ],
             customers: [{ id: 'cust-1', officialName: 'Заказчик' }],
             defectTypes: [{ id: 'type-1', name: 'Течь' }],
+            workTypes: [{ id: 'work-1', name: 'Окна' }],
             responsibleEngineers: [{ id: 'eng-1', fullName: 'Инженер' }],
             liableOrganizations: [{ id: 'org-1', officialName: 'Подрядчик' }],
           }),
@@ -174,5 +175,25 @@ describe('create act draft ids', () => {
     expect(body).not.toHaveProperty('objectAddress');
     expect(body).not.toHaveProperty('name');
     expect(body).not.toHaveProperty('address');
+  });
+
+  it('shows a clear message when defect types are empty', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          propertyObjects: [],
+          customers: [],
+          defectTypes: [],
+          workTypes: [],
+          responsibleEngineers: [],
+          liableOrganizations: [],
+        }),
+      })),
+    );
+    const { findByText } = render(formTree());
+    expect(await findByText('Виды дефектов не загружены')).toBeTruthy();
+    expect(await findByText('Организации-заказчики не загружены')).toBeTruthy();
   });
 });

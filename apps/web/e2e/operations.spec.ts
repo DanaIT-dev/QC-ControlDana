@@ -41,7 +41,9 @@ test.describe('operational workflow', () => {
     await chooseFirst(page, 'Заказчик');
     await page.getByLabel('Помещение').fill('Квартира 101');
     await page.getByLabel('Описание').fill('Течь стояка');
-    await chooseFirst(page, 'Вид дефекта');
+    await page.getByRole('combobox', { name: 'Вид дефекта' }).first().click();
+    await expect(page.getByRole('listbox').getByRole('option')).toHaveCount(22);
+    await page.getByRole('option').first().click();
     await page.getByRole('combobox', { name: 'Ответственные инженеры' }).click();
     await page.getByRole('option').first().click();
     await page.keyboard.press('Escape');

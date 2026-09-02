@@ -14,6 +14,7 @@ import {
   assertUnpAvailable,
   assertUniqueProposalSlots,
   canAddProposalSlot,
+  canCreatePropertyObject,
   capabilitiesForRole,
   canAccessReferenceKind,
   canViewObjectsDirectory,
@@ -337,6 +338,7 @@ describe('capabilities', () => {
       'MANAGE_USERS',
       'MANAGE_REFERENCE_DATA',
       'VIEW_REFERENCE_DATA',
+      'CREATE_PROPERTY_OBJECT',
       'VIEW_SYSTEM_STATUS',
       'VIEW_ALL_ACTS',
       'CREATE_ACT',
@@ -366,6 +368,7 @@ describe('capabilities', () => {
       'CHANGE_OWN_PASSWORD',
       'VIEW_OWN_PROFILE',
     ]);
+    expect(capabilitiesForRole('SGR_MANAGER')).toContain('CREATE_PROPERTY_OBJECT');
     expect(capabilitiesForRole('SGR_MANAGER')).toContain('CREATE_ACT');
     expect(capabilitiesForRole('SGR_MANAGER')).toContain('START_ACT');
     expect(capabilitiesForRole('SGR_MANAGER')).toContain('VIEW_REFERENCE_DATA');
@@ -429,11 +432,18 @@ describe('capabilities', () => {
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('VIEW_ACT_CHAT');
     expect(capabilitiesForRole('SUPER_ADMIN')).toEqual([
       'VIEW_ALL_BUSINESS_DATA',
+      'VIEW_SYSTEM_STATUS',
       'CREATE_UNASSIGNED_USER',
       'MANAGE_ADMIN_GRANTS',
       'CHANGE_OWN_PASSWORD',
       'VIEW_OWN_PROFILE',
     ]);
+    expect(canCreatePropertyObject('ADMIN')).toBe(true);
+    expect(canCreatePropertyObject('SGR_MANAGER')).toBe(true);
+    expect(canCreatePropertyObject('SUPER_ADMIN')).toBe(false);
+    expect(canCreatePropertyObject('RESPONSIBLE_ENGINEER')).toBe(false);
+    expect(canCreatePropertyObject('CONTRACTOR_ENGINEER')).toBe(false);
+    expect(capabilitiesForRole('SUPER_ADMIN')).not.toContain('CREATE_PROPERTY_OBJECT');
     expect(capabilitiesForRole('SUPER_ADMIN')).not.toContain('MANAGE_USERS');
     expect(capabilitiesForRole('SUPER_ADMIN')).not.toContain('VIEW_ALL_ACTS');
     expect(capabilitiesForRole('SUPER_ADMIN')).not.toContain('CREATE_ACT');

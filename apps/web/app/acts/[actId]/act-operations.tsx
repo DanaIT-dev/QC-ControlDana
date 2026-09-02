@@ -191,6 +191,7 @@ function useOperationLookups() {
       return (await response.json()) as {
         propertyObjects: Array<{ id: string; responsibleEngineerIds: string[] }>;
         defectTypes: Array<{ id: string; name: string }>;
+        workTypes: Array<{ id: string; name: string }>;
         responsibleEngineers: Array<{ id: string; fullName: string; email?: string }>;
         liableOrganizations: Array<{ id: string; officialName: string }>;
         alternativeContractors: Array<{ id: string; officialName: string }>;
@@ -319,6 +320,7 @@ function AddDefectButton({
                 expectedActVersion: act.version,
                 location: form.get('location'),
                 defectTypeId: form.get('defectTypeId') || firstType,
+                workTypeId: form.get('workTypeId') || undefined,
                 claimDetails: form.get('claimDetails'),
                 responsibleEngineerIds: engineerIds,
                 liableOrganizationIds: [],
@@ -336,13 +338,33 @@ function AddDefectButton({
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="new-type">Вид дефекта</Label>
+              {(lookups.data?.defectTypes ?? []).length === 0 ? (
+                <p className="text-sm text-error-foreground">Виды дефектов не загружены</p>
+              ) : (
+                <select
+                  id="new-type"
+                  name="defectTypeId"
+                  className="h-11 rounded-lg border border-input bg-white px-3 text-sm"
+                  defaultValue={firstType}
+                >
+                  {(lookups.data?.defectTypes ?? []).map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="new-work-type">Вид работ</Label>
               <select
-                id="new-type"
-                name="defectTypeId"
+                id="new-work-type"
+                name="workTypeId"
                 className="h-11 rounded-lg border border-input bg-white px-3 text-sm"
-                defaultValue={firstType}
+                defaultValue=""
               >
-                {(lookups.data?.defectTypes ?? []).map((item) => (
+                <option value="">Не указан</option>
+                {(lookups.data?.workTypes ?? []).map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.name}
                   </option>

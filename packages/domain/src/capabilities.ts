@@ -7,6 +7,7 @@ export const CAPABILITIES = [
   'VIEW_ALL_BUSINESS_DATA',
   'MANAGE_REFERENCE_DATA',
   'VIEW_REFERENCE_DATA',
+  'CREATE_PROPERTY_OBJECT',
   'VIEW_SYSTEM_STATUS',
   'VIEW_ALL_ACTS',
   'VIEW_ASSIGNED_DEFECTS',
@@ -44,6 +45,7 @@ export type Capability = (typeof CAPABILITIES)[number];
 const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
   SUPER_ADMIN: [
     'VIEW_ALL_BUSINESS_DATA',
+    'VIEW_SYSTEM_STATUS',
     'CREATE_UNASSIGNED_USER',
     'MANAGE_ADMIN_GRANTS',
     'CHANGE_OWN_PASSWORD',
@@ -55,6 +57,7 @@ const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
     'MANAGE_USERS',
     'MANAGE_REFERENCE_DATA',
     'VIEW_REFERENCE_DATA',
+    'CREATE_PROPERTY_OBJECT',
     'VIEW_SYSTEM_STATUS',
     'VIEW_ALL_ACTS',
     'CREATE_ACT',
@@ -87,6 +90,7 @@ const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
   SGR_MANAGER: [
     'MANAGE_REFERENCE_DATA',
     'VIEW_REFERENCE_DATA',
+    'CREATE_PROPERTY_OBJECT',
     'VIEW_ALL_ACTS',
     'CREATE_ACT',
     'START_ACT',
@@ -181,6 +185,7 @@ export const CAPABILITY_LABELS: Record<Capability, string> = {
   VIEW_ALL_BUSINESS_DATA: 'Полный просмотр бизнес-данных',
   MANAGE_REFERENCE_DATA: 'Управление справочниками',
   VIEW_REFERENCE_DATA: 'Просмотр справочников',
+  CREATE_PROPERTY_OBJECT: 'Создание объектов',
   VIEW_SYSTEM_STATUS: 'Состояние системы',
   VIEW_ALL_ACTS: 'Просмотр всех актов',
   VIEW_ASSIGNED_DEFECTS: 'Просмотр актов закреплённых объектов',
@@ -285,6 +290,10 @@ export function canAccessReferenceKind(role: UserRole, kind: string): boolean {
 
 export function canCreateAct(role: UserRole): boolean {
   return hasCapability(role, 'CREATE_ACT');
+}
+
+export function canCreatePropertyObject(role: UserRole): boolean {
+  return hasCapability(role, 'CREATE_PROPERTY_OBJECT');
 }
 
 export function canStartAct(role: UserRole): boolean {

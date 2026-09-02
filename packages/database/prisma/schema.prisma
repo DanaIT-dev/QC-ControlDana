@@ -176,10 +176,10 @@ model Organization {
   id            String   @id @default(uuid()) @db.Uuid
   officialName  String
   unp           String?
-  postalAddress String
-  email         String
-  phone         String
-  contactPerson String
+  postalAddress String?
+  email         String?
+  phone         String?
+  contactPerson String?
   active        Boolean   @default(true)
   archivedAt    DateTime? @db.Timestamptz(3)
   version       Int       @default(1)
@@ -221,6 +221,7 @@ model WorkType {
   updatedAt  DateTime  @updatedAt @db.Timestamptz(3)
 
   organizations OrganizationWorkType[]
+  defectItems   DefectItem[]
 
   @@index([active, sortOrder])
   @@map("work_types")
@@ -334,6 +335,7 @@ model DefectItem {
   actId              String           @db.Uuid
   location           String
   defectTypeId       String           @db.Uuid
+  workTypeId         String?          @db.Uuid
   status             DefectItemStatus @default(IN_PROGRESS)
   claimDetails       String
   plannedDeadline    DateTime?        @db.Timestamptz(3)
@@ -348,6 +350,7 @@ model DefectItem {
 
   act                  Act                            @relation(fields: [actId], references: [id], onDelete: Restrict)
   defectType           DefectType                     @relation(fields: [defectTypeId], references: [id], onDelete: Restrict)
+  workType             WorkType?                      @relation(fields: [workTypeId], references: [id], onDelete: Restrict)
   responsibleEngineers DefectItemEngineer[]
   liableOrganizations  DefectItemLiableOrganization[]
   proposals            Proposal[]
@@ -357,6 +360,7 @@ model DefectItem {
 
   @@index([actId])
   @@index([status])
+  @@index([workTypeId])
   @@index([plannedDeadline])
   @@index([claimDeadline])
   @@index([readyAt])

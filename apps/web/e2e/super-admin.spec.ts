@@ -228,12 +228,40 @@ test.describe('read-only SUPER_ADMIN oversight', () => {
     expect(errors.filter((message) => !message.includes('favicon'))).toEqual([]);
   });
 
+  test('opens read-only system status without infrastructure controls', async ({ page }) => {
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    await login(page, SUPER_ADMIN_EMAIL);
+    await expect(page.getByRole('link', { name: 'Состояние системы' })).toBeVisible();
+    await page.getByRole('link', { name: 'Состояние системы' }).click();
+    await expect(page).toHaveURL(/\/system-status$/);
+    await expect(
+      page.getByRole('heading', { name: 'Техническое состояние системы' }),
+    ).toBeVisible();
+    await expect(page.getByText('Web')).toBeVisible();
+    await expect(page.getByText('PostgreSQL')).toBeVisible();
+    await expect(page.getByText('Redis')).toBeVisible();
+    await expect(page.getByText('MinIO')).toBeVisible();
+    await expect(page.getByText('ClamAV')).toBeVisible();
+    await expect(page.getByText('Миграции')).toBeVisible();
+    await expect(page.getByText('Фоновые очереди')).toBeVisible();
+    await expect(page.getByText('Время последней проверки')).toBeVisible();
+    await expect(page.getByText('Настройки уведомлений')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Перезапустить' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Очистить очередь' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Применить миграции' })).toHaveCount(0);
+    await noHorizontalOverflow(page);
+    expect(errors.filter((message) => !message.includes('favicon'))).toEqual([]);
+  });
+
   test('fits required viewports without overflow', async ({ page }) => {
     await login(page, SUPER_ADMIN_EMAIL);
     await expect(page).toHaveURL(/\/registry/);
     for (const viewport of VIEWPORTS) {
       await page.setViewportSize(viewport);
       await page.goto('/registry');
+      await noHorizontalOverflow(page);
+      await page.goto('/system-status');
       await noHorizontalOverflow(page);
       await page.goto('/super-admin');
       await noHorizontalOverflow(page);

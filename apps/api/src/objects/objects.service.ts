@@ -1,5 +1,6 @@
 import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import {
+  createPropertyObjectRequestSchema,
   linkObjectResponsibleEngineerSchema,
   objectsListQuerySchema,
   type ObjectsDirectoryResponse,
@@ -10,13 +11,19 @@ import {
   OBJECTS_DIRECTORY_DEFAULT_PAGE_SIZE,
   OBJECTS_DIRECTORY_MAX_PAGE_SIZE,
   calendarDateInTimeZone,
+  calendarDateToUtcNoon,
+  canCreatePropertyObject,
   canManageUsers,
   canViewObjectsDirectory,
   classifyEngineerMatch,
+  DuplicateValueError,
+  parseManualObjectInput,
+  ValidationError,
 } from '@sgr-registry/domain';
 import {
   applyDirectoryEngineerLink,
   clearDirectoryEngineerLink,
+  createPropertyObjectViaDefiner,
   type Prisma,
 } from '@sgr-registry/database';
 import type { FastifyRequest } from 'fastify';
@@ -122,7 +129,8 @@ export class ObjectsService {
       }),
       this.prisma.client.user.findMany({
         where: { role: 'RESPONSIBLE_ENGINEER', status: 'ACTIVE' },
-        select: { fullName: true, role: true, status: true },
+        select: { id: true, fullName: true, role: true, status: true },
+        orderBy: { fullName: 'asc' },
       }),
     ]);
     const totalPages = totalCount === 0 ? 0 : Math.ceil(totalCount / pageSize);
@@ -175,7 +183,58 @@ export class ObjectsService {
       totalCount,
       totalPages,
       responsibleEngineerOptions: [...optionNames].sort((a, b) => a.localeCompare(b, 'ru')),
+      canCreate: canCreatePropertyObject(user.role),
+      createEngineerOptions: canCreatePropertyObject(user.role)
+        ? engineerAccounts.map((row) => ({ id: row.id, fullName: row.fullName }))
+        : [],
     };
+  }
+
+  async create(
+    user: AuthenticatedUser,
+    body: unknown,
+    request: FastifyRequest,
+  ): Promise<{
+    id: string;
+    name: string;
+    address: string | null;
+    commissionedAt: string | null;
+    warrantyEndsAt: string | null;
+  }> {
+    if (!canCreatePropertyObject(user.role)) {
+      throw new ForbiddenException('Недостаточно прав');
+    }
+    const parsed = parseCommandBody(createPropertyObjectRequestSchema, body);
+    const input = parseManualObjectInput(parsed);
+    const ctx = actorContext(user, request);
+    try {
+      const created = await this.prisma.client.$transaction(async (tx) => {
+        return createPropertyObjectViaDefiner(tx, {
+          name: input.name,
+          address: input.address,
+          commissionedAt: input.commissionedAt ? calendarDateToUtcNoon(input.commissionedAt) : null,
+          warrantyEndsAt: input.warrantyEndsAt ? calendarDateToUtcNoon(input.warrantyEndsAt) : null,
+          responsibleEngineerId: input.responsibleEngineerId,
+          responsibleEngineerName: input.responsibleEngineerName,
+          actorUserId: user.id,
+          actorName: user.fullName,
+          requestId: ctx.requestId,
+        });
+      });
+      return {
+        id: created.id,
+        name: created.name,
+        address: created.address,
+        commissionedAt: created.commissionedAt
+          ? calendarDateInTimeZone(created.commissionedAt, BUSINESS_TIME_ZONE)
+          : null,
+        warrantyEndsAt: created.warrantyEndsAt
+          ? calendarDateInTimeZone(created.warrantyEndsAt, BUSINESS_TIME_ZONE)
+          : null,
+      };
+    } catch (error) {
+      throw mapCreateObjectError(error);
+    }
   }
 
   async linkResponsibleEngineer(
@@ -259,6 +318,55 @@ function toResponsibleEngineer(
         ? 'INVALID'
         : 'UNMATCHED';
   return { fullName: source, linked: false, linkState };
+}
+
+function prismaRawMessage(error: unknown): string {
+  const parts: string[] = [];
+  if (error instanceof Error) {
+    parts.push(error.message);
+  }
+  if (error && typeof error === 'object' && 'meta' in error) {
+    const meta = (error as { meta?: { message?: unknown; cause?: unknown; code?: unknown } }).meta;
+    if (typeof meta?.message === 'string') {
+      parts.push(meta.message);
+    }
+    if (typeof meta?.cause === 'string') {
+      parts.push(meta.cause);
+    }
+    if (typeof meta?.code === 'string') {
+      parts.push(meta.code);
+    }
+  }
+  return parts.join('\n');
+}
+
+function mapCreateObjectError(error: unknown): never {
+  if (error instanceof DuplicateValueError || error instanceof ValidationError) {
+    throw error;
+  }
+  const message = prismaRawMessage(error);
+  if (/23505|P2002|уже существует/.test(message)) {
+    throw new DuplicateValueError('Объект с таким названием и адресом уже существует');
+  }
+  if (/42501|Недостаточно прав/.test(message)) {
+    throw new ForbiddenException('Недостаточно прав');
+  }
+  if (/гарантии/.test(message)) {
+    throw new ValidationError(
+      'warrantyEndsAt',
+      'Дата окончания гарантии не может быть раньше даты приёмки',
+    );
+  }
+  if (/инженера/.test(message)) {
+    throw new ValidationError(
+      'responsibleEngineerId',
+      'Назначить можно только активного ответственного инженера',
+    );
+  }
+  if (/22023|обязательн/.test(message)) {
+    throw new ValidationError('name', 'Значение обязательно');
+  }
+  throw error instanceof Error ? error : new Error(String(error));
 }
 
 function mapDirectoryLinkError(error: unknown): never {

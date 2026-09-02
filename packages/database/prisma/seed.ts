@@ -11,6 +11,7 @@ import {
   normalizeEmail,
   normalizeUnp,
   assertPasswordPolicy,
+  APPROVED_DEFECT_TYPES_V1,
 } from '@sgr-registry/domain';
 import argon2 from 'argon2';
 import {
@@ -26,26 +27,7 @@ const envFile = existsSync(resolve(repoRoot, '.env'))
   : resolve(repoRoot, '.env.example');
 loadDotenv({ path: envFile, override: process.env.SGR_KEEP_PROCESS_ENV !== '1' });
 
-const DEFECT_TYPES = [
-  { code: 'SEWER', name: 'Дефекты канализации', sortOrder: 1 },
-  { code: 'MASONRY', name: 'Дефекты кладки', sortOrder: 2 },
-  { code: 'FLOORING', name: 'Дефекты напольного покрытия', sortOrder: 3 },
-  { code: 'WINDOWS', name: 'Дефекты оконных изделий', sortOrder: 4 },
-  { code: 'FINISHING', name: 'Дефекты отделки', sortOrder: 5 },
-  { code: 'PORCH_FINISHING', name: 'Дефекты отделки крылец', sortOrder: 6 },
-  { code: 'LOGGIA_FINISHING', name: 'Дефекты отделки лоджии', sortOrder: 7 },
-  { code: 'SILLS', name: 'Дефекты отливов', sortOrder: 8 },
-  { code: 'RADIATORS', name: 'Дефекты радиаторов отопления', sortOrder: 9 },
-  { code: 'HEATING_SYSTEM', name: 'Дефекты системы отопления', sortOrder: 10 },
-  { code: 'GLAZING', name: 'Дефекты стеклопакетов', sortOrder: 11 },
-  { code: 'GLAZING_INSIDE', name: 'Дефекты стеклопакетов — замена изнутри', sortOrder: 12 },
-  { code: 'GLAZING_OUTSIDE', name: 'Дефекты стеклопакетов — замена снаружи', sortOrder: 13 },
-  { code: 'WALLS', name: 'Дефекты стен', sortOrder: 14 },
-  { code: 'FACADE', name: 'Дефекты фасада', sortOrder: 15 },
-  { code: 'ELECTRICAL', name: 'Дефекты электромонтажных работ', sortOrder: 16 },
-  { code: 'LEAKAGE', name: 'Замокание/течь', sortOrder: 17 },
-  { code: 'DRAFT_FREEZE', name: 'Продувы/промерзания', sortOrder: 18 },
-] as const;
+const DEFECT_TYPES = APPROVED_DEFECT_TYPES_V1;
 
 const WORK_TYPES = [
   { code: 'GENERAL_CONTRACTING', name: 'Генподрядные работы', sortOrder: 1 },

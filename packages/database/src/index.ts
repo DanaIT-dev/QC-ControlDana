@@ -80,6 +80,15 @@ export { insertAuditLogRow, insertOutboxEventRow, upsertSlaClockRow } from './rl
 export { readObjectsWorkbook, assertLocalObjectsWorkbookPath } from './objects-xlsx';
 export { importPropertyObjects } from './objects-import';
 export type { ObjectsImportReport } from './objects-import';
+export { readDirectoriesWorkbook } from './directories-xlsx';
+export { importReferenceDirectories } from './directories-import';
+export type { DirectoriesImportReport } from './directories-import';
+export {
+  assertDirectoriesImportDatabaseTarget,
+  DirectoriesImportTargetError,
+} from './directories-import-target';
+export { createPropertyObjectViaDefiner } from './create-property-object';
+export type { CreatedPropertyObjectRow } from './create-property-object';
 export {
   applyDirectoryEngineerLink,
   clearDirectoryEngineerLink,

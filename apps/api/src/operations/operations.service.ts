@@ -90,46 +90,52 @@ export class OperationsService {
       active: true,
       ...(scope.objectScoped ? { engineers: { some: scope.assignedObjectRelationWhere() } } : {}),
     };
-    const [objects, customers, liable, alternatives, defectTypes, engineers] = await Promise.all([
-      this.prisma.client.propertyObject.findMany({
-        where: objectWhere,
-        select: {
-          id: true,
-          name: true,
-          address: true,
-          engineers: {
-            where: { unassignedAt: null },
-            select: { userId: true },
+    const [objects, customers, liable, alternatives, defectTypes, workTypes, engineers] =
+      await Promise.all([
+        this.prisma.client.propertyObject.findMany({
+          where: objectWhere,
+          select: {
+            id: true,
+            name: true,
+            address: true,
+            engineers: {
+              where: { unassignedAt: null },
+              select: { userId: true },
+            },
           },
-        },
-        orderBy: { name: 'asc' },
-      }),
-      this.prisma.client.organization.findMany({
-        where: { active: true, roles: { some: { role: 'CUSTOMER' } } },
-        select: { id: true, officialName: true },
-        orderBy: { officialName: 'asc' },
-      }),
-      this.prisma.client.organization.findMany({
-        where: { active: true, roles: { some: { role: 'LIABLE_CONTRACTOR' } } },
-        select: { id: true, officialName: true },
-        orderBy: { officialName: 'asc' },
-      }),
-      this.prisma.client.organization.findMany({
-        where: { active: true, roles: { some: { role: 'ALTERNATIVE_CONTRACTOR' } } },
-        select: { id: true, officialName: true },
-        orderBy: { officialName: 'asc' },
-      }),
-      this.prisma.client.defectType.findMany({
-        where: { active: true },
-        select: { id: true, name: true, code: true },
-        orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
-      }),
-      this.prisma.client.user.findMany({
-        where: { status: 'ACTIVE', role: ASSIGNABLE_ENGINEER_ROLE },
-        select: { id: true, fullName: true, email: true },
-        orderBy: { fullName: 'asc' },
-      }),
-    ]);
+          orderBy: { name: 'asc' },
+        }),
+        this.prisma.client.organization.findMany({
+          where: { active: true, roles: { some: { role: 'CUSTOMER' } } },
+          select: { id: true, officialName: true },
+          orderBy: { officialName: 'asc' },
+        }),
+        this.prisma.client.organization.findMany({
+          where: { active: true, roles: { some: { role: 'LIABLE_CONTRACTOR' } } },
+          select: { id: true, officialName: true },
+          orderBy: { officialName: 'asc' },
+        }),
+        this.prisma.client.organization.findMany({
+          where: { active: true, roles: { some: { role: 'ALTERNATIVE_CONTRACTOR' } } },
+          select: { id: true, officialName: true },
+          orderBy: { officialName: 'asc' },
+        }),
+        this.prisma.client.defectType.findMany({
+          where: { active: true },
+          select: { id: true, name: true, code: true },
+          orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+        }),
+        this.prisma.client.workType.findMany({
+          where: { active: true },
+          select: { id: true, name: true, code: true },
+          orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+        }),
+        this.prisma.client.user.findMany({
+          where: { status: 'ACTIVE', role: ASSIGNABLE_ENGINEER_ROLE },
+          select: { id: true, fullName: true, email: true },
+          orderBy: { fullName: 'asc' },
+        }),
+      ]);
     const assignedEngineerIds = new Set(
       objects.flatMap((object) => object.engineers.map((row) => row.userId)),
     );
@@ -144,6 +150,7 @@ export class OperationsService {
       liableOrganizations: liable,
       alternativeContractors: alternatives,
       defectTypes,
+      workTypes,
       responsibleEngineers: scope.objectScoped
         ? engineers.filter((engineer) => assignedEngineerIds.has(engineer.id))
         : engineers,
@@ -1084,6 +1091,7 @@ export class OperationsService {
     input: {
       location: string;
       defectTypeId: string;
+      workTypeId?: string | null;
       claimDetails: string;
       notes?: string | null;
       responsibleEngineerIds: string[];
@@ -1099,6 +1107,9 @@ export class OperationsService {
     const liableIds = assertUniqueIds(input.liableOrganizationIds, 'liableOrganizationIds');
     assertAtLeastOneEngineer(engineerIds.length);
     await this.assertDefectType(tx, input.defectTypeId);
+    if (input.workTypeId) {
+      await this.assertWorkType(tx, input.workTypeId);
+    }
     const act = await tx.act.findUnique({ where: { id: actId }, select: { objectId: true } });
     if (!act) {
       throw new NotFoundException('Запись не найдена');
@@ -1113,6 +1124,7 @@ export class OperationsService {
         actId,
         location: normalizeLocation(input.location),
         defectTypeId: input.defectTypeId,
+        workTypeId: input.workTypeId || null,
         status: 'IN_PROGRESS',
         claimDetails: normalizeClaimDetails(input.claimDetails),
         notes: normalizeNotes(input.notes),
@@ -1245,6 +1257,13 @@ export class OperationsService {
     const type = await tx.defectType.findUnique({ where: { id: defectTypeId } });
     if (!type?.active) {
       throw new ValidationError('defectTypeId', 'Можно выбрать только активный вид дефекта');
+    }
+  }
+
+  private async assertWorkType(tx: Prisma.TransactionClient, workTypeId: string) {
+    const type = await tx.workType.findUnique({ where: { id: workTypeId } });
+    if (!type?.active) {
+      throw new ValidationError('workTypeId', 'Можно выбрать только активный вид работ');
     }
   }
 

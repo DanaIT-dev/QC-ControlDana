@@ -33,6 +33,7 @@ interface Lookups {
   }>;
   customers: Array<{ id: string; officialName: string }>;
   defectTypes: Array<{ id: string; name: string }>;
+  workTypes: Array<{ id: string; name: string }>;
   responsibleEngineers: Array<{ id: string; fullName: string; email?: string }>;
   liableOrganizations: Array<{ id: string; officialName: string }>;
 }
@@ -51,6 +52,7 @@ export interface DraftDefect {
   key: string;
   location: string;
   defectTypeId: string;
+  workTypeId: string;
   claimDetails: string;
   notes: string;
   responsibleEngineerIds: string[];
@@ -67,6 +69,7 @@ export function createDraftDefect(key: string): DraftDefect {
     key,
     location: '',
     defectTypeId: '',
+    workTypeId: '',
     claimDetails: '',
     notes: '',
     responsibleEngineerIds: [],
@@ -126,6 +129,7 @@ export function CreateActForm({ csrfToken }: { csrfToken: string }) {
           defectItems: defects.map((item) => ({
             location: item.location,
             defectTypeId: item.defectTypeId,
+            ...(item.workTypeId ? { workTypeId: item.workTypeId } : {}),
             claimDetails: item.claimDetails,
             notes: item.notes || null,
             responsibleEngineerIds: item.responsibleEngineerIds,
@@ -201,18 +205,22 @@ export function CreateActForm({ csrfToken }: { csrfToken: string }) {
           />
           <div className="grid gap-1.5">
             <Label htmlFor="customer">Заказчик</Label>
-            <Select value={customerOrganizationId} onValueChange={setCustomerOrganizationId}>
-              <SelectTrigger id="customer" aria-label="Заказчик">
-                <SelectValue placeholder="Выберите заказчика" />
-              </SelectTrigger>
-              <SelectContent>
-                {(data?.customers ?? []).map((item) => (
-                  <SelectItem key={item.id} value={item.id}>
-                    {item.officialName}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {lookups.isSuccess && (data?.customers ?? []).length === 0 ? (
+              <p className="text-sm text-muted-foreground">Организации-заказчики не загружены</p>
+            ) : (
+              <Select value={customerOrganizationId} onValueChange={setCustomerOrganizationId}>
+                <SelectTrigger id="customer" aria-label="Заказчик">
+                  <SelectValue placeholder="Выберите заказчика" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(data?.customers ?? []).map((item) => (
+                    <SelectItem key={item.id} value={item.id}>
+                      {item.officialName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor="issued-on">Дата акта</Label>
@@ -239,6 +247,7 @@ export function CreateActForm({ csrfToken }: { csrfToken: string }) {
           item={item}
           index={index}
           lookups={data}
+          lookupsFailed={lookups.isError}
           objectId={objectId}
           canRemove={defects.length > 1}
           onRemove={() =>
@@ -273,6 +282,7 @@ function DraftDefectCard({
   item,
   index,
   lookups,
+  lookupsFailed,
   objectId,
   canRemove,
   onRemove,
@@ -281,6 +291,7 @@ function DraftDefectCard({
   item: DraftDefect;
   index: number;
   lookups: Lookups | undefined;
+  lookupsFailed: boolean;
   objectId: string;
   canRemove: boolean;
   onRemove: () => void;
@@ -320,15 +331,38 @@ function DraftDefectCard({
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor={typeId}>Вид дефекта</Label>
+              {lookupsFailed || (lookups != null && lookups.defectTypes.length === 0) ? (
+                <p className="text-sm text-error-foreground">Виды дефектов не загружены</p>
+              ) : (
+                <Select
+                  value={item.defectTypeId}
+                  onValueChange={(value) => onChange({ defectTypeId: value })}
+                >
+                  <SelectTrigger id={typeId} aria-label="Вид дефекта">
+                    <SelectValue placeholder="Выберите вид" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(lookups?.defectTypes ?? []).map((type) => (
+                      <SelectItem key={type.id} value={type.id}>
+                        {type.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor={`${fieldId}-work`}>Вид работ</Label>
               <Select
-                value={item.defectTypeId}
-                onValueChange={(value) => onChange({ defectTypeId: value })}
+                value={item.workTypeId || 'none'}
+                onValueChange={(value) => onChange({ workTypeId: value === 'none' ? '' : value })}
               >
-                <SelectTrigger id={typeId} aria-label="Вид дефекта">
-                  <SelectValue placeholder="Выберите вид" />
+                <SelectTrigger id={`${fieldId}-work`} aria-label="Вид работ">
+                  <SelectValue placeholder="Не указан" />
                 </SelectTrigger>
                 <SelectContent>
-                  {(lookups?.defectTypes ?? []).map((type) => (
+                  <SelectItem value="none">Не указан</SelectItem>
+                  {(lookups?.workTypes ?? []).map((type) => (
                     <SelectItem key={type.id} value={type.id}>
                       {type.name}
                     </SelectItem>

@@ -19,6 +19,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -29,7 +30,11 @@ import {
 import { ApiError } from '../../lib/command-api';
 import { formatCalendarDate } from '../../lib/registry-url';
 import { queryKeys } from '../../lib/query-keys';
-import { fetchObjectsDirectory, linkObjectResponsibleEngineer } from '../../lib/objects-api';
+import {
+  fetchObjectsDirectory,
+  linkObjectResponsibleEngineer,
+  createPropertyObject,
+} from '../../lib/objects-api';
 
 function emptyDash(value: string | null | undefined): string {
   return value && value.trim().length > 0 ? value : '—';
@@ -103,6 +108,7 @@ export function ObjectsView({
   const [linkTarget, setLinkTarget] = useState<ObjectsDirectoryResponse['items'][number] | null>(
     null,
   );
+  const [createOpen, setCreateOpen] = useState(false);
 
   function navigate(next: typeof query) {
     const nextParams = new URLSearchParams();
@@ -136,6 +142,17 @@ export function ObjectsView({
       <PageHeader
         title="Объекты"
         description={totalCount > 0 ? `Всего ${totalCount}` : 'Каталог объектов строительства'}
+        actions={
+          data?.canCreate ? (
+            <Button
+              type="button"
+              className="min-h-11 w-full sm:w-auto"
+              onClick={() => setCreateOpen(true)}
+            >
+              Добавить объект
+            </Button>
+          ) : null
+        }
       />
       <div className="flex flex-col gap-3 md:flex-row md:items-end">
         <label className="grid min-w-0 flex-1 gap-1">
@@ -246,6 +263,17 @@ export function ObjectsView({
           </div>
         </div>
       </div>
+      {createOpen && data?.canCreate ? (
+        <CreateObjectDialog
+          csrfToken={csrfToken}
+          engineers={data.createEngineerOptions}
+          onClose={() => setCreateOpen(false)}
+          onSaved={async () => {
+            setCreateOpen(false);
+            await queryClient.invalidateQueries({ queryKey: queryKeys.objects.list(query) });
+          }}
+        />
+      ) : null}
       {linkTarget ? (
         <LinkEngineerDialog
           object={linkTarget}
@@ -454,6 +482,146 @@ function LinkEngineerDialog({
             Сохранить
           </Button>
         </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CreateObjectDialog({
+  csrfToken,
+  engineers,
+  onClose,
+  onSaved,
+}: {
+  csrfToken: string;
+  engineers: Array<{ id: string; fullName: string }>;
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const [name, setName] = useState('');
+  const [address, setAddress] = useState('');
+  const [commissionedAt, setCommissionedAt] = useState('');
+  const [warrantyEndsAt, setWarrantyEndsAt] = useState('');
+  const [engineerId, setEngineerId] = useState('none');
+  const [engineerName, setEngineerName] = useState('');
+  const [pending, setPending] = useState(false);
+  return (
+    <Dialog open onOpenChange={(open) => (!open ? onClose() : undefined)}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Добавить объект</DialogTitle>
+        </DialogHeader>
+        <form
+          className="grid gap-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void (async () => {
+              if (pending) {
+                return;
+              }
+              setPending(true);
+              try {
+                await createPropertyObject(csrfToken, {
+                  name,
+                  address: address.trim() ? address : null,
+                  commissionedAt: commissionedAt || null,
+                  warrantyEndsAt: warrantyEndsAt || null,
+                  responsibleEngineerId: engineerId === 'none' ? null : engineerId,
+                  responsibleEngineerName:
+                    engineerId === 'none' && engineerName.trim() ? engineerName : null,
+                });
+                toast.success('Объект создан');
+                await onSaved();
+              } catch (error) {
+                toast.error(
+                  error instanceof ApiError ? error.message : 'Не удалось создать объект',
+                );
+              } finally {
+                setPending(false);
+              }
+            })();
+          }}
+        >
+          <div className="grid gap-1.5">
+            <Label htmlFor="object-name">Название объекта</Label>
+            <Input
+              id="object-name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              required
+              className="min-h-11"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="object-address">Адрес</Label>
+            <Input
+              id="object-address"
+              value={address}
+              onChange={(event) => setAddress(event.target.value)}
+              className="min-h-11"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="object-commissioned">Дата приёмки в эксплуатацию</Label>
+            <Input
+              id="object-commissioned"
+              type="date"
+              value={commissionedAt}
+              onChange={(event) => setCommissionedAt(event.target.value)}
+              className="min-h-11"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="object-warranty">Дата окончания гарантии</Label>
+            <Input
+              id="object-warranty"
+              type="date"
+              value={warrantyEndsAt}
+              onChange={(event) => setWarrantyEndsAt(event.target.value)}
+              className="min-h-11"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="object-engineer">Ответственный инженер</Label>
+            <Select value={engineerId} onValueChange={setEngineerId}>
+              <SelectTrigger
+                id="object-engineer"
+                aria-label="Ответственный инженер учётной записи"
+                className="min-h-11"
+              >
+                <SelectValue placeholder="Не выбран" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Не выбран</SelectItem>
+                {engineers.map((item) => (
+                  <SelectItem key={item.id} value={item.id}>
+                    {item.fullName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {engineerId === 'none' ? (
+            <div className="grid gap-1.5">
+              <Label htmlFor="object-engineer-name">ФИО ответственного</Label>
+              <Input
+                id="object-engineer-name"
+                value={engineerName}
+                onChange={(event) => setEngineerName(event.target.value)}
+                placeholder="Василевич М.В."
+                className="min-h-11"
+              />
+            </div>
+          ) : null}
+          <DialogFooter className="flex-col gap-2 sm:flex-row">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Отмена
+            </Button>
+            <Button type="submit" disabled={pending || !name.trim()}>
+              {pending ? 'Создание…' : 'Создать'}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

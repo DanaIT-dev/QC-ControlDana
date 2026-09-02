@@ -34,3 +34,13 @@ export const readyResponseSchema = z.object({
 
 export type ReadyResponse = z.infer<typeof readyResponseSchema>;
 export type ComponentStatus = z.infer<typeof componentStatusSchema>;
+export type ComponentHealth = 'up' | 'down' | 'degraded' | 'checking';
+
+export const systemStatusOverviewItemSchema = z.object({
+  component: z.string(),
+  status: z.enum(['up', 'down', 'degraded', 'checking']),
+  checkedAt: z.string(),
+  message: z.string().optional(),
+});
+
+export type SystemStatusOverviewItem = z.infer<typeof systemStatusOverviewItemSchema>;

@@ -24,6 +24,7 @@ import {
   ValidationError,
 } from '@sgr-registry/domain';
 import type { Prisma } from '@sgr-registry/database';
+import { createPropertyObjectViaDefiner } from '@sgr-registry/database';
 import type { FastifyRequest } from 'fastify';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { PrismaService } from '../auth/prisma.tokens';
@@ -292,27 +293,18 @@ export class ReferenceDataService {
     const name = normalizeReferenceName(input.name);
     const address = normalizeRequiredText(input.address, 'address', 300);
     const ctx = actorContext(actor, request);
-    const existing = await this.prisma.client.propertyObject.findMany({ select: { name: true } });
-    assertCaseInsensitiveUnique(
-      name,
-      existing.map((item) => item.name),
-    );
     try {
       return await this.prisma.client.$transaction(async (tx) => {
-        const created = await tx.propertyObject.create({
-          data: {
-            name,
-            address,
-            commissionedAt: optionalDate(input.commissionedAt, 'commissionedAt'),
-            warrantyEndsAt: optionalDate(input.warrantyEndsAt, 'warrantyEndsAt'),
-          },
-        });
-        await writeAuditLog(tx, {
-          ...ctx,
-          action: 'REFERENCE_CREATED',
-          entityType: 'PROPERTY_OBJECT',
-          entityId: created.id,
-          newValue: toJsonValue({ name, address }),
+        const created = await createPropertyObjectViaDefiner(tx, {
+          name,
+          address,
+          commissionedAt: optionalDate(input.commissionedAt, 'commissionedAt'),
+          warrantyEndsAt: optionalDate(input.warrantyEndsAt, 'warrantyEndsAt'),
+          responsibleEngineerId: null,
+          responsibleEngineerName: null,
+          actorUserId: actor.id,
+          actorName: actor.fullName,
+          requestId: ctx.requestId,
         });
         if (input.responsibleEngineerIds) {
           await syncObjectEngineers(tx, {
@@ -322,7 +314,7 @@ export class ReferenceDataService {
             ctx,
           });
         }
-        return created;
+        return tx.propertyObject.findUniqueOrThrow({ where: { id: created.id } });
       });
     } catch (error) {
       if (isPrismaUniqueConflict(error)) {

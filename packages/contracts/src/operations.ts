@@ -93,6 +93,7 @@ export const createActDefectItemSchema = z
   .object({
     location: z.string(),
     defectTypeId: uuid,
+    workTypeId: z.union([uuid, z.null()]).optional(),
     claimDetails: z.string(),
     notes: z.union([z.string(), z.null()]).optional(),
     responsibleEngineerIds: z.array(uuid),

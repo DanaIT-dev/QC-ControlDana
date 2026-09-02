@@ -941,6 +941,75 @@ describe('operations integration', () => {
     expect(lookupIds).not.toContain(archivedAlt.id);
   });
 
+  it('rejects unknown or inactive defect and work type ids', async () => {
+    const admin = await createUser('ADMIN');
+    const responsible = await createUser('RESPONSIBLE_ENGINEER');
+    const adminSession = await login(admin.email);
+    const { object, customer, liable, defectType } = await catalogs();
+    await assignObjectEngineers(object.id, [responsible.id]);
+    const lookups = await inject({
+      method: 'GET',
+      url: '/api/operations/lookups',
+      cookies: { [SESSION_COOKIE_NAME]: adminSession.cookie },
+    });
+    expect(lookups.statusCode).toBe(200);
+    const body = lookups.json() as {
+      defectTypes: Array<{ id: string; name: string }>;
+      workTypes: Array<{ id: string; name: string }>;
+    };
+    expect(body.defectTypes.some((item) => item.id === defectType.id)).toBe(true);
+    expect(Array.isArray(body.workTypes)).toBe(true);
+    const missingType = await mutate(adminSession, {
+      method: 'POST',
+      url: '/api/acts',
+      payload: {
+        formCode: 'S1',
+        objectId: object.id,
+        customerOrganizationId: customer.id,
+        issuedOn: '2026-08-20',
+        defectItems: [
+          {
+            location: 'Кв. 1',
+            defectTypeId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+            claimDetails: 'Течь',
+            responsibleEngineerIds: [responsible.id],
+            liableOrganizationIds: [liable.id],
+          },
+        ],
+      },
+    });
+    expect(missingType.statusCode).toBe(400);
+    const inactiveWork = await prisma.workType.create({
+      data: {
+        code: `OPS-WT-${Date.now()}`,
+        name: `Неактивный вид ${Date.now()}`,
+        sortOrder: 80,
+        active: false,
+      },
+    });
+    const inactive = await mutate(adminSession, {
+      method: 'POST',
+      url: '/api/acts',
+      payload: {
+        formCode: 'S1',
+        objectId: object.id,
+        customerOrganizationId: customer.id,
+        issuedOn: '2026-08-20',
+        defectItems: [
+          {
+            location: 'Кв. 1',
+            defectTypeId: defectType.id,
+            workTypeId: inactiveWork.id,
+            claimDetails: 'Течь',
+            responsibleEngineerIds: [responsible.id],
+            liableOrganizationIds: [liable.id],
+          },
+        ],
+      },
+    });
+    expect(inactive.statusCode).toBe(400);
+  });
+
   it('denies contractor history reads while still recording contractor mutations', async () => {
     const admin = await createUser('ADMIN');
     const manager = await createUser('SGR_MANAGER');

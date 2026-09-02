@@ -153,6 +153,7 @@ test.describe('objects directory', () => {
     await page.goto('/objects');
     await expect(page.getByRole('heading', { name: 'Объекты' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Создать' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Добавить объект' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Импорт' })).toHaveCount(0);
     await expect(page.getByText('Режим просмотра')).toBeVisible();
 
@@ -264,6 +265,44 @@ test.describe('objects directory', () => {
     await expectNoHorizontalOverflow(compact);
     expect(applicationErrors(compactErrors)).toEqual([]);
     await compact.close();
+  });
+
+  test('ADMIN and SGR_MANAGER can create an object with a text engineer name', async ({
+    page,
+    browser,
+  }) => {
+    test.setTimeout(90_000);
+    const errors = attachConsole(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await login(page, ACCOUNTS.admin);
+    await page.goto('/objects');
+    await page.getByRole('button', { name: 'Добавить объект' }).click();
+    const stamp = Date.now();
+    const name = `E2E ручной объект ${stamp}`;
+    await page.getByLabel('Название объекта').fill(name);
+    await page.getByLabel('Адрес').fill('ул. Ручная, 1');
+    await page.getByLabel('ФИО ответственного').fill('Василевич М.В.');
+    await page.getByRole('button', { name: 'Создать' }).click();
+    await expect(page.getByText('Объект создан')).toBeVisible();
+    await page.getByLabel('Поиск по объектам').fill(name);
+    await expect(page.getByText(name).filter({ visible: true })).toBeVisible();
+    await expect(page.getByText('Василевич М.В.').filter({ visible: true })).toBeVisible();
+    await expect(
+      page.getByText('Не связан с учетной записью').filter({ visible: true }),
+    ).toHaveCount(1);
+    expect(applicationErrors(errors)).toEqual([]);
+
+    const managerPage = await browser.newPage();
+    const managerErrors = attachConsole(managerPage);
+    await login(managerPage, 'marina.sokolova@example.sgr.local');
+    await managerPage.goto('/objects');
+    await managerPage.getByRole('button', { name: 'Добавить объект' }).click();
+    const managerName = `E2E объект руководителя ${stamp}`;
+    await managerPage.getByLabel('Название объекта').fill(managerName);
+    await managerPage.getByRole('button', { name: 'Создать' }).click();
+    await expect(managerPage.getByText('Объект создан')).toBeVisible();
+    expect(applicationErrors(managerErrors)).toEqual([]);
+    await managerPage.close();
   });
 
   test('ambiguous engineer match requires ADMIN confirmation', async ({ page }) => {

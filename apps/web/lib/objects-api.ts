@@ -41,3 +41,27 @@ export function linkObjectResponsibleEngineer(
     body: { userId },
   });
 }
+
+export function createPropertyObject(
+  csrfToken: string,
+  body: {
+    name: string;
+    address?: string | null;
+    commissionedAt?: string | null;
+    warrantyEndsAt?: string | null;
+    responsibleEngineerId?: string | null;
+    responsibleEngineerName?: string | null;
+  },
+): Promise<{
+  id: string;
+  name: string;
+  address: string | null;
+  commissionedAt: string | null;
+  warrantyEndsAt: string | null;
+}> {
+  return commandFetch('/api/objects', {
+    method: 'POST',
+    csrfToken,
+    body,
+  });
+}

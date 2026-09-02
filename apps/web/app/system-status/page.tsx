@@ -1,17 +1,22 @@
-import type { SystemStatusResponse } from '@sgr-registry/contracts';
+import type { ComponentHealth, SystemStatusResponse } from '@sgr-registry/contracts';
 import { hasCapability, satisfiesCapability } from '@sgr-registry/domain';
 import { CheckCircle2, Database, Server, Wifi } from 'lucide-react';
 import { AppShell } from '../app-shell';
 import { ForbiddenState } from '@/components/forbidden-state';
 import { PageHeader } from '@/components/page-header';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { fetchSystemStatus, requireBusinessUser } from '../../lib/server-auth';
 import { NotificationSettingsForm } from './notification-settings-form';
 
 export const dynamic = 'force-dynamic';
+
+const STATUS_LABELS: Record<ComponentHealth, string> = {
+  up: 'Работает',
+  degraded: 'Есть проблемы',
+  down: 'Недоступен',
+  checking: 'Проверяется',
+};
 
 export default async function SystemStatusPage() {
   const user = await requireBusinessUser();
@@ -25,96 +30,43 @@ export default async function SystemStatusPage() {
 
   const status = await fetchSystemStatus();
   const data = status.data as SystemStatusResponse | null;
-  const postgresOk = data?.components.postgres.status === 'up';
-  const redisOk = data?.components.redis.status === 'up';
-  const systemReady =
-    status.status === 200 && (data?.status === 'ready' || data?.status === 'degraded');
+  const overview = data?.overview ?? [];
+  const checkedAt = overview[0]?.checkedAt ?? data?.timestamp ?? null;
+  const canManageSettings = hasCapability(user.role, 'MANAGE_NOTIFICATION_SETTINGS');
 
   return (
     <AppShell user={user}>
       <PageHeader
         title="Техническое состояние системы"
-        description="Диагностика инфраструктуры для администратора."
+        description="Диагностика инфраструктуры. Управление сервисами недоступно."
       />
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <HealthCard
-          title="Готовность API"
-          ok={Boolean(systemReady)}
-          okLabel="готова"
-          badLabel="не готова"
-          icon={Server}
-        />
-        <HealthCard
-          title="PostgreSQL"
-          ok={Boolean(postgresOk)}
-          okLabel="доступна"
-          badLabel="недоступна"
-          icon={Database}
-        />
-        <HealthCard
-          title="Redis"
-          ok={Boolean(redisOk)}
-          okLabel="доступен"
-          badLabel="недоступен"
-          icon={Wifi}
-        />
-        <HealthCard
-          title="MinIO"
-          ok={data?.components.minio.status === 'up'}
-          okLabel="доступно"
-          badLabel="недоступно"
-          icon={Server}
-        />
-        <HealthCard
-          title="ClamAV"
-          ok={data?.components.clamav.status === 'up'}
-          okLabel="доступен"
-          badLabel="недоступен"
-          icon={Database}
-        />
-        <HealthCard
-          title="SMTP / Mailpit"
-          ok={data?.notifications?.smtp.status !== 'down'}
-          okLabel={data?.notifications?.smtp.status === 'disabled' ? 'выключен' : 'доступен'}
-          badLabel="недоступен"
-          icon={Wifi}
-        />
-        <HealthCard
-          title="Notification worker"
-          ok={data?.notifications?.worker.status === 'up'}
-          okLabel="работает"
-          badLabel="остановлен"
-          icon={Server}
-        />
+        {overview.length > 0
+          ? overview.map((item) => (
+              <OverviewCard
+                key={item.component}
+                title={item.component}
+                status={item.status}
+                message={item.message}
+              />
+            ))
+          : (
+              [
+                ['Web', data ? 'up' : 'checking'],
+                ['API', status.status === 200 ? 'up' : 'down'],
+                ['PostgreSQL', data?.components.postgres.status === 'up' ? 'up' : 'down'],
+                ['Redis', data?.components.redis.status === 'up' ? 'up' : 'down'],
+                ['MinIO', data?.components.minio.status === 'up' ? 'up' : 'down'],
+                ['ClamAV', data?.components.clamav.status === 'up' ? 'up' : 'down'],
+              ] as const
+            ).map(([title, state]) => <OverviewCard key={title} title={title} status={state} />)}
       </div>
-      <Card className="mt-4 shadow-none">
-        <CardHeader>
-          <CardTitle className="text-sm">Уведомления и контроль сроков</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-2 text-sm">
-          <p>
-            Worker: {data?.notifications?.worker.status === 'up' ? 'работает' : 'остановлен'}
-            {data?.notifications?.worker.heartbeatAgeMs != null
-              ? ` (heartbeat ${Math.round(data.notifications.worker.heartbeatAgeMs / 1000)} с)`
-              : ''}
-          </p>
-          <p>Очередь worker: waiting {data?.notifications?.worker.waiting ?? '—'}</p>
-          <p>Outbox backlog: {data?.notifications?.outboxPending ?? '—'}</p>
-          <p>
-            Возраст oldest pending outbox:{' '}
-            {data?.notifications?.oldestPendingOutboxAgeMs != null
-              ? `${Math.round(data.notifications.oldestPendingOutboxAgeMs / 1000)} с`
-              : '—'}
-          </p>
-          <p>
-            Email: queued {data?.notifications?.emailQueued ?? '—'}, failed{' '}
-            {data?.notifications?.emailFailed ?? '—'}, dead {data?.notifications?.emailDead ?? '—'}
-          </p>
-          <p>Последняя оценка сроков: {data?.notifications?.lastSlaRunAt ?? '—'}</p>
-          <p>Следующая оценка: {data?.notifications?.nextSlaRunAt ?? '—'}</p>
-        </CardContent>
-      </Card>
-      {hasCapability(user.role, 'MANAGE_NOTIFICATION_SETTINGS') ? (
+      {checkedAt ? (
+        <p className="mt-4 text-sm text-muted-foreground">
+          Время последней проверки: {formatCheckedAt(checkedAt)}
+        </p>
+      ) : null}
+      {canManageSettings ? (
         <Card className="mt-4 shadow-none">
           <CardHeader>
             <CardTitle className="text-sm">Настройки уведомлений</CardTitle>
@@ -124,61 +76,64 @@ export default async function SystemStatusPage() {
           </CardContent>
         </Card>
       ) : null}
-      {data?.timestamp ? (
-        <p className="mt-4 text-sm text-muted-foreground">
-          Отметка времени готовности: {data.timestamp}
-        </p>
-      ) : null}
-      <Collapsible className="mt-4">
-        <CollapsibleTrigger asChild>
-          <Button type="button" variant="link" className="h-auto px-0 text-sm font-medium">
-            Технические сведения
-          </Button>
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <Card className="mt-3 shadow-none">
-            <CardHeader>
-              <CardTitle className="text-sm">Компоненты</CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-2 text-sm">
-              <p>Статус: {data?.status ?? '—'}</p>
-              <p>PostgreSQL: {data?.components.postgres.status ?? '—'}</p>
-              <p>Redis: {data?.components.redis.status ?? '—'}</p>
-              <p>MinIO: {data?.components.minio.status ?? '—'}</p>
-              <p>ClamAV: {data?.components.clamav.status ?? '—'}</p>
-            </CardContent>
-          </Card>
-        </CollapsibleContent>
-      </Collapsible>
     </AppShell>
   );
 }
 
-function HealthCard({
+function OverviewCard({
   title,
-  ok,
-  okLabel,
-  badLabel,
-  icon: Icon,
+  status,
+  message,
 }: {
   title: string;
-  ok: boolean;
-  okLabel: string;
-  badLabel: string;
-  icon: typeof Server;
+  status: ComponentHealth;
+  message?: string;
 }) {
+  const ok = status === 'up';
+  const warn = status === 'degraded' || status === 'checking';
   return (
     <Card className="shadow-none">
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
-        <Icon className={ok ? 'size-4 text-success-foreground' : 'size-4 text-error-foreground'} />
+        {title === 'PostgreSQL' ? (
+          <Database className={iconClass(ok, warn)} />
+        ) : title === 'Redis' ? (
+          <Wifi className={iconClass(ok, warn)} />
+        ) : (
+          <Server className={iconClass(ok, warn)} />
+        )}
       </CardHeader>
-      <CardContent>
-        <Badge variant={ok ? 'success' : 'error'} className={ok ? 'badge--ok' : 'badge--bad'}>
+      <CardContent className="grid gap-1">
+        <Badge
+          variant={ok ? 'success' : warn ? 'secondary' : 'error'}
+          className={ok ? 'badge--ok' : warn ? undefined : 'badge--bad'}
+        >
           {ok ? <CheckCircle2 className="size-3" aria-hidden /> : null}
-          {ok ? okLabel : badLabel}
+          {STATUS_LABELS[status]}
         </Badge>
+        {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
       </CardContent>
     </Card>
   );
+}
+
+function iconClass(ok: boolean, warn: boolean): string {
+  if (ok) {
+    return 'size-4 text-success-foreground';
+  }
+  if (warn) {
+    return 'size-4 text-muted-foreground';
+  }
+  return 'size-4 text-error-foreground';
+}
+
+function formatCheckedAt(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return new Intl.DateTimeFormat('ru-BY', {
+    dateStyle: 'short',
+    timeStyle: 'medium',
+  }).format(date);
 }

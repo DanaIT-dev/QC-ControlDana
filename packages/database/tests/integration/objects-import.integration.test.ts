@@ -211,18 +211,20 @@ describe('property objects importer', () => {
     }
   });
 
-  it('rolls back the transaction when a unique name collision appears mid-import', async () => {
+  it('rolls back the transaction when a unique name+address collision appears mid-import', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'sgr-objects-rollback-'));
     const file = join(dir, 'objects.xlsx');
     try {
       await writeFixture(file, [
         [`${MARKER} rollback same`, 'ул. Первая, 1', null, null, null],
-        [`${MARKER} rollback same`, 'ул. Вторая, 2', null, null, null],
+        [`${MARKER} ROLLBACK SAME`, 'ул. Первая, 1', null, null, null],
       ]);
       const parsed = await readObjectsWorkbook(file);
       await expect(importPropertyObjects({ prisma, parsed, apply: true })).rejects.toBeTruthy();
       const leftover = await prisma.propertyObject.findMany({
-        where: { name: `${MARKER} rollback same` },
+        where: {
+          OR: [{ name: `${MARKER} rollback same` }, { name: `${MARKER} ROLLBACK SAME` }],
+        },
       });
       expect(leftover).toHaveLength(0);
     } finally {

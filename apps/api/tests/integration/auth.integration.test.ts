@@ -453,6 +453,76 @@ describe('auth integration', () => {
     expect(allowed.statusCode).toBe(200);
   });
 
+  it('lets SUPER_ADMIN read system status without secrets or control mutations', async () => {
+    const existingSuper = await prisma.user.findFirst({
+      where: { role: 'SUPER_ADMIN', status: 'ACTIVE' },
+      select: { id: true, email: true },
+    });
+    let superAdmin: { id: string; email: string };
+    if (existingSuper) {
+      await prisma.user.update({
+        where: { id: existingSuper.id },
+        data: { mustChangePassword: false },
+      });
+      await upsertUserCredentials(prisma, {
+        userId: existingSuper.id,
+        passwordHash: await hashArgon2id(DEMO_PASSWORD, { memoryCost: 4096, timeCost: 1 }),
+      });
+      superAdmin = existingSuper;
+    } else {
+      superAdmin = await createUser('SUPER_ADMIN');
+    }
+    const admin = await createUser('ADMIN');
+    const superSession = cookieValue(await login(superAdmin.email, DEMO_PASSWORD))!;
+    const adminLogin = await login(admin.email, DEMO_PASSWORD);
+    const adminSession = cookieValue(adminLogin)!;
+    const adminCsrf = (adminLogin.json() as { csrfToken: string }).csrfToken;
+    const unauthenticated = await inject({ method: 'GET', url: '/api/system-status' });
+    expect(unauthenticated.statusCode).toBe(401);
+    const allowed = await inject({
+      method: 'GET',
+      url: '/api/system-status',
+      cookies: { [SESSION_COOKIE_NAME]: superSession },
+    });
+    expect(allowed.statusCode).toBe(200);
+    const payload = JSON.stringify(allowed.json());
+    expect(payload).not.toMatch(
+      /passwordHash|DATABASE_URL|REDIS_URL|csrfToken|sgr_session|minio.*secret|stack/i,
+    );
+    const body = allowed.json() as {
+      overview?: Array<{ component: string; status: string; message?: string }>;
+    };
+    expect(body.overview?.map((item) => item.component)).toEqual(
+      expect.arrayContaining([
+        'Web',
+        'API',
+        'Worker',
+        'PostgreSQL',
+        'Redis',
+        'MinIO',
+        'ClamAV',
+        'Миграции',
+        'Фоновые очереди',
+      ]),
+    );
+    const mutated = await inject({
+      method: 'POST',
+      url: '/api/system-status',
+      cookies: { [SESSION_COOKIE_NAME]: superSession },
+      payload: { action: 'restart' },
+    });
+    expect(mutated.statusCode).toBe(403);
+    const adminMutated = await inject({
+      method: 'POST',
+      url: '/api/system-status',
+      cookies: { [SESSION_COOKIE_NAME]: adminSession },
+      headers: { [CSRF_HEADER_NAME]: adminCsrf },
+      payload: { action: 'restart' },
+    });
+    expect(adminMutated.statusCode).toBe(403);
+    expect(JSON.stringify(mutated.json())).not.toMatch(/stack|passwordHash|DATABASE_URL/);
+  });
+
   it('sets cookie maxAge to absolute lifetime and Redis TTL to idle timeout', async () => {
     const user = await createUser('ADMIN');
     const response = await login(user.email, DEMO_PASSWORD);

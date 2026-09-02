@@ -80,5 +80,6 @@ export interface SystemStatusResponse {
   components: ReadyResponse['components'] & {
     smtp?: { status: 'up' | 'down' | 'disabled'; latencyMs?: number };
   };
+  overview?: import('./health').SystemStatusOverviewItem[];
   notifications?: NotificationOpsStatus;
 }

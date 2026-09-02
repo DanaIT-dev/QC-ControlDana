@@ -246,21 +246,33 @@ describe('PostgreSQL RLS', () => {
       await owner.propertyObject.deleteMany({ where: { id: { in: objectIds } } });
     }
     await owner.organization.deleteMany({ where: { email: `${MARKER}.org@example.sgr.local` } });
-    await owner.user.deleteMany({
-      where: {
-        email: {
-          in: [
-            `${MARKER}.admin@example.sgr.local`,
-            `${MARKER}.manager@example.sgr.local`,
-            `${MARKER}.responsible@example.sgr.local`,
-            `${MARKER}.other@example.sgr.local`,
-            `${MARKER}.contractor@example.sgr.local`,
-            `${MARKER}.super@example.sgr.local`,
-            `rls-sla-${MARKER}.sa@example.sgr.local`,
+    const markerUsers = await owner.user.findMany({
+      where: { OR: [{ email: { contains: MARKER } }, { fullName: { startsWith: MARKER } }] },
+      select: { id: true },
+    });
+    const markerUserIds = markerUsers.map((row) => row.id);
+    await owner.$executeRawUnsafe(
+      'ALTER TABLE audit_logs DISABLE TRIGGER trg_audit_logs_append_only',
+    );
+    try {
+      await owner.auditLog.deleteMany({
+        where: {
+          OR: [
+            ...(markerUserIds.length > 0 ? [{ actorUserId: { in: markerUserIds } }] : []),
+            ...(objectIds.length > 0 ? [{ entityId: { in: objectIds } }] : []),
+            { requestId: { startsWith: MARKER } },
+            { actorName: { startsWith: MARKER } },
           ],
         },
-      },
-    });
+      });
+    } finally {
+      await owner.$executeRawUnsafe(
+        'ALTER TABLE audit_logs ENABLE TRIGGER trg_audit_logs_append_only',
+      );
+    }
+    if (markerUserIds.length > 0) {
+      await owner.user.deleteMany({ where: { id: { in: markerUserIds } } });
+    }
     await owner.$disconnect();
     await appPrisma.$disconnect();
     await workerPrisma.$disconnect();
@@ -274,6 +286,72 @@ describe('PostgreSQL RLS', () => {
       actId,
     ]);
     expect(inserted.rows).toHaveLength(0);
+  });
+
+  it('blocks direct object INSERT and lets staff create only through the definer', async () => {
+    const name = `${MARKER} manual-object`;
+    const denied = await withAuthenticatedDbContext({
+      prisma: appPrisma,
+      secret,
+      user: { id: adminId, sessionVersion: 1 },
+      callback: async (tx) => {
+        try {
+          await tx.propertyObject.create({
+            data: { name, address: 'ул. Прямая, 1', sortOrder: 1 },
+          });
+          return 'inserted';
+        } catch {
+          return 'denied';
+        }
+      },
+    });
+    expect(denied).toBe('denied');
+    expect(await owner.propertyObject.findFirst({ where: { name } })).toBeNull();
+
+    const created = await withAuthenticatedDbContext({
+      prisma: appPrisma,
+      secret,
+      user: { id: adminId, sessionVersion: 1 },
+      callback: async (tx) => {
+        const rows = await tx.$queryRaw<Array<{ id: string; name: string }>>`
+          SELECT id, name FROM public.sgr_create_property_object(
+            ${name},
+            ${'ул. Прямая, 1'},
+            NULL,
+            NULL,
+            NULL,
+            ${'Василевич М.В.'},
+            ${adminId}::uuid,
+            ${`${MARKER} admin`},
+            ${`${MARKER}-rls`}
+          )
+        `;
+        return rows[0];
+      },
+    });
+    expect(created?.name).toBe(name);
+    if (created?.id) {
+      await owner.propertyObjectEngineer.deleteMany({ where: { propertyObjectId: created.id } });
+      await owner.propertyObject.deleteMany({ where: { id: created.id } });
+    }
+
+    await expect(
+      withAuthenticatedDbContext({
+        prisma: appPrisma,
+        secret,
+        user: { id: responsibleId, sessionVersion: 1 },
+        callback: (tx) =>
+          tx.$queryRaw`
+            SELECT id FROM public.sgr_create_property_object(
+              ${`${name}-eng`},
+              NULL, NULL, NULL, NULL, NULL,
+              ${responsibleId}::uuid,
+              ${'engineer'},
+              ${`${MARKER}-eng`}
+            )
+          `,
+      }),
+    ).rejects.toThrow();
   });
 
   it('rejects forged, altered, and expired context signatures', async () => {

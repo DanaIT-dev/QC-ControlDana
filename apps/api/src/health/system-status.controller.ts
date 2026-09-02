@@ -1,4 +1,14 @@
-import { Controller, Get, Inject, Req, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Delete,
+  ForbiddenException,
+  Get,
+  Inject,
+  Patch,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import type { SystemStatusResponse } from '@sgr-registry/contracts';
 import type { FastifyRequest } from 'fastify';
 import { AuthenticationGuard } from '../auth/authentication.guard';
@@ -21,5 +31,20 @@ export class SystemStatusController {
     @Req() request: FastifyRequest,
   ): Promise<SystemStatusResponse> {
     return this.healthService.getSystemStatus(user, request);
+  }
+
+  @Post()
+  mutatePost(): never {
+    throw new ForbiddenException('Недостаточно прав');
+  }
+
+  @Patch()
+  mutatePatch(): never {
+    throw new ForbiddenException('Недостаточно прав');
+  }
+
+  @Delete()
+  mutateDelete(): never {
+    throw new ForbiddenException('Недостаточно прав');
   }
 }
