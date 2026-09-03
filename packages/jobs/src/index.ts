@@ -16,6 +16,10 @@ export {
   writeDomainOutbox,
 } from './defect-outbox';
 export {
+  notifyOrganizationIncomplete,
+  resolveOrganizationIncompleteNotification,
+} from './organization-outbox';
+export {
   collectNotificationOps,
   collectNotificationDbOps,
   collectNotificationRuntimeOps,

@@ -21,6 +21,7 @@ import { BrowserOriginGuard } from '../auth/browser-origin.guard';
 import { CsrfGuard } from '../auth/csrf.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { CapabilityGuard, RequireCapability } from '../common/capability.guard';
+import { DirectoryMutateRateLimitGuard } from './directory-mutate-rate-limit.guard';
 import { ReferenceDataService, type ReferenceKind } from './reference-data.service';
 
 @Controller('reference-data')
@@ -42,7 +43,7 @@ export class ReferenceDataController {
 
   @Post(':kind')
   @HttpCode(201)
-  @UseGuards(BrowserOriginGuard, CsrfGuard)
+  @UseGuards(BrowserOriginGuard, CsrfGuard, DirectoryMutateRateLimitGuard)
   @RequireCapability('MANAGE_REFERENCE_DATA')
   create(
     @CurrentUser() user: AuthenticatedUser,
@@ -54,7 +55,7 @@ export class ReferenceDataController {
   }
 
   @Patch(':kind/:id')
-  @UseGuards(BrowserOriginGuard, CsrfGuard)
+  @UseGuards(BrowserOriginGuard, CsrfGuard, DirectoryMutateRateLimitGuard)
   @RequireCapability('MANAGE_REFERENCE_DATA')
   update(
     @CurrentUser() user: AuthenticatedUser,
@@ -68,7 +69,7 @@ export class ReferenceDataController {
 
   @Post(':kind/:id/archive')
   @HttpCode(200)
-  @UseGuards(BrowserOriginGuard, CsrfGuard)
+  @UseGuards(BrowserOriginGuard, CsrfGuard, DirectoryMutateRateLimitGuard)
   @RequireCapability('MANAGE_REFERENCE_DATA')
   archive(
     @CurrentUser() user: AuthenticatedUser,
@@ -82,7 +83,7 @@ export class ReferenceDataController {
 
   @Post(':kind/:id/restore')
   @HttpCode(200)
-  @UseGuards(BrowserOriginGuard, CsrfGuard)
+  @UseGuards(BrowserOriginGuard, CsrfGuard, DirectoryMutateRateLimitGuard)
   @RequireCapability('MANAGE_REFERENCE_DATA')
   restore(
     @CurrentUser() user: AuthenticatedUser,

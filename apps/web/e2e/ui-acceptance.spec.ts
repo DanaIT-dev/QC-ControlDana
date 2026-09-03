@@ -236,7 +236,7 @@ test.describe('UI acceptance defects', () => {
     const dialog = page.getByRole('dialog', { name: 'Предложение' });
     await expect(dialog).toBeVisible();
     await expect(dialog.locator('select:not([aria-hidden="true"])')).toHaveCount(0);
-    await expect(dialog.locator('[data-slot="select-trigger"]')).toHaveCount(2);
+    await expect(dialog.locator('[data-slot="select-trigger"]')).toHaveCount(1);
     await expect(dialog.getByRole('combobox', { name: 'Слот' })).toBeVisible();
     await expect(dialog.getByRole('combobox', { name: 'Организация' })).toBeVisible();
     await dialog.getByRole('combobox', { name: 'Слот' }).focus();
@@ -265,7 +265,7 @@ test.describe('UI acceptance defects', () => {
     const dialog = page.getByRole('dialog', { name: 'Предложение' });
     await expect(dialog).toBeVisible();
     await expect(dialog.locator('select:not([aria-hidden="true"])')).toHaveCount(0);
-    await expect(dialog.locator('[data-slot="select-trigger"]')).toHaveCount(2);
+    await expect(dialog.locator('[data-slot="select-trigger"]')).toHaveCount(1);
     const box = await dialog.boundingBox();
     const viewport = page.viewportSize();
     expect(box).toBeTruthy();

@@ -39,6 +39,17 @@ export type LinkObjectResponsibleEngineerRequest = z.infer<
   typeof linkObjectResponsibleEngineerSchema
 >;
 
+export const updatePropertyObjectRequestSchema = z
+  .object({
+    expectedVersion: z.number().int().positive(),
+    name: z.string(),
+    address: z.union([z.string(), z.null()]).optional(),
+    active: z.boolean().optional(),
+  })
+  .strict();
+
+export type UpdatePropertyObjectRequest = z.infer<typeof updatePropertyObjectRequestSchema>;
+
 export type ObjectsResponsibleAccountStatus = 'EMPTY' | 'LINKED' | 'UNRESOLVED' | 'AMBIGUOUS';
 
 export type ObjectsResponsibleEngineer =
@@ -62,6 +73,7 @@ export interface ObjectsDirectoryItem {
   commissionedAt: string | null;
   warrantyEndsAt: string | null;
   active: boolean;
+  version: number;
   responsibleEngineer: ObjectsResponsibleEngineer | null;
 }
 
@@ -73,5 +85,6 @@ export interface ObjectsDirectoryResponse {
   totalPages: number;
   responsibleEngineerOptions: string[];
   canCreate: boolean;
+  canEdit: boolean;
   createEngineerOptions: Array<{ id: string; fullName: string }>;
 }

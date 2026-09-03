@@ -89,6 +89,8 @@ export {
 } from './directories-import-target';
 export { createPropertyObjectViaDefiner } from './create-property-object';
 export type { CreatedPropertyObjectRow } from './create-property-object';
+export { updatePropertyObjectViaDefiner } from './update-property-object';
+export type { UpdatedPropertyObjectRow } from './update-property-object';
 export { updateUserProfileViaDefiner } from './update-user-profile';
 export type { UpdatedUserProfileRow } from './update-user-profile';
 export {

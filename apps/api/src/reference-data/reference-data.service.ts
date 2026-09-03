@@ -1,4 +1,4 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import {
   codedReferenceWriteSchema,
   organizationWriteSchema,
@@ -9,22 +9,30 @@ import {
 import {
   BUSINESS_TIME_ZONE,
   calendarDateToUtcNoon,
+  DuplicateDirectoryRecordError,
   DuplicateValueError,
   StaleWriteError,
-  UnpConflictError,
   assertCaseInsensitiveUnique,
+  foldKey,
   calendarDateInTimeZone,
+  generateCodedReferenceCode,
   isValidEmail,
-  normalizeContact,
+  normalizeOptionalContact,
+  normalizeOptionalReferenceCode,
+  normalizeOptionalText,
   normalizeOrganizationUnp,
-  normalizeReferenceCode,
   normalizeReferenceName,
-  normalizeRequiredText,
   parseOptionalCalendarDate,
   ValidationError,
+  assertOrganizationNotDuplicate,
+  REFERENCE_ADDRESS_MAX,
 } from '@sgr-registry/domain';
 import type { Prisma } from '@sgr-registry/database';
-import { createPropertyObjectViaDefiner } from '@sgr-registry/database';
+import {
+  createPropertyObjectViaDefiner,
+  updatePropertyObjectViaDefiner,
+} from '@sgr-registry/database';
+import { notifyOrganizationIncomplete, OutboxWriter } from '@sgr-registry/jobs';
 import type { FastifyRequest } from 'fastify';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { PrismaService } from '../auth/prisma.tokens';
@@ -42,7 +50,10 @@ export type ReferenceKind = 'property-objects' | 'organizations' | 'work-types' 
 
 @Injectable()
 export class ReferenceDataService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(OutboxWriter) private readonly outboxWriter: OutboxWriter,
+  ) {}
 
   list(kind: ReferenceKind, rawQuery: Record<string, unknown>) {
     const query = parseCommandBody(referenceListQuerySchema, rawQuery);
@@ -181,7 +192,7 @@ export class ReferenceDataService {
       include: {
         engineers: {
           where: { unassignedAt: null },
-          include: { user: { select: { id: true, fullName: true, email: true, status: true } } },
+          include: { user: { select: { id: true, fullName: true, status: true } } },
         },
       },
       orderBy: [{ name: 'asc' }, { id: 'asc' }],
@@ -205,7 +216,6 @@ export class ReferenceDataService {
         responsibleEngineers: item.engineers.map((row) => ({
           id: row.user.id,
           fullName: row.user.fullName,
-          email: row.user.email,
         })),
       })),
       ...pageMeta(input, totalCount),
@@ -291,7 +301,7 @@ export class ReferenceDataService {
   ) {
     const input = parseCommandBody(propertyObjectWriteSchema, body);
     const name = normalizeReferenceName(input.name);
-    const address = normalizeRequiredText(input.address, 'address', 300);
+    const address = normalizeOptionalText(input.address, 'address', REFERENCE_ADDRESS_MAX);
     const ctx = actorContext(actor, request);
     try {
       return await this.prisma.client.$transaction(async (tx) => {
@@ -317,10 +327,7 @@ export class ReferenceDataService {
         return tx.propertyObject.findUniqueOrThrow({ where: { id: created.id } });
       });
     } catch (error) {
-      if (isPrismaUniqueConflict(error)) {
-        throw new DuplicateValueError();
-      }
-      throw error;
+      throw mapPropertyObjectWriteError(error);
     }
   }
 
@@ -331,59 +338,42 @@ export class ReferenceDataService {
     request: FastifyRequest,
   ) {
     const input = parseCommandBody(propertyObjectWriteSchema, body);
-    if (!input.expectedVersion) {
+    const expectedVersion = input.expectedVersion;
+    if (!expectedVersion) {
       throw new ValidationError('expectedVersion', 'Укажите expectedVersion');
     }
     const name = normalizeReferenceName(input.name);
-    const address = normalizeRequiredText(input.address, 'address', 300);
-    const others = await this.prisma.client.propertyObject.findMany({
-      where: { id: { not: id } },
-      select: { name: true },
-    });
-    assertCaseInsensitiveUnique(
-      name,
-      others.map((item) => item.name),
-    );
-    return this.prisma.client.$transaction(async (tx) => {
-      const current = await tx.propertyObject.findUnique({ where: { id } });
-      if (!current) {
-        throw new NotFoundException('Запись не найдена');
-      }
-      if (current.version !== input.expectedVersion) {
-        throw new StaleWriteError();
-      }
-      const ctx = actorContext(actor, request);
-      const updated = await tx.propertyObject.updateMany({
-        where: { id, version: input.expectedVersion },
-        data: {
+    const address = normalizeOptionalText(input.address, 'address', REFERENCE_ADDRESS_MAX);
+    try {
+      return await this.prisma.client.$transaction(async (tx) => {
+        const current = await tx.propertyObject.findUnique({ where: { id } });
+        if (!current) {
+          throw new NotFoundException('Запись не найдена');
+        }
+        const ctx = actorContext(actor, request);
+        const updated = await updatePropertyObjectViaDefiner(tx, {
+          id,
+          expectedVersion,
           name,
           address,
-          commissionedAt: optionalDate(input.commissionedAt, 'commissionedAt'),
-          warrantyEndsAt: optionalDate(input.warrantyEndsAt, 'warrantyEndsAt'),
-          version: { increment: 1 },
-        },
-      });
-      if (updated.count !== 1) {
-        throw new StaleWriteError();
-      }
-      await writeAuditLog(tx, {
-        ...ctx,
-        action: 'REFERENCE_UPDATED',
-        entityType: 'PROPERTY_OBJECT',
-        entityId: id,
-        oldValue: toJsonValue({ name: current.name, address: current.address }),
-        newValue: toJsonValue({ name, address }),
-      });
-      if (input.responsibleEngineerIds) {
-        await syncObjectEngineers(tx, {
-          objectId: id,
-          objectActive: current.active,
-          engineerIds: input.responsibleEngineerIds,
-          ctx,
+          active: null,
+          actorUserId: actor.id,
+          actorName: actor.fullName,
+          requestId: ctx.requestId,
         });
-      }
-      return tx.propertyObject.findUniqueOrThrow({ where: { id } });
-    });
+        if (input.responsibleEngineerIds) {
+          await syncObjectEngineers(tx, {
+            objectId: id,
+            objectActive: updated.active,
+            engineerIds: input.responsibleEngineerIds,
+            ctx,
+          });
+        }
+        return tx.propertyObject.findUniqueOrThrow({ where: { id } });
+      });
+    } catch (error) {
+      throw mapPropertyObjectWriteError(error);
+    }
   }
 
   private async createOrganization(
@@ -394,46 +384,68 @@ export class ReferenceDataService {
     const input = parseCommandBody(organizationWriteSchema, body);
     const officialName = normalizeReferenceName(input.officialName, 'officialName');
     const unp = normalizeOrganizationUnp(input.unp);
-    const email = normalizeContact(input.email, 'email');
-    if (!isValidEmail(email)) {
+    const email = normalizeOptionalContact(input.email, 'email');
+    if (email && !isValidEmail(email)) {
       throw new ValidationError('email', 'Некорректный адрес электронной почты');
     }
-    const ctx = actorContext(actor, request);
-    const existing = await this.prisma.client.organization.findMany({
-      select: { officialName: true, unp: true },
-    });
-    assertCaseInsensitiveUnique(
-      officialName,
-      existing.map((item) => item.officialName),
+    const postalAddress = normalizeOptionalText(
+      input.postalAddress,
+      'postalAddress',
+      REFERENCE_ADDRESS_MAX,
     );
-    if (unp && existing.some((item) => item.unp === unp)) {
-      throw new UnpConflictError();
-    }
+    const phone = normalizeOptionalContact(input.phone, 'phone');
+    const contactPerson = normalizeOptionalContact(input.contactPerson, 'contactPerson');
+    const ctx = actorContext(actor, request);
+    const details = { officialName, unp, postalAddress, email, phone, contactPerson };
+    const outboxIds: string[] = [];
     try {
-      return await this.prisma.client.$transaction(async (tx) => {
-        const created = await tx.organization.create({
+      const created = await this.prisma.client.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(20260903, 15)`;
+        const existing = await tx.organization.findMany({
+          select: { id: true, officialName: true, unp: true },
+        });
+        assertOrganizationNotDuplicate({ officialName, unp }, existing);
+        const createdRow = await tx.organization.create({
           data: {
             officialName,
             unp,
-            postalAddress: normalizeRequiredText(input.postalAddress, 'postalAddress', 300),
+            postalAddress,
             email,
-            phone: normalizeContact(input.phone, 'phone'),
-            contactPerson: normalizeContact(input.contactPerson, 'contactPerson'),
+            phone,
+            contactPerson,
             roles: input.roles ? { create: input.roles.map((role) => ({ role })) } : undefined,
           },
           include: { roles: true },
         });
         await writeAuditLog(tx, {
           ...ctx,
-          action: 'REFERENCE_CREATED',
+          action: 'ORGANIZATION_CREATED',
           entityType: 'ORGANIZATION',
-          entityId: created.id,
-          newValue: toJsonValue({ officialName, unp }),
+          entityId: createdRow.id,
+          newValue: toJsonValue({
+            officialName,
+            unp: unp ? 'set' : null,
+            roles: input.roles ?? [],
+          }),
         });
-        return created;
+        outboxIds.push(
+          ...(await notifyOrganizationIncomplete(this.outboxWriter, tx, {
+            organizationId: createdRow.id,
+            details,
+            roles: input.roles,
+            actorUserId: actor.id,
+          })),
+        );
+        return createdRow;
       });
+      await this.outboxWriter.enqueue(outboxIds);
+      return created;
     } catch (error) {
       if (isPrismaUniqueConflict(error)) {
+        const again = await this.prisma.client.organization.findMany({
+          select: { id: true, officialName: true, unp: true },
+        });
+        assertOrganizationNotDuplicate({ officialName, unp }, again);
         throw new DuplicateValueError();
       }
       throw error;
@@ -451,8 +463,21 @@ export class ReferenceDataService {
       throw new ValidationError('expectedVersion', 'Укажите expectedVersion');
     }
     const officialName = normalizeReferenceName(input.officialName, 'officialName');
+    const unp = normalizeOrganizationUnp(input.unp);
+    const email = normalizeOptionalContact(input.email, 'email');
+    if (email && !isValidEmail(email)) {
+      throw new ValidationError('email', 'Некорректный адрес электронной почты');
+    }
+    const postalAddress = normalizeOptionalText(
+      input.postalAddress,
+      'postalAddress',
+      REFERENCE_ADDRESS_MAX,
+    );
+    const phone = normalizeOptionalContact(input.phone, 'phone');
+    const contactPerson = normalizeOptionalContact(input.contactPerson, 'contactPerson');
     const ctx = actorContext(actor, request);
-    return this.prisma.client.$transaction(async (tx) => {
+    const outboxIds: string[] = [];
+    const updated = await this.prisma.client.$transaction(async (tx) => {
       const current = await tx.organization.findUnique({
         where: { id },
         include: { roles: true },
@@ -463,19 +488,24 @@ export class ReferenceDataService {
       if (current.version !== input.expectedVersion) {
         throw new StaleWriteError();
       }
-      const updated = await tx.organization.updateMany({
+      const others = await tx.organization.findMany({
+        where: { id: { not: id } },
+        select: { id: true, officialName: true, unp: true },
+      });
+      assertOrganizationNotDuplicate({ officialName, unp }, others);
+      const written = await tx.organization.updateMany({
         where: { id, version: input.expectedVersion },
         data: {
           officialName,
-          unp: normalizeOrganizationUnp(input.unp),
-          postalAddress: normalizeRequiredText(input.postalAddress, 'postalAddress', 300),
-          email: normalizeContact(input.email, 'email'),
-          phone: normalizeContact(input.phone, 'phone'),
-          contactPerson: normalizeContact(input.contactPerson, 'contactPerson'),
+          unp,
+          postalAddress,
+          email,
+          phone,
+          contactPerson,
           version: { increment: 1 },
         },
       });
-      if (updated.count !== 1) {
+      if (written.count !== 1) {
         throw new StaleWriteError();
       }
       if (input.roles) {
@@ -494,8 +524,20 @@ export class ReferenceDataService {
         oldValue: toJsonValue({ officialName: current.officialName }),
         newValue: toJsonValue({ officialName }),
       });
+      const details = { officialName, unp, postalAddress, email, phone, contactPerson };
+      const roles = input.roles ?? current.roles.map((row) => row.role);
+      outboxIds.push(
+        ...(await notifyOrganizationIncomplete(this.outboxWriter, tx, {
+          organizationId: id,
+          details,
+          roles,
+          actorUserId: actor.id,
+        })),
+      );
       return tx.organization.findUniqueOrThrow({ where: { id }, include: { roles: true } });
     });
+    await this.outboxWriter.enqueue(outboxIds);
+    return updated;
   }
 
   private async createCoded(
@@ -505,33 +547,45 @@ export class ReferenceDataService {
     request: FastifyRequest,
   ) {
     const input = parseCommandBody(codedReferenceWriteSchema, body);
-    const code = normalizeReferenceCode(input.code);
     const name = normalizeReferenceName(input.name);
     const ctx = actorContext(actor, request);
-    const client = codedDelegate(this.prisma.client, model);
-    const existing = await client.findMany({ select: { code: true, name: true } });
-    assertCaseInsensitiveUnique(
-      code,
-      existing.map((item) => item.code),
-      'Код уже используется',
-    );
-    assertCaseInsensitiveUnique(
-      name,
-      existing.map((item) => item.name),
-    );
-    const maxSort = await client.aggregate({ _max: { sortOrder: true } });
     try {
       return await this.prisma.client.$transaction(async (tx) => {
-        const created = await codedDelegate(tx, model).create({
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(20260903, ${model === 'workType' ? 16 : 17})`;
+        const client = codedDelegate(tx, model);
+        const existing = await client.findMany({ select: { id: true, code: true, name: true } });
+        const nameDuplicate = existing.find((item) => foldKey(item.name) === foldKey(name));
+        if (nameDuplicate) {
+          throw new DuplicateDirectoryRecordError('Такое значение уже существует', {
+            id: nameDuplicate.id,
+            label: nameDuplicate.name,
+          });
+        }
+        const maxSort = await client.aggregate({ _max: { sortOrder: true } });
+        const sortOrder = input.sortOrder ?? (maxSort._max.sortOrder ?? 0) + 1;
+        const code =
+          normalizeOptionalReferenceCode(input.code) ??
+          generateCodedReferenceCode(
+            model === 'workType' ? 'WT' : 'DT',
+            name,
+            existing.map((item) => item.code),
+            sortOrder,
+          );
+        assertCaseInsensitiveUnique(
+          code,
+          existing.map((item) => item.code),
+          'Код уже используется',
+        );
+        const created = await client.create({
           data: {
             code,
             name,
-            sortOrder: input.sortOrder ?? (maxSort._max.sortOrder ?? 0) + 1,
+            sortOrder,
           },
         });
         await writeAuditLog(tx, {
           ...ctx,
-          action: 'REFERENCE_CREATED',
+          action: model === 'workType' ? 'WORK_TYPE_CREATED' : 'DEFECT_TYPE_CREATED',
           entityType: model === 'workType' ? 'WORK_TYPE' : 'DEFECT_TYPE',
           entityId: created.id,
           newValue: toJsonValue({ code, name }),
@@ -539,7 +593,20 @@ export class ReferenceDataService {
         return created;
       });
     } catch (error) {
-      if (isPrismaUniqueConflict(error)) {
+      if (error instanceof DuplicateDirectoryRecordError || error instanceof DuplicateValueError) {
+        throw error;
+      }
+      if (isPrismaUniqueConflict(error) || /23505|P2002/.test(String(error))) {
+        const again = await codedDelegate(this.prisma.client, model).findMany({
+          select: { id: true, name: true },
+        });
+        const nameDuplicate = again.find((item) => foldKey(item.name) === foldKey(name));
+        if (nameDuplicate) {
+          throw new DuplicateDirectoryRecordError('Такое значение уже существует', {
+            id: nameDuplicate.id,
+            label: nameDuplicate.name,
+          });
+        }
         throw new DuplicateValueError('Код уже используется');
       }
       throw error;
@@ -557,7 +624,7 @@ export class ReferenceDataService {
     if (!input.expectedVersion) {
       throw new ValidationError('expectedVersion', 'Укажите expectedVersion');
     }
-    const code = normalizeReferenceCode(input.code);
+    const code = normalizeOptionalReferenceCode(input.code);
     const name = normalizeReferenceName(input.name);
     const ctx = actorContext(actor, request);
     return this.prisma.client.$transaction(async (tx) => {
@@ -569,10 +636,11 @@ export class ReferenceDataService {
       if (current.version !== input.expectedVersion) {
         throw new StaleWriteError();
       }
+      const nextCode = code ?? current.code;
       const updated = await coded.updateMany({
         where: { id, version: input.expectedVersion },
         data: {
-          code,
+          code: nextCode,
           name,
           sortOrder: input.sortOrder ?? current.sortOrder,
           version: { increment: 1 },
@@ -587,7 +655,7 @@ export class ReferenceDataService {
         entityType: model === 'workType' ? 'WORK_TYPE' : 'DEFECT_TYPE',
         entityId: id,
         oldValue: toJsonValue({ code: current.code, name: current.name }),
-        newValue: toJsonValue({ code, name }),
+        newValue: toJsonValue({ code: nextCode, name }),
       });
       return coded.findUniqueOrThrow({ where: { id } });
     });
@@ -603,6 +671,28 @@ export class ReferenceDataService {
   ) {
     const input = parseCommandBody(versionedReasonSchema, body);
     const ctx = actorContext(actor, request);
+    if (kind === 'property-objects') {
+      try {
+        return await this.prisma.client.$transaction(async (tx) => {
+          const current = await tx.propertyObject.findUnique({ where: { id } });
+          if (!current) {
+            throw new NotFoundException('Запись не найдена');
+          }
+          return updatePropertyObjectViaDefiner(tx, {
+            id,
+            expectedVersion: input.expectedVersion,
+            name: current.name,
+            address: current.address,
+            active: !archive,
+            actorUserId: actor.id,
+            actorName: actor.fullName,
+            requestId: ctx.requestId,
+          });
+        });
+      } catch (error) {
+        throw mapPropertyObjectWriteError(error);
+      }
+    }
     return this.prisma.client.$transaction(async (tx) => {
       const catalog = catalogDelegate(tx, kind);
       const current = await catalog.findUnique({ where: { id } });
@@ -642,47 +732,6 @@ export class ReferenceDataService {
       select: { id: true },
     });
     return Boolean(row);
-  }
-
-  private async mutateVersioned(
-    model: 'propertyObject',
-    id: string,
-    expectedVersion: number,
-    actor: AuthenticatedUser,
-    request: FastifyRequest,
-    options: {
-      data: Prisma.PropertyObjectUpdateManyMutationInput;
-      entityType: string;
-      snapshot: (row: { name: string; address: string | null }) => unknown;
-      nextSnapshot: unknown;
-    },
-  ) {
-    const ctx = actorContext(actor, request);
-    return this.prisma.client.$transaction(async (tx) => {
-      const current = await tx[model].findUnique({ where: { id } });
-      if (!current) {
-        throw new NotFoundException('Запись не найдена');
-      }
-      if (current.version !== expectedVersion) {
-        throw new StaleWriteError();
-      }
-      const updated = await tx[model].updateMany({
-        where: { id, version: expectedVersion },
-        data: { ...options.data, version: { increment: 1 } },
-      });
-      if (updated.count !== 1) {
-        throw new StaleWriteError();
-      }
-      await writeAuditLog(tx, {
-        ...ctx,
-        action: 'REFERENCE_UPDATED',
-        entityType: options.entityType,
-        entityId: id,
-        oldValue: toJsonValue(options.snapshot(current)),
-        newValue: toJsonValue(options.nextSnapshot),
-      });
-      return tx[model].findUniqueOrThrow({ where: { id } });
-    });
   }
 }
 
@@ -790,4 +839,30 @@ function catalogDelegate(
     case 'defect-types':
       return client.defectType as CatalogDelegate;
   }
+}
+
+function mapPropertyObjectWriteError(error: unknown): never {
+  if (
+    error instanceof DuplicateValueError ||
+    error instanceof ValidationError ||
+    error instanceof StaleWriteError ||
+    error instanceof NotFoundException ||
+    error instanceof ForbiddenException
+  ) {
+    throw error;
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  if (/40001|изменена другим/.test(message)) {
+    throw new StaleWriteError();
+  }
+  if (/P0002|не найдена/.test(message)) {
+    throw new NotFoundException('Запись не найдена');
+  }
+  if (/23505|P2002|уже существует/.test(message)) {
+    throw new DuplicateValueError('Объект с таким названием и адресом уже существует');
+  }
+  if (/42501|Недостаточно прав/.test(message)) {
+    throw new ForbiddenException('Недостаточно прав');
+  }
+  throw error instanceof Error ? error : new Error(String(error));
 }

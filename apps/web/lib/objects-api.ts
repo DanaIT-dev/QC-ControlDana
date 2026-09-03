@@ -16,6 +16,7 @@ export function fetchObjectsDirectory(query: {
   responsibleEngineer: string;
   page: number;
   pageSize: number;
+  status?: 'ACTIVE' | 'ARCHIVED' | 'ALL';
 }): Promise<ObjectsDirectoryResponse> {
   const params = new URLSearchParams();
   if (query.search) {
@@ -23,6 +24,9 @@ export function fetchObjectsDirectory(query: {
   }
   if (query.responsibleEngineer) {
     params.set('responsibleEngineer', query.responsibleEngineer);
+  }
+  if (query.status) {
+    params.set('status', query.status);
   }
   params.set('page', String(query.page));
   params.set('pageSize', String(query.pageSize));
@@ -61,6 +65,31 @@ export function createPropertyObject(
 }> {
   return commandFetch('/api/objects', {
     method: 'POST',
+    csrfToken,
+    body,
+  });
+}
+
+export function updatePropertyObject(
+  csrfToken: string,
+  objectId: string,
+  body: {
+    expectedVersion: number;
+    name: string;
+    address?: string | null;
+    active?: boolean;
+  },
+): Promise<{
+  id: string;
+  name: string;
+  address: string | null;
+  commissionedAt: string | null;
+  warrantyEndsAt: string | null;
+  active: boolean;
+  version: number;
+}> {
+  return commandFetch(`/api/objects/${objectId}`, {
+    method: 'PATCH',
     csrfToken,
     body,
   });

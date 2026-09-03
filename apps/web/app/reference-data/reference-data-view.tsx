@@ -3,9 +3,12 @@
 import { canAccessReferenceKind } from '@sgr-registry/domain';
 import type { UserRole } from '@sgr-registry/contracts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { ConflictDialog } from '@/components/conflict-dialog';
+import { DirectoryCombobox } from '@/components/directory-combobox';
+import { EditPropertyObjectDialog } from '@/components/edit-property-object-dialog';
 import { PageHeader } from '@/components/page-header';
 import { EmptyState, ErrorState, TableSkeleton } from '@/components/states';
 import {
@@ -30,8 +33,6 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { MultiSelect } from '@/components/multi-select';
-import { queryKeys } from '../../lib/query-keys';
 import {
   Select,
   SelectContent,
@@ -41,6 +42,7 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ApiError, commandFetch } from '../../lib/command-api';
+import { queryKeys } from '../../lib/query-keys';
 
 const TABS = [
   { id: 'property-objects', label: 'Объекты' },
@@ -61,8 +63,15 @@ export function ReferenceDataView({
   role: UserRole;
 }) {
   const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
+  const requestedTab = searchParams.get('tab');
+  const requestedId = searchParams.get('id');
   const visibleTabs = TABS.filter((item) => canAccessReferenceKind(role, item.id));
-  const [tab, setTab] = useState<TabId>('property-objects');
+  const [tab, setTab] = useState<TabId>(() =>
+    visibleTabs.some((item) => item.id === requestedTab)
+      ? (requestedTab as TabId)
+      : 'property-objects',
+  );
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('ALL');
   const [createOpen, setCreateOpen] = useState(false);
@@ -77,7 +86,17 @@ export function ReferenceDataView({
     version: number;
     name: string;
     address: string;
-    engineerIds: string[];
+    active: boolean;
+  } | null>(null);
+  const [orgEditTarget, setOrgEditTarget] = useState<{
+    id: string;
+    version: number;
+    officialName: string;
+    unp: string;
+    postalAddress: string;
+    email: string;
+    phone: string;
+    contactPerson: string;
   } | null>(null);
   const listQuery = useQuery({
     queryKey: ['reference', tab, search, status],
@@ -126,10 +145,43 @@ export function ReferenceDataView({
   });
   const engineerOptions = (lookups.data?.responsibleEngineers ?? []).map((engineer) => ({
     id: engineer.id,
-    label: engineer.email ? `${engineer.fullName} · ${engineer.email}` : engineer.fullName,
+    label: engineer.fullName,
   }));
   const items = listQuery.data?.items ?? [];
   const showAddress = tab === 'property-objects' || tab === 'organizations';
+  const openedFromQuery = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!requestedId || items.length === 0 || openedFromQuery.current === requestedId) {
+      return;
+    }
+    const match = items.find((item) => String(item.id) === requestedId);
+    if (!match) {
+      return;
+    }
+    openedFromQuery.current = requestedId;
+    if (tab === 'property-objects') {
+      setEditTarget({
+        id: String(match.id),
+        version: Number(match.version),
+        name: String(match.name ?? ''),
+        address: String(match.address ?? ''),
+        active: Boolean(match.active),
+      });
+    }
+    if (tab === 'organizations') {
+      setOrgEditTarget({
+        id: String(match.id),
+        version: Number(match.version),
+        officialName: String(match.officialName ?? ''),
+        unp: String(match.unp ?? ''),
+        postalAddress: String(match.postalAddress ?? ''),
+        email: String(match.email ?? ''),
+        phone: String(match.phone ?? ''),
+        contactPerson: String(match.contactPerson ?? ''),
+      });
+    }
+  }, [requestedId, items, tab]);
 
   return (
     <section className="grid gap-4">
@@ -244,11 +296,32 @@ export function ReferenceDataView({
                                 version,
                                 name: title,
                                 address,
-                                engineerIds: engineerIdsOf(item),
+                                active,
                               })
                             }
                           >
-                            Изменить
+                            Редактировать
+                          </Button>
+                        ) : null}
+                        {tab === 'organizations' ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              setOrgEditTarget({
+                                id,
+                                version,
+                                officialName: String(item.officialName ?? title),
+                                unp: String(item.unp ?? ''),
+                                postalAddress: String(item.postalAddress ?? ''),
+                                email: String(item.email ?? ''),
+                                phone: String(item.phone ?? ''),
+                                contactPerson: String(item.contactPerson ?? ''),
+                              })
+                            }
+                          >
+                            Редактировать
                           </Button>
                         ) : null}
                         {active ? (
@@ -319,11 +392,31 @@ export function ReferenceDataView({
                             version,
                             name: title,
                             address,
-                            engineerIds: engineerIdsOf(item),
+                            active,
                           })
                         }
                       >
-                        Изменить
+                        Редактировать
+                      </Button>
+                    ) : null}
+                    {tab === 'organizations' ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() =>
+                          setOrgEditTarget({
+                            id,
+                            version,
+                            officialName: String(item.officialName ?? title),
+                            unp: String(item.unp ?? ''),
+                            postalAddress: String(item.postalAddress ?? ''),
+                            email: String(item.email ?? ''),
+                            phone: String(item.phone ?? ''),
+                            contactPerson: String(item.contactPerson ?? ''),
+                          })
+                        }
+                      >
+                        Редактировать
                       </Button>
                     ) : null}
                     {active ? (
@@ -366,13 +459,25 @@ export function ReferenceDataView({
         />
       ) : null}
       {editTarget ? (
-        <EditObjectDialog
+        <EditPropertyObjectDialog
+          csrfToken={csrfToken}
           target={editTarget}
-          engineerOptions={engineerOptions}
           onClose={() => setEditTarget(null)}
-          onSave={(body) => {
-            void mutate(`/api/reference-data/property-objects/${editTarget.id}`, 'PATCH', body);
+          onSaved={async () => {
             setEditTarget(null);
+            await queryClient.invalidateQueries({ queryKey: ['reference'] });
+          }}
+        />
+      ) : null}
+      {orgEditTarget ? (
+        <EditOrganizationDialog
+          csrfToken={csrfToken}
+          target={orgEditTarget}
+          onClose={() => setOrgEditTarget(null)}
+          onSaved={async () => {
+            setOrgEditTarget(null);
+            await queryClient.invalidateQueries({ queryKey: ['reference'] });
+            await queryClient.invalidateQueries({ queryKey: queryKeys.notifications.all });
           }}
         />
       ) : null}
@@ -446,14 +551,19 @@ function CreateReferenceDialog({
             } else if (tab === 'organizations') {
               onCreate({
                 officialName: form.get('officialName'),
-                postalAddress: form.get('postalAddress'),
-                email: form.get('email'),
-                phone: form.get('phone'),
-                contactPerson: form.get('contactPerson'),
+                unp: String(form.get('unp') ?? '').trim() || null,
+                postalAddress: String(form.get('postalAddress') ?? '').trim() || null,
+                email: String(form.get('email') ?? '').trim() || null,
+                phone: String(form.get('phone') ?? '').trim() || null,
+                contactPerson: String(form.get('contactPerson') ?? '').trim() || null,
                 roles: ['LIABLE_CONTRACTOR'],
               });
             } else {
-              onCreate({ code: form.get('code'), name: form.get('name') });
+              const code = String(form.get('code') ?? '').trim();
+              onCreate({
+                name: form.get('name'),
+                ...(code ? { code } : {}),
+              });
             }
           }}
         >
@@ -468,13 +578,13 @@ function CreateReferenceDialog({
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="ref-address">Адрес объекта</Label>
-                <Input id="ref-address" name="address" required />
+                <Input id="ref-address" name="address" />
               </div>
-              <MultiSelect
+              <DirectoryCombobox
                 label="Ответственные инженеры"
                 options={engineerOptions}
                 values={engineerIds}
-                onChange={setEngineerIds}
+                onValuesChange={setEngineerIds}
                 emptyText="Нет активных ответственных инженеров"
               />
             </>
@@ -486,20 +596,24 @@ function CreateReferenceDialog({
                 <Input id="org-name" name="officialName" required />
               </div>
               <div className="grid gap-1.5">
+                <Label htmlFor="org-unp">УНП</Label>
+                <Input id="org-unp" name="unp" />
+              </div>
+              <div className="grid gap-1.5">
                 <Label htmlFor="org-address">Адрес организации</Label>
-                <Input id="org-address" name="postalAddress" required />
+                <Input id="org-address" name="postalAddress" />
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="org-email">Почта организации</Label>
-                <Input id="org-email" name="email" type="email" required />
+                <Input id="org-email" name="email" type="email" />
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="org-phone">Телефон организации</Label>
-                <Input id="org-phone" name="phone" required />
+                <Input id="org-phone" name="phone" />
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="org-contact">Контактное лицо</Label>
-                <Input id="org-contact" name="contactPerson" required />
+                <Input id="org-contact" name="contactPerson" />
               </div>
             </>
           ) : null}
@@ -507,7 +621,7 @@ function CreateReferenceDialog({
             <>
               <div className="grid gap-1.5">
                 <Label htmlFor="ref-code">Код</Label>
-                <Input id="ref-code" name="code" required />
+                <Input id="ref-code" name="code" />
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="ref-item-name">Название</Label>
@@ -527,68 +641,137 @@ function CreateReferenceDialog({
   );
 }
 
-function EditObjectDialog({
+function EditOrganizationDialog({
+  csrfToken,
   target,
-  engineerOptions,
   onClose,
-  onSave,
+  onSaved,
 }: {
-  target: { id: string; version: number; name: string; address: string; engineerIds: string[] };
-  engineerOptions: Array<{ id: string; label: string }>;
+  csrfToken: string;
+  target: {
+    id: string;
+    version: number;
+    officialName: string;
+    unp: string;
+    postalAddress: string;
+    email: string;
+    phone: string;
+    contactPerson: string;
+  };
   onClose: () => void;
-  onSave: (body: unknown) => void;
+  onSaved: () => Promise<void> | void;
 }) {
-  const [name, setName] = useState(target.name);
-  const [address, setAddress] = useState(target.address);
-  const [engineerIds, setEngineerIds] = useState(target.engineerIds);
+  const [officialName, setOfficialName] = useState(target.officialName);
+  const [unp, setUnp] = useState(target.unp);
+  const [postalAddress, setPostalAddress] = useState(target.postalAddress);
+  const [email, setEmail] = useState(target.email);
+  const [phone, setPhone] = useState(target.phone);
+  const [contactPerson, setContactPerson] = useState(target.contactPerson);
+  const [pending, setPending] = useState(false);
+
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent>
+    <Dialog open onOpenChange={(open) => !open && !pending && onClose()}>
+      <DialogContent className="max-h-[min(100dvh,40rem)] overflow-y-auto">
         <form
           className="grid gap-3"
           onSubmit={(event) => {
             event.preventDefault();
-            onSave({
-              expectedVersion: target.version,
-              name,
-              address,
-              responsibleEngineerIds: engineerIds,
-            });
+            if (pending) {
+              return;
+            }
+            setPending(true);
+            void (async () => {
+              try {
+                await commandFetch(`/api/reference-data/organizations/${target.id}`, {
+                  method: 'PATCH',
+                  csrfToken,
+                  body: {
+                    expectedVersion: target.version,
+                    officialName,
+                    unp: unp.trim() || null,
+                    postalAddress: postalAddress.trim() || null,
+                    email: email.trim() || null,
+                    phone: phone.trim() || null,
+                    contactPerson: contactPerson.trim() || null,
+                  },
+                });
+                toast.success('Организация сохранена');
+                await onSaved();
+                onClose();
+              } catch (error) {
+                toast.error(error instanceof ApiError ? error.message : 'Не удалось сохранить');
+              } finally {
+                setPending(false);
+              }
+            })();
           }}
         >
           <DialogHeader>
-            <DialogTitle>Объект</DialogTitle>
+            <DialogTitle>Редактировать организацию</DialogTitle>
           </DialogHeader>
           <div className="grid gap-1.5">
-            <Label htmlFor="edit-object-name">Название объекта</Label>
+            <Label htmlFor="edit-org-name">Название организации</Label>
             <Input
-              id="edit-object-name"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
+              id="edit-org-name"
+              value={officialName}
+              onChange={(event) => setOfficialName(event.target.value)}
               required
+              className="min-h-11"
             />
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="edit-object-address">Адрес объекта</Label>
+            <Label htmlFor="edit-org-unp">УНП</Label>
             <Input
-              id="edit-object-address"
-              value={address}
-              onChange={(event) => setAddress(event.target.value)}
-              required
+              id="edit-org-unp"
+              value={unp}
+              onChange={(event) => setUnp(event.target.value)}
+              className="min-h-11"
             />
           </div>
-          <MultiSelect
-            label="Ответственные инженеры"
-            options={engineerOptions}
-            values={engineerIds}
-            onChange={setEngineerIds}
-            emptyText="Нет активных ответственных инженеров"
-          />
+          <div className="grid gap-1.5">
+            <Label htmlFor="edit-org-address">Адрес</Label>
+            <Input
+              id="edit-org-address"
+              value={postalAddress}
+              onChange={(event) => setPostalAddress(event.target.value)}
+              className="min-h-11"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="edit-org-email">Электронная почта</Label>
+            <Input
+              id="edit-org-email"
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              className="min-h-11"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="edit-org-phone">Телефон</Label>
+            <Input
+              id="edit-org-phone"
+              value={phone}
+              onChange={(event) => setPhone(event.target.value)}
+              className="min-h-11"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="edit-org-contact">Контактное лицо</Label>
+            <Input
+              id="edit-org-contact"
+              value={contactPerson}
+              onChange={(event) => setContactPerson(event.target.value)}
+              className="min-h-11"
+            />
+          </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={onClose} disabled={pending}>
               Отмена
             </Button>
-            <Button type="submit">Сохранить</Button>
+            <Button type="submit" disabled={pending || !officialName.trim()}>
+              {pending ? 'Сохранение…' : 'Сохранить'}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -605,14 +788,4 @@ function engineerNames(item: Record<string, unknown>): string {
     .map((row) => (row && typeof row === 'object' && 'fullName' in row ? String(row.fullName) : ''))
     .filter(Boolean);
   return names.length > 0 ? names.join(', ') : '—';
-}
-
-function engineerIdsOf(item: Record<string, unknown>): string[] {
-  const rows = item.responsibleEngineers;
-  if (!Array.isArray(rows)) {
-    return [];
-  }
-  return rows
-    .map((row) => (row && typeof row === 'object' && 'id' in row ? String(row.id) : ''))
-    .filter(Boolean);
 }

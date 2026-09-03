@@ -52,6 +52,8 @@ export async function writeDomainOutbox(
     cycle?: number;
     deadline?: string | null;
     threshold?: number | null;
+    organizationId?: string | null;
+    missingFields?: string[];
   },
 ): Promise<string> {
   return writer.create(tx, {
@@ -70,6 +72,8 @@ export async function writeDomainOutbox(
       cycle: input.cycle ?? null,
       deadline: input.deadline ?? null,
       threshold: input.threshold ?? null,
+      organizationId: input.organizationId ?? null,
+      missingFields: input.missingFields ?? null,
     },
   });
 }

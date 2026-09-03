@@ -58,6 +58,8 @@ type OutboxPayload = {
   deadline?: string | null;
   body: string;
   extraRecipientIds?: string[];
+  organizationId?: string | null;
+  missingFields?: string[] | null;
 };
 
 export type WorkerDbRunner = <T>(callback: () => Promise<T>) => Promise<T>;
@@ -319,6 +321,8 @@ export class NotificationDispatcher {
             kind: payload.kind ?? null,
             cycle: payload.cycle ?? null,
             threshold: payload.threshold ?? null,
+            organizationId: payload.organizationId ?? null,
+            missingFields: payload.missingFields ?? null,
           },
           occurredAt: new Date(),
         },
@@ -336,16 +340,19 @@ export class NotificationDispatcher {
             userId,
           },
         });
-        const delivery = await this.prisma.emailDelivery.upsert({
-          where: { notificationRecipientId: recipient.id },
-          update: {},
-          create: {
-            id: randomUUID(),
-            notificationRecipientId: recipient.id,
-            updatedAt: new Date(),
-          },
-        });
-        if (delivery.status === 'QUEUED' || delivery.status === 'FAILED') {
+        const skipEmail = payload.type === 'ORGANIZATION_DETAILS_INCOMPLETE';
+        const delivery = skipEmail
+          ? null
+          : await this.prisma.emailDelivery.upsert({
+              where: { notificationRecipientId: recipient.id },
+              update: {},
+              create: {
+                id: randomUUID(),
+                notificationRecipientId: recipient.id,
+                updatedAt: new Date(),
+              },
+            });
+        if (delivery && (delivery.status === 'QUEUED' || delivery.status === 'FAILED')) {
           deliveryIds.push(delivery.id);
         }
       }

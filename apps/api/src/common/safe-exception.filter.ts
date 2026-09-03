@@ -9,6 +9,7 @@ import {
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import {
   DomainError,
+  DuplicateDirectoryRecordError,
   CONFLICT_ERROR_CODES,
   VALIDATION_ERROR_CODES,
   ValidationError,
@@ -21,6 +22,7 @@ interface ErrorBody {
   message: string;
   requestId?: string;
   field?: string;
+  existing?: { id: string; label: string };
 }
 
 @Catch()
@@ -79,6 +81,9 @@ export class SafeExceptionFilter implements ExceptionFilter {
         message: exception.message,
         requestId,
         ...(exception instanceof ValidationError ? { field: exception.field } : {}),
+        ...(exception instanceof DuplicateDirectoryRecordError
+          ? { existing: exception.existing }
+          : {}),
       };
     }
 

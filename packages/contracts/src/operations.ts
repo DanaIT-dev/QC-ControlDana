@@ -70,7 +70,7 @@ export const propertyObjectWriteSchema = z
   .object({
     expectedVersion: expectedVersionSchema.optional(),
     name: z.string(),
-    address: z.string(),
+    address: z.union([z.string(), z.null()]).optional(),
     commissionedAt: z.union([calendarDate, z.null()]).optional(),
     warrantyEndsAt: z.union([calendarDate, z.null()]).optional(),
     responsibleEngineerIds: z.array(uuid).optional(),
@@ -82,10 +82,10 @@ export const organizationWriteSchema = z
     expectedVersion: expectedVersionSchema.optional(),
     officialName: z.string(),
     unp: z.union([z.string(), z.null()]).optional(),
-    postalAddress: z.string(),
-    email: z.string(),
-    phone: z.string(),
-    contactPerson: z.string(),
+    postalAddress: z.union([z.string(), z.null()]).optional(),
+    email: z.union([z.string(), z.null()]).optional(),
+    phone: z.union([z.string(), z.null()]).optional(),
+    contactPerson: z.union([z.string(), z.null()]).optional(),
     roles: z.array(z.enum(ORGANIZATION_ROLES)).optional(),
   })
   .strict();
@@ -93,7 +93,7 @@ export const organizationWriteSchema = z
 export const codedReferenceWriteSchema = z
   .object({
     expectedVersion: expectedVersionSchema.optional(),
-    code: z.string(),
+    code: z.string().optional(),
     name: z.string(),
     sortOrder: z.number().int().optional(),
   })

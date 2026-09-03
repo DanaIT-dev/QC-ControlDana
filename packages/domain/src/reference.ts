@@ -16,6 +16,13 @@ export function normalizeReferenceCode(value: unknown): string {
   return code.toUpperCase();
 }
 
+export function normalizeOptionalReferenceCode(value: unknown): string | null {
+  if (value === undefined || value === null || value === '') {
+    return null;
+  }
+  return normalizeReferenceCode(value);
+}
+
 export function assertCaseInsensitiveUnique(
   candidate: string,
   existing: readonly string[],

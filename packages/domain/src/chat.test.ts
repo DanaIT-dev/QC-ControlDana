@@ -70,6 +70,14 @@ describe('act chat domain', () => {
         defectItemId: null,
       }),
     ).toBe('/acts/55555555-5555-4555-8555-555555555555?tab=discussion');
+    expect(
+      notificationDestination({
+        type: 'ORGANIZATION_DETAILS_INCOMPLETE',
+        actId: null,
+        defectItemId: null,
+        organizationId: '66666666-6666-4666-8666-666666666666',
+      }),
+    ).toBe('/reference-data?tab=organizations&id=66666666-6666-4666-8666-666666666666');
     expect(chatMessageSnippet('  один   два  '.padEnd(300, 'x')).endsWith('…')).toBe(true);
   });
 });

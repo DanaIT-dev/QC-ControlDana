@@ -519,10 +519,10 @@ describe('mobile cards and date-only value', () => {
       'utf8',
     );
     const editor = source.slice(source.indexOf('function ProposalEditor'));
-    expect(editor).toContain('aria-label="Организация"');
+    expect(editor).toContain('label="Организация"');
     expect(editor).toContain('alternativeContractorOrganizationId: organizationId');
     expect(editor).toContain('currentProposal?.contractorName');
-    expect(editor).toContain('<SelectTrigger');
+    expect(editor).toContain('DirectoryCombobox');
     expect(editor).not.toMatch(/<select[\s>]/);
   });
 

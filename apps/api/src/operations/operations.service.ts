@@ -34,6 +34,9 @@ import {
   canViewAssignedHistory,
   canViewFullHistory,
   canViewHistory,
+  canCreatePropertyObject,
+  canManageReferenceData,
+  canManageUsers,
   completeDefectItem,
   computeActStatus,
   createDefectItem,
@@ -103,6 +106,7 @@ export class OperationsService {
             id: true,
             name: true,
             address: true,
+            active: true,
             engineers: {
               where: { unassignedAt: null },
               select: { userId: true },
@@ -149,7 +153,7 @@ export class OperationsService {
             role: ASSIGNABLE_ENGINEER_ROLE,
             ...(includeInactive ? {} : { status: 'ACTIVE' }),
           },
-          select: { id: true, fullName: true, email: true },
+          select: { id: true, fullName: true },
           orderBy: { fullName: 'asc' },
         }),
       ]);
@@ -161,6 +165,7 @@ export class OperationsService {
         id: object.id,
         name: object.name,
         address: object.address ?? '',
+        active: object.active,
         responsibleEngineerIds: object.engineers.map((row) => row.userId),
       })),
       customers,
@@ -173,6 +178,13 @@ export class OperationsService {
         : engineers,
       canViewLookups: true,
       actorRole: user.role,
+      canCreate: {
+        propertyObject: canCreatePropertyObject(user.role),
+        organization: canManageReferenceData(user.role),
+        workType: canManageReferenceData(user.role),
+        defectType: canManageReferenceData(user.role),
+        responsibleEngineer: canManageUsers(user.role),
+      },
     };
   }
 

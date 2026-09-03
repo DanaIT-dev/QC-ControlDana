@@ -45,8 +45,13 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { ApiError, commandFetch } from '../../../lib/command-api';
+import { engineersForObject, type OperationLookups } from '../../../lib/lookups';
 import { historyKey, queryKeys } from '../../../lib/query-keys';
-import { MultiSelect } from '@/components/multi-select';
+import { DirectoryCombobox } from '@/components/directory-combobox';
+import {
+  DirectoryCreateDialogs,
+  type DirectoryQuickCreateRequest,
+} from '@/components/directory-create-dialogs';
 
 export function ActOperations({
   act,
@@ -120,6 +125,7 @@ export function ActOperations({
         {hasCapability(user.role, 'ADD_DEFECT') ? (
           <AddDefectButton
             act={act}
+            csrfToken={user.csrfToken}
             onSave={(body) => run(`/api/acts/${act.id}/defects`, 'POST', body)}
           />
         ) : null}
@@ -138,6 +144,7 @@ export function ActOperations({
         <AssignmentEditor
           act={act}
           item={item}
+          csrfToken={user.csrfToken}
           onSave={(body) => run(`/api/defects/${item.id}/assignments`, 'PUT', body)}
         />
       ) : null}
@@ -171,6 +178,7 @@ export function ActOperations({
       {hasCapability(user.role, 'MANAGE_PROPOSALS') ? (
         <ProposalEditor
           item={item}
+          csrfToken={user.csrfToken}
           canViewBC={canViewProposalGroupBC(user.role)}
           onSave={(slot, body) => run(`/api/defects/${item.id}/proposals/${slot}`, 'PUT', body)}
         />
@@ -188,36 +196,9 @@ function useOperationLookups() {
       if (!response.ok) {
         throw new Error('lookups');
       }
-      return (await response.json()) as {
-        propertyObjects: Array<{ id: string; responsibleEngineerIds: string[] }>;
-        defectTypes: Array<{ id: string; name: string }>;
-        workTypes: Array<{ id: string; name: string }>;
-        responsibleEngineers: Array<{ id: string; fullName: string; email?: string }>;
-        liableOrganizations: Array<{ id: string; officialName: string }>;
-        alternativeContractors: Array<{ id: string; officialName: string }>;
-      };
+      return (await response.json()) as OperationLookups;
     },
   });
-}
-
-function objectEngineerOptions(
-  lookups:
-    | {
-        propertyObjects: Array<{ id: string; responsibleEngineerIds: string[] }>;
-        responsibleEngineers: Array<{ id: string; fullName: string; email?: string }>;
-      }
-    | undefined,
-  objectId: string,
-) {
-  const allowed = new Set(
-    lookups?.propertyObjects.find((object) => object.id === objectId)?.responsibleEngineerIds ?? [],
-  );
-  return (lookups?.responsibleEngineers ?? [])
-    .filter((engineer) => allowed.has(engineer.id))
-    .map((engineer) => ({
-      id: engineer.id,
-      label: engineer.email ? `${engineer.fullName} · ${engineer.email}` : engineer.fullName,
-    }));
 }
 
 function HeaderEditor({
@@ -283,16 +264,30 @@ function HeaderEditor({
 
 function AddDefectButton({
   act,
+  csrfToken,
   onSave,
 }: {
   act: ActDetailResponse;
+  csrfToken: string;
   onSave: (body: unknown) => void;
 }) {
   const lookups = useOperationLookups();
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [engineerIds, setEngineerIds] = useState<string[]>([]);
+  const [liableIds, setLiableIds] = useState<string[]>([]);
+  const [defectTypeId, setDefectTypeId] = useState('');
+  const [workTypeId, setWorkTypeId] = useState('');
+  const [quickCreate, setQuickCreate] = useState<DirectoryQuickCreateRequest | null>(null);
+  const engineerOptions = engineersForObject(lookups.data, act.objectId);
   const firstType = lookups.data?.defectTypes[0]?.id ?? '';
-  const engineerOptions = objectEngineerOptions(lookups.data, act.objectId);
+
+  function patchLookups(updater: (current: OperationLookups) => OperationLookups) {
+    queryClient.setQueryData(queryKeys.lookups, (current: OperationLookups | undefined) =>
+      current ? updater(current) : current,
+    );
+  }
+
   return (
     <>
       <Button type="button" variant="outline" onClick={() => setOpen(true)}>
@@ -304,6 +299,9 @@ function AddDefectButton({
           setOpen(next);
           if (next) {
             setEngineerIds(engineerOptions[0] ? [engineerOptions[0].id] : []);
+            setLiableIds([]);
+            setDefectTypeId(lookups.data?.defectTypes[0]?.id ?? '');
+            setWorkTypeId('');
           }
         }}
       >
@@ -319,11 +317,11 @@ function AddDefectButton({
               onSave({
                 expectedActVersion: act.version,
                 location: form.get('location'),
-                defectTypeId: form.get('defectTypeId') || firstType,
-                workTypeId: form.get('workTypeId') || undefined,
+                defectTypeId: defectTypeId || firstType,
+                workTypeId: workTypeId || undefined,
                 claimDetails: form.get('claimDetails'),
                 responsibleEngineerIds: engineerIds,
-                liableOrganizationIds: [],
+                liableOrganizationIds: liableIds,
               });
               setOpen(false);
             }}
@@ -336,47 +334,60 @@ function AddDefectButton({
               <Label htmlFor="new-claim">Описание</Label>
               <Textarea id="new-claim" name="claimDetails" required />
             </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="new-type">Вид дефекта</Label>
-              {(lookups.data?.defectTypes ?? []).length === 0 ? (
-                <p className="text-sm text-error-foreground">Виды дефектов не загружены</p>
-              ) : (
-                <select
-                  id="new-type"
-                  name="defectTypeId"
-                  className="h-11 rounded-lg border border-input bg-white px-3 text-sm"
-                  defaultValue={firstType}
-                >
-                  {(lookups.data?.defectTypes ?? []).map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="new-work-type">Вид работ</Label>
-              <select
-                id="new-work-type"
-                name="workTypeId"
-                className="h-11 rounded-lg border border-input bg-white px-3 text-sm"
-                defaultValue=""
-              >
-                <option value="">Не указан</option>
-                {(lookups.data?.workTypes ?? []).map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <MultiSelect
+            <DirectoryCombobox
+              label="Вид дефекта"
+              options={(lookups.data?.defectTypes ?? []).map((item) => ({
+                id: item.id,
+                label: item.name,
+              }))}
+              value={defectTypeId}
+              onChange={setDefectTypeId}
+              emptyText="Виды дефектов не загружены"
+              addLabel={lookups.data?.canCreate?.defectType ? 'Добавить вид дефекта' : undefined}
+              onAdd={
+                lookups.data?.canCreate?.defectType
+                  ? (query) => setQuickCreate({ kind: 'defect-types', query })
+                  : undefined
+              }
+            />
+            <DirectoryCombobox
+              label="Вид работ"
+              options={(lookups.data?.workTypes ?? []).map((item) => ({
+                id: item.id,
+                label: item.name,
+              }))}
+              value={workTypeId || 'none'}
+              onChange={setWorkTypeId}
+              noneOption={{ id: 'none', label: 'Не указан' }}
+              addLabel={lookups.data?.canCreate?.workType ? 'Добавить вид работ' : undefined}
+              onAdd={
+                lookups.data?.canCreate?.workType
+                  ? (query) => setQuickCreate({ kind: 'work-types', query })
+                  : undefined
+              }
+            />
+            <DirectoryCombobox
               label="Ответственные инженеры"
               options={engineerOptions}
               values={engineerIds}
-              onChange={setEngineerIds}
+              onValuesChange={setEngineerIds}
               emptyText="Нет инженеров на объекте"
+            />
+            <DirectoryCombobox
+              label="Виновные организации"
+              options={(lookups.data?.liableOrganizations ?? []).map((org) => ({
+                id: org.id,
+                label: org.officialName,
+              }))}
+              values={liableIds}
+              onValuesChange={setLiableIds}
+              addLabel={lookups.data?.canCreate?.organization ? 'Добавить организацию' : undefined}
+              onAdd={
+                lookups.data?.canCreate?.organization
+                  ? (query) =>
+                      setQuickCreate({ kind: 'organizations', query, role: 'LIABLE_CONTRACTOR' })
+                  : undefined
+              }
             />
             <DialogFooter>
               <Button type="submit">Добавить</Button>
@@ -384,6 +395,42 @@ function AddDefectButton({
           </form>
         </DialogContent>
       </Dialog>
+      <DirectoryCreateDialogs
+        csrfToken={csrfToken}
+        request={quickCreate}
+        onClose={() => setQuickCreate(null)}
+        onCreated={(kind, created) => {
+          if (kind === 'defect-types') {
+            patchLookups((current) => ({
+              ...current,
+              defectTypes: current.defectTypes.some((item) => item.id === created.id)
+                ? current.defectTypes
+                : [...current.defectTypes, { id: created.id, name: created.label }],
+            }));
+            setDefectTypeId(created.id);
+          } else if (kind === 'work-types') {
+            patchLookups((current) => ({
+              ...current,
+              workTypes: current.workTypes.some((item) => item.id === created.id)
+                ? current.workTypes
+                : [...current.workTypes, { id: created.id, name: created.label }],
+            }));
+            setWorkTypeId(created.id);
+          } else if (kind === 'organizations') {
+            patchLookups((current) => ({
+              ...current,
+              liableOrganizations: current.liableOrganizations.some(
+                (item) => item.id === created.id,
+              )
+                ? current.liableOrganizations
+                : [...current.liableOrganizations, { id: created.id, officialName: created.label }],
+            }));
+            setLiableIds((current) =>
+              current.includes(created.id) ? current : [...current, created.id],
+            );
+          }
+        }}
+      />
     </>
   );
 }
@@ -391,18 +438,22 @@ function AddDefectButton({
 function AssignmentEditor({
   act,
   item,
+  csrfToken,
   onSave,
 }: {
   act: ActDetailResponse;
   item: ActDetailDefectItem;
+  csrfToken: string;
   onSave: (body: unknown) => void;
 }) {
   const lookups = useOperationLookups();
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [engineerIds, setEngineerIds] = useState(
     item.responsibleEngineers.map((entry) => entry.id),
   );
   const [liableIds, setLiableIds] = useState(item.liableOrganizations.map((entry) => entry.id));
+  const [quickCreate, setQuickCreate] = useState<DirectoryQuickCreateRequest | null>(null);
   return (
     <>
       <Button
@@ -434,21 +485,28 @@ function AssignmentEditor({
               setOpen(false);
             }}
           >
-            <MultiSelect
+            <DirectoryCombobox
               label="Ответственные инженеры"
-              options={objectEngineerOptions(lookups.data, act.objectId)}
+              options={engineersForObject(lookups.data, act.objectId)}
               values={engineerIds}
-              onChange={setEngineerIds}
+              onValuesChange={setEngineerIds}
               emptyText="Нет инженеров на объекте"
             />
-            <MultiSelect
+            <DirectoryCombobox
               label="Виновные организации"
               options={(lookups.data?.liableOrganizations ?? []).map((org) => ({
                 id: org.id,
                 label: org.officialName,
               }))}
               values={liableIds}
-              onChange={setLiableIds}
+              onValuesChange={setLiableIds}
+              addLabel={lookups.data?.canCreate?.organization ? 'Добавить организацию' : undefined}
+              onAdd={
+                lookups.data?.canCreate?.organization
+                  ? (query) =>
+                      setQuickCreate({ kind: 'organizations', query, role: 'LIABLE_CONTRACTOR' })
+                  : undefined
+              }
             />
             <DialogFooter>
               <Button type="submit">Сохранить</Button>
@@ -456,6 +514,34 @@ function AssignmentEditor({
           </form>
         </DialogContent>
       </Dialog>
+      <DirectoryCreateDialogs
+        csrfToken={csrfToken}
+        request={quickCreate}
+        onClose={() => setQuickCreate(null)}
+        onCreated={(kind, created) => {
+          if (kind !== 'organizations') {
+            return;
+          }
+          queryClient.setQueryData(queryKeys.lookups, (current: OperationLookups | undefined) =>
+            current
+              ? {
+                  ...current,
+                  liableOrganizations: current.liableOrganizations.some(
+                    (item) => item.id === created.id,
+                  )
+                    ? current.liableOrganizations
+                    : [
+                        ...current.liableOrganizations,
+                        { id: created.id, officialName: created.label },
+                      ],
+                }
+              : current,
+          );
+          setLiableIds((current) =>
+            current.includes(created.id) ? current : [...current, created.id],
+          );
+        }}
+      />
     </>
   );
 }
@@ -551,27 +637,23 @@ function proposalForSlot(item: ActDetailDefectItem, slot: 'A' | 'B' | 'C') {
 
 function ProposalEditor({
   item,
+  csrfToken,
   canViewBC,
   onSave,
 }: {
   item: ActDetailDefectItem;
+  csrfToken: string;
   canViewBC: boolean;
   onSave: (slot: 'A' | 'B' | 'C', body: unknown) => void;
 }) {
-  const lookups = useQuery({
-    queryKey: queryKeys.lookups,
-    queryFn: async () => {
-      const response = await fetch('/api/operations/lookups', { credentials: 'include' });
-      return (await response.json()) as {
-        alternativeContractors: Array<{ id: string; officialName: string }>;
-      };
-    },
-  });
+  const lookups = useOperationLookups();
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [slot, setSlot] = useState<'A' | 'B' | 'C'>('A');
   const [amount, setAmount] = useState(item.proposalA?.amount ?? '0.00');
   const [organizationId, setOrganizationId] = useState(item.proposalA?.organizationId ?? '');
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [quickCreate, setQuickCreate] = useState<DirectoryQuickCreateRequest | null>(null);
   const slots: Array<'A' | 'B' | 'C'> = canViewBC ? ['A', 'B', 'C'] : ['A'];
   const contractors = lookups.data?.alternativeContractors ?? [];
   const currentProposal = proposalForSlot(item, slot);
@@ -671,41 +753,33 @@ function ProposalEditor({
                 required
               />
             </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="proposal-organization">Организация</Label>
-              <Select
-                value={organizationId || undefined}
-                onValueChange={(value) => {
-                  setOrganizationId(value);
-                  setValidationError(null);
-                }}
-                disabled={lookups.isLoading || organizationOptions.length === 0}
-              >
-                <SelectTrigger
-                  id="proposal-organization"
-                  aria-label="Организация"
-                  aria-invalid={Boolean(validationError)}
-                  aria-busy={lookups.isLoading}
-                >
-                  <SelectValue
-                    placeholder={lookups.isLoading ? 'Загрузка…' : 'Выберите организацию'}
-                  />
-                </SelectTrigger>
-                <SelectContent
-                  position="popper"
-                  className="max-h-[min(16rem,var(--radix-select-content-available-height))]"
-                >
-                  {organizationOptions.map((org) => (
-                    <SelectItem key={org.id} value={org.id}>
-                      {org.officialName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {validationError ? (
-                <p className="text-sm text-destructive">{validationError}</p>
-              ) : null}
-            </div>
+            <DirectoryCombobox
+              label="Организация"
+              placeholder={lookups.isLoading ? 'Загрузка…' : 'Выберите организацию'}
+              options={organizationOptions.map((org) => ({
+                id: org.id,
+                label: org.officialName,
+              }))}
+              value={organizationId}
+              onChange={(next) => {
+                setOrganizationId(next);
+                setValidationError(null);
+              }}
+              loading={lookups.isLoading}
+              disabled={lookups.isLoading}
+              addLabel={lookups.data?.canCreate?.organization ? 'Добавить организацию' : undefined}
+              onAdd={
+                lookups.data?.canCreate?.organization
+                  ? (query) =>
+                      setQuickCreate({
+                        kind: 'organizations',
+                        query,
+                        role: 'ALTERNATIVE_CONTRACTOR',
+                      })
+                  : undefined
+              }
+            />
+            {validationError ? <p className="text-sm text-destructive">{validationError}</p> : null}
             <DialogFooter>
               <Button type="submit" disabled={lookups.isLoading}>
                 Сохранить
@@ -714,6 +788,31 @@ function ProposalEditor({
           </form>
         </DialogContent>
       </Dialog>
+      <DirectoryCreateDialogs
+        csrfToken={csrfToken}
+        request={quickCreate}
+        onClose={() => setQuickCreate(null)}
+        onCreated={(kind, created) => {
+          if (kind !== 'organizations') {
+            return;
+          }
+          queryClient.setQueryData(queryKeys.lookups, (current: OperationLookups | undefined) =>
+            current
+              ? {
+                  ...current,
+                  alternativeContractors: [
+                    ...(current.alternativeContractors ?? []).filter(
+                      (item) => item.id !== created.id,
+                    ),
+                    { id: created.id, officialName: created.label },
+                  ],
+                }
+              : current,
+          );
+          setOrganizationId(created.id);
+          setValidationError(null);
+        }}
+      />
     </>
   );
 }

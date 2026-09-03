@@ -3,6 +3,8 @@ import { requireBusinessUser } from '../../lib/server-auth';
 import { AppShell } from '../app-shell';
 import { ForbiddenState } from '@/components/forbidden-state';
 import { ReferenceDataView } from './reference-data-view';
+import { Suspense } from 'react';
+import { TableSkeleton } from '@/components/states';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,11 +19,13 @@ export default async function ReferenceDataPage() {
   }
   return (
     <AppShell user={user}>
-      <ReferenceDataView
-        csrfToken={user.csrfToken}
-        canMutate={canManageReferenceData(user.role)}
-        role={user.role}
-      />
+      <Suspense fallback={<TableSkeleton />}>
+        <ReferenceDataView
+          csrfToken={user.csrfToken}
+          canMutate={canManageReferenceData(user.role)}
+          role={user.role}
+        />
+      </Suspense>
     </AppShell>
   );
 }

@@ -32,6 +32,7 @@ export interface NotificationListItem {
   readAt: string | null;
   actId: string | null;
   defectItemId: string | null;
+  organizationId: string | null;
 }
 
 export interface NotificationListResponse {

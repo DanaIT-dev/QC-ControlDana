@@ -139,7 +139,11 @@ export function notificationDestination(item: {
   type: string;
   actId: string | null;
   defectItemId: string | null;
+  organizationId?: string | null;
 }): string | null {
+  if (item.type === 'ORGANIZATION_DETAILS_INCOMPLETE' && item.organizationId) {
+    return `/reference-data?tab=organizations&id=${item.organizationId}`;
+  }
   if (!item.actId) {
     return null;
   }

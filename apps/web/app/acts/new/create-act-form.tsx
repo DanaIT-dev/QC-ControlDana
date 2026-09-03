@@ -1,10 +1,15 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useId, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { MultiSelect } from '@/components/multi-select';
+import { DirectoryCombobox } from '@/components/directory-combobox';
+import {
+  DirectoryCreateDialogs,
+  type DirectoryKind,
+  type DirectoryQuickCreateRequest,
+} from '@/components/directory-create-dialogs';
 import { LinkedObjectFields } from '@/components/linked-object-fields';
 import { PageHeader } from '@/components/page-header';
 import { ErrorState } from '@/components/states';
@@ -22,31 +27,8 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { ApiError, commandFetch } from '../../../lib/command-api';
+import { engineersForObject, type OperationLookups } from '../../../lib/lookups';
 import { queryKeys } from '../../../lib/query-keys';
-
-interface Lookups {
-  propertyObjects: Array<{
-    id: string;
-    name: string;
-    address: string;
-    responsibleEngineerIds: string[];
-  }>;
-  customers: Array<{ id: string; officialName: string }>;
-  defectTypes: Array<{ id: string; name: string }>;
-  workTypes: Array<{ id: string; name: string }>;
-  responsibleEngineers: Array<{ id: string; fullName: string; email?: string }>;
-  liableOrganizations: Array<{ id: string; officialName: string }>;
-}
-
-function engineersForObject(lookups: Lookups | undefined, objectId: string) {
-  if (!lookups || !objectId) {
-    return [];
-  }
-  const allowed = new Set(
-    lookups.propertyObjects.find((object) => object.id === objectId)?.responsibleEngineerIds ?? [],
-  );
-  return lookups.responsibleEngineers.filter((engineer) => allowed.has(engineer.id));
-}
 
 export interface DraftDefect {
   key: string;
@@ -82,6 +64,7 @@ export function createDraftDefect(key: string): DraftDefect {
 
 export function CreateActForm({ csrfToken }: { csrfToken: string }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const lookups = useQuery({
     queryKey: queryKeys.lookups,
     queryFn: async () => {
@@ -89,7 +72,7 @@ export function CreateActForm({ csrfToken }: { csrfToken: string }) {
       if (!response.ok) {
         throw new Error('lookups');
       }
-      return (await response.json()) as Lookups;
+      return (await response.json()) as OperationLookups;
     },
   });
   const [formCode, setFormCode] = useState<'S1' | 'S23'>('S1');
@@ -102,11 +85,99 @@ export function CreateActForm({ csrfToken }: { csrfToken: string }) {
   ]);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [quickCreate, setQuickCreate] = useState<DirectoryQuickCreateRequest | null>(null);
+  const quickCreateTarget = useRef<{ defectIndex?: number; field?: string } | null>(null);
   const idempotencyKeyRef = useRef<string | null>(null);
 
   function readIdempotencyKey() {
     idempotencyKeyRef.current ??= crypto.randomUUID();
     return idempotencyKeyRef.current;
+  }
+
+  function patchLookups(updater: (current: OperationLookups) => OperationLookups) {
+    queryClient.setQueryData(queryKeys.lookups, (current: OperationLookups | undefined) =>
+      current ? updater(current) : current,
+    );
+  }
+
+  function onDirectoryCreated(
+    kind: DirectoryKind,
+    created: { id: string; label: string; address?: string | null },
+  ) {
+    const target = quickCreateTarget.current;
+    if (kind === 'property-objects') {
+      patchLookups((current) => ({
+        ...current,
+        propertyObjects: current.propertyObjects.some((item) => item.id === created.id)
+          ? current.propertyObjects
+          : [
+              ...current.propertyObjects,
+              {
+                id: created.id,
+                name: created.label,
+                address: created.address ?? '',
+                active: true,
+                responsibleEngineerIds: [],
+              },
+            ],
+      }));
+      setObjectId(created.id);
+      return;
+    }
+    if (kind === 'organizations' && target?.field === 'customer') {
+      patchLookups((current) => ({
+        ...current,
+        customers: current.customers.some((item) => item.id === created.id)
+          ? current.customers
+          : [...current.customers, { id: created.id, officialName: created.label }],
+      }));
+      setCustomerOrganizationId(created.id);
+      return;
+    }
+    if (target?.defectIndex == null) {
+      return;
+    }
+    const index = target.defectIndex;
+    if (kind === 'defect-types') {
+      patchLookups((current) => ({
+        ...current,
+        defectTypes: current.defectTypes.some((item) => item.id === created.id)
+          ? current.defectTypes
+          : [...current.defectTypes, { id: created.id, name: created.label }],
+      }));
+      updateDefect(index, { defectTypeId: created.id });
+      return;
+    }
+    if (kind === 'work-types') {
+      patchLookups((current) => ({
+        ...current,
+        workTypes: current.workTypes.some((item) => item.id === created.id)
+          ? current.workTypes
+          : [...current.workTypes, { id: created.id, name: created.label }],
+      }));
+      updateDefect(index, { workTypeId: created.id });
+      return;
+    }
+    if (kind === 'organizations' && target.field === 'liable') {
+      patchLookups((current) => ({
+        ...current,
+        liableOrganizations: current.liableOrganizations.some((item) => item.id === created.id)
+          ? current.liableOrganizations
+          : [...current.liableOrganizations, { id: created.id, officialName: created.label }],
+      }));
+      setDefects((current) =>
+        current.map((item, itemIndex) =>
+          itemIndex === index
+            ? {
+                ...item,
+                liableOrganizationIds: item.liableOrganizationIds.includes(created.id)
+                  ? item.liableOrganizationIds
+                  : [...item.liableOrganizationIds, created.id],
+              }
+            : item,
+        ),
+      );
+    }
   }
 
   async function onCreate() {
@@ -187,6 +258,11 @@ export function CreateActForm({ csrfToken }: { csrfToken: string }) {
           <LinkedObjectFields
             objects={data?.propertyObjects ?? []}
             objectId={objectId}
+            canCreate={data?.canCreate?.propertyObject}
+            onAdd={({ query, field }) => {
+              quickCreateTarget.current = { field: 'object' };
+              setQuickCreate({ kind: 'property-objects', query, field });
+            }}
             onObjectIdChange={(next) => {
               setObjectId(next);
               const allowed = new Set(
@@ -204,22 +280,31 @@ export function CreateActForm({ csrfToken }: { csrfToken: string }) {
             }}
           />
           <div className="grid gap-1.5">
-            <Label htmlFor="customer">Заказчик</Label>
-            {lookups.isSuccess && (data?.customers ?? []).length === 0 ? (
+            {lookups.isSuccess &&
+            (data?.customers ?? []).length === 0 &&
+            !data?.canCreate?.organization ? (
               <p className="text-sm text-muted-foreground">Организации-заказчики не загружены</p>
             ) : (
-              <Select value={customerOrganizationId} onValueChange={setCustomerOrganizationId}>
-                <SelectTrigger id="customer" aria-label="Заказчик">
-                  <SelectValue placeholder="Выберите заказчика" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(data?.customers ?? []).map((item) => (
-                    <SelectItem key={item.id} value={item.id}>
-                      {item.officialName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <DirectoryCombobox
+                label="Заказчик"
+                placeholder="Выберите заказчика"
+                options={(data?.customers ?? []).map((item) => ({
+                  id: item.id,
+                  label: item.officialName,
+                }))}
+                value={customerOrganizationId}
+                onChange={setCustomerOrganizationId}
+                emptyText="Организации-заказчики не загружены"
+                addLabel={data?.canCreate?.organization ? 'Добавить организацию' : undefined}
+                onAdd={
+                  data?.canCreate?.organization
+                    ? (query) => {
+                        quickCreateTarget.current = { field: 'customer' };
+                        setQuickCreate({ kind: 'organizations', query, role: 'CUSTOMER' });
+                      }
+                    : undefined
+                }
+              />
             )}
           </div>
           <div className="grid gap-1.5">
@@ -254,6 +339,13 @@ export function CreateActForm({ csrfToken }: { csrfToken: string }) {
             setDefects((current) => current.filter((_, itemIndex) => itemIndex !== index))
           }
           onChange={(patch) => updateDefect(index, patch)}
+          onQuickCreate={(next) => {
+            quickCreateTarget.current = {
+              defectIndex: index,
+              field: next.kind === 'organizations' ? 'liable' : next.kind,
+            };
+            setQuickCreate(next);
+          }}
         />
       ))}
       {error ? <ErrorState description={error} /> : null}
@@ -274,6 +366,12 @@ export function CreateActForm({ csrfToken }: { csrfToken: string }) {
           {pending ? 'Создание…' : 'Создать акт'}
         </Button>
       </div>
+      <DirectoryCreateDialogs
+        csrfToken={csrfToken}
+        request={quickCreate}
+        onClose={() => setQuickCreate(null)}
+        onCreated={onDirectoryCreated}
+      />
     </div>
   );
 }
@@ -287,21 +385,24 @@ function DraftDefectCard({
   canRemove,
   onRemove,
   onChange,
+  onQuickCreate,
 }: {
   item: DraftDefect;
   index: number;
-  lookups: Lookups | undefined;
+  lookups: OperationLookups | undefined;
   lookupsFailed: boolean;
   objectId: string;
   canRemove: boolean;
   onRemove: () => void;
   onChange: (patch: Partial<DraftDefect>) => void;
+  onQuickCreate: (next: DirectoryQuickCreateRequest) => void;
 }) {
   const fieldId = useId();
   const locationId = `${fieldId}-location`;
-  const typeId = `${fieldId}-type`;
   const claimId = `${fieldId}-claim`;
   const planId = `${fieldId}-plan`;
+  const defectTypesEmpty = lookupsFailed || (lookups != null && lookups.defectTypes.length === 0);
+  const canCreateDefectType = Boolean(lookups?.canCreate?.defectType);
 
   return (
     <Collapsible defaultOpen className="md:block">
@@ -330,46 +431,48 @@ function DraftDefectCard({
               />
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor={typeId}>Вид дефекта</Label>
-              {lookupsFailed || (lookups != null && lookups.defectTypes.length === 0) ? (
-                <p className="text-sm text-error-foreground">Виды дефектов не загружены</p>
+              {defectTypesEmpty && !canCreateDefectType ? (
+                <>
+                  <span className="text-[13px] font-medium text-foreground">Вид дефекта</span>
+                  <p className="text-sm text-error-foreground">Виды дефектов не загружены</p>
+                </>
               ) : (
-                <Select
+                <DirectoryCombobox
+                  label="Вид дефекта"
+                  placeholder="Выберите вид"
+                  options={(lookups?.defectTypes ?? []).map((type) => ({
+                    id: type.id,
+                    label: type.name,
+                  }))}
                   value={item.defectTypeId}
-                  onValueChange={(value) => onChange({ defectTypeId: value })}
-                >
-                  <SelectTrigger id={typeId} aria-label="Вид дефекта">
-                    <SelectValue placeholder="Выберите вид" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(lookups?.defectTypes ?? []).map((type) => (
-                      <SelectItem key={type.id} value={type.id}>
-                        {type.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  onChange={(defectTypeId) => onChange({ defectTypeId })}
+                  emptyText="Виды дефектов не загружены"
+                  addLabel={canCreateDefectType ? 'Добавить вид дефекта' : undefined}
+                  onAdd={
+                    canCreateDefectType
+                      ? (query) => onQuickCreate({ kind: 'defect-types', query })
+                      : undefined
+                  }
+                />
               )}
             </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor={`${fieldId}-work`}>Вид работ</Label>
-              <Select
-                value={item.workTypeId || 'none'}
-                onValueChange={(value) => onChange({ workTypeId: value === 'none' ? '' : value })}
-              >
-                <SelectTrigger id={`${fieldId}-work`} aria-label="Вид работ">
-                  <SelectValue placeholder="Не указан" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Не указан</SelectItem>
-                  {(lookups?.workTypes ?? []).map((type) => (
-                    <SelectItem key={type.id} value={type.id}>
-                      {type.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <DirectoryCombobox
+              label="Вид работ"
+              placeholder="Не указан"
+              options={(lookups?.workTypes ?? []).map((type) => ({
+                id: type.id,
+                label: type.name,
+              }))}
+              value={item.workTypeId || 'none'}
+              onChange={(workTypeId) => onChange({ workTypeId })}
+              noneOption={{ id: 'none', label: 'Не указан' }}
+              addLabel={lookups?.canCreate?.workType ? 'Добавить вид работ' : undefined}
+              onAdd={
+                lookups?.canCreate?.workType
+                  ? (query) => onQuickCreate({ kind: 'work-types', query })
+                  : undefined
+              }
+            />
             <div className="grid gap-1.5 md:col-span-2">
               <Label htmlFor={claimId}>Описание</Label>
               <Textarea
@@ -379,26 +482,28 @@ function DraftDefectCard({
                 required
               />
             </div>
-            <MultiSelect
+            <DirectoryCombobox
               label="Ответственные инженеры"
-              options={engineersForObject(lookups, objectId).map((engineer) => ({
-                id: engineer.id,
-                label: engineer.email
-                  ? `${engineer.fullName} · ${engineer.email}`
-                  : engineer.fullName,
-              }))}
+              options={engineersForObject(lookups, objectId)}
               values={item.responsibleEngineerIds}
-              onChange={(responsibleEngineerIds) => onChange({ responsibleEngineerIds })}
+              onValuesChange={(responsibleEngineerIds) => onChange({ responsibleEngineerIds })}
               emptyText={objectId ? 'Нет инженеров на объекте' : 'Сначала выберите объект'}
             />
-            <MultiSelect
+            <DirectoryCombobox
               label="Виновные организации"
               options={(lookups?.liableOrganizations ?? []).map((org) => ({
                 id: org.id,
                 label: org.officialName,
               }))}
               values={item.liableOrganizationIds}
-              onChange={(liableOrganizationIds) => onChange({ liableOrganizationIds })}
+              onValuesChange={(liableOrganizationIds) => onChange({ liableOrganizationIds })}
+              addLabel={lookups?.canCreate?.organization ? 'Добавить организацию' : undefined}
+              onAdd={
+                lookups?.canCreate?.organization
+                  ? (query) =>
+                      onQuickCreate({ kind: 'organizations', query, role: 'LIABLE_CONTRACTOR' })
+                  : undefined
+              }
             />
             <div className="grid gap-1.5">
               <Label htmlFor={planId}>Плановый срок</Label>

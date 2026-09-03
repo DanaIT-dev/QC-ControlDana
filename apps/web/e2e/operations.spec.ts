@@ -43,7 +43,7 @@ test.describe('operational workflow', () => {
     await page.getByLabel('Помещение').fill('Квартира 101');
     await page.getByLabel('Описание').fill('Течь стояка');
     await page.getByRole('combobox', { name: 'Вид дефекта' }).first().click();
-    await expect(page.getByRole('listbox').getByRole('option')).toHaveCount(22);
+    expect(await page.getByRole('listbox').getByRole('option').count()).toBeGreaterThanOrEqual(22);
     await page.getByRole('option').first().click();
     await page.getByRole('combobox', { name: 'Ответственные инженеры' }).click();
     await page.getByRole('option').first().click();

@@ -55,6 +55,7 @@ export function NotificationsView({
     type: string;
     actId: string | null;
     defectItemId: string | null;
+    organizationId?: string | null;
   }) {
     if (canMutate) {
       try {

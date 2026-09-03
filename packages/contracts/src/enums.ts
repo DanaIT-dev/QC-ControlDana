@@ -115,6 +115,7 @@ export const NOTIFICATION_TYPES = [
   'SLA_DUE_TODAY',
   'SLA_OVERDUE',
   'ACT_CHAT_MENTION',
+  'ORGANIZATION_DETAILS_INCOMPLETE',
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 

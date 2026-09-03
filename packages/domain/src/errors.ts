@@ -74,6 +74,21 @@ export class DuplicateValueError extends DomainError {
   }
 }
 
+export interface DuplicateDirectoryRecord {
+  id: string;
+  label: string;
+}
+
+export class DuplicateDirectoryRecordError extends DuplicateValueError {
+  readonly existing: DuplicateDirectoryRecord;
+
+  constructor(message: string, existing: DuplicateDirectoryRecord) {
+    super(message);
+    this.name = 'DuplicateDirectoryRecordError';
+    this.existing = existing;
+  }
+}
+
 export class InvalidTransitionError extends DomainError {
   constructor(message = 'Недопустимый переход статуса') {
     super('INVALID_TRANSITION', message);

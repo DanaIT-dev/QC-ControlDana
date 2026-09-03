@@ -42,3 +42,5 @@ export * from './outbox';
 export * from './notification-settings';
 export * from './worker-heartbeat';
 export * from './chat';
+export * from './organization-completeness';
+export * from './directory-codes';

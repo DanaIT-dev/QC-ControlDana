@@ -60,7 +60,7 @@ export class NotificationsService {
       pageSize,
       total,
       items: rows.map((row) => {
-        const payload = row.event.payload as { body?: string };
+        const payload = row.event.payload as { body?: string; organizationId?: string };
         return {
           id: row.id,
           type: row.event.type as NotificationListResponse['items'][number]['type'],
@@ -74,6 +74,8 @@ export class NotificationsService {
           readAt: row.readAt?.toISOString() ?? null,
           actId: row.event.actId,
           defectItemId: row.event.defectItemId,
+          organizationId:
+            typeof payload.organizationId === 'string' ? payload.organizationId : null,
         };
       }),
     };
@@ -214,6 +216,11 @@ export class NotificationsService {
                   status: { not: 'CANCELLED' as const },
                   ...(scope.objectScoped ? { propertyObject: scope.assignedObjectWhere() } : {}),
                 },
+              },
+              {
+                type: 'ORGANIZATION_DETAILS_INCOMPLETE',
+                actId: null,
+                defectItemId: null,
               },
             ],
           },

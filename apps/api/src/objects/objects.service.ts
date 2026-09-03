@@ -3,6 +3,7 @@ import {
   createPropertyObjectRequestSchema,
   linkObjectResponsibleEngineerSchema,
   objectsListQuerySchema,
+  updatePropertyObjectRequestSchema,
   type ObjectsDirectoryResponse,
   type ObjectsResponsibleEngineer,
 } from '@sgr-registry/contracts';
@@ -13,18 +14,21 @@ import {
   calendarDateInTimeZone,
   calendarDateToUtcNoon,
   canCreatePropertyObject,
+  canManageReferenceData,
   canManageUsers,
   canViewObjectsDirectory,
   classifyEngineerMatch,
   DuplicateValueError,
   isOversightRole,
   parseManualObjectInput,
+  StaleWriteError,
   ValidationError,
 } from '@sgr-registry/domain';
 import {
   applyDirectoryEngineerLink,
   clearDirectoryEngineerLink,
   createPropertyObjectViaDefiner,
+  updatePropertyObjectViaDefiner,
   type Prisma,
 } from '@sgr-registry/database';
 import type { FastifyRequest } from 'fastify';
@@ -63,7 +67,12 @@ export class ObjectsService {
     const search = query.search?.trim() ?? '';
     const engineer = query.responsibleEngineer?.trim() ?? '';
     const includeInactive = isOversightRole(user.role);
-    const statusFilter = includeInactive ? (query.status ?? 'ALL') : 'ACTIVE';
+    const canEdit = canManageReferenceData(user.role);
+    const statusFilter = includeInactive
+      ? (query.status ?? 'ALL')
+      : canEdit
+        ? (query.status ?? 'ACTIVE')
+        : 'ACTIVE';
     const scope = new RegistryAccessScope(user);
     const where: Prisma.PropertyObjectWhereInput = {
       AND: [
@@ -151,6 +160,7 @@ export class ObjectsService {
         commissionedAt: true,
         warrantyEndsAt: true,
         active: true,
+        version: true,
         sourceResponsibleEngineerName: true,
         engineers: {
           where: { directoryLinkMethod: { not: null } },
@@ -185,6 +195,7 @@ export class ObjectsService {
           ? calendarDateInTimeZone(item.warrantyEndsAt, BUSINESS_TIME_ZONE)
           : null,
         active: item.active,
+        version: item.version,
         responsibleEngineer: toResponsibleEngineer(item, engineerAccounts),
       })),
       page,
@@ -193,6 +204,7 @@ export class ObjectsService {
       totalPages,
       responsibleEngineerOptions: [...optionNames].sort((a, b) => a.localeCompare(b, 'ru')),
       canCreate: canCreatePropertyObject(user.role),
+      canEdit,
       createEngineerOptions: canCreatePropertyObject(user.role)
         ? engineerAccounts.map((row) => ({ id: row.id, fullName: row.fullName }))
         : [],
@@ -240,6 +252,63 @@ export class ObjectsService {
         warrantyEndsAt: created.warrantyEndsAt
           ? calendarDateInTimeZone(created.warrantyEndsAt, BUSINESS_TIME_ZONE)
           : null,
+      };
+    } catch (error) {
+      throw mapCreateObjectError(error);
+    }
+  }
+
+  async update(
+    user: AuthenticatedUser,
+    objectId: string,
+    body: unknown,
+    request: FastifyRequest,
+  ): Promise<{
+    id: string;
+    name: string;
+    address: string | null;
+    commissionedAt: string | null;
+    warrantyEndsAt: string | null;
+    active: boolean;
+    version: number;
+  }> {
+    if (!canManageReferenceData(user.role)) {
+      throw new ForbiddenException('Недостаточно прав');
+    }
+    if (!UUID_PATTERN.test(objectId)) {
+      throw new NotFoundException('Запись не найдена');
+    }
+    const parsed = parseCommandBody(updatePropertyObjectRequestSchema, body);
+    const input = parseManualObjectInput({
+      name: parsed.name,
+      address: parsed.address,
+    });
+    const ctx = actorContext(user, request);
+    try {
+      const updated = await this.prisma.client.$transaction(async (tx) => {
+        return updatePropertyObjectViaDefiner(tx, {
+          id: objectId,
+          expectedVersion: parsed.expectedVersion,
+          name: input.name,
+          address: input.address,
+          active: parsed.active ?? null,
+          actorUserId: user.id,
+          actorName: user.fullName,
+          requestId: ctx.requestId,
+        });
+      });
+      return {
+        id: updated.id,
+        name: updated.name,
+        address: updated.address,
+        commissionedAt: updated.commissionedAt
+          ? calendarDateInTimeZone(updated.commissionedAt, BUSINESS_TIME_ZONE)
+          : null,
+        warrantyEndsAt: updated.warrantyEndsAt
+          ? calendarDateInTimeZone(updated.warrantyEndsAt, BUSINESS_TIME_ZONE)
+          : null,
+        active: updated.active,
+        version: updated.version,
       };
     } catch (error) {
       throw mapCreateObjectError(error);
@@ -350,10 +419,21 @@ function prismaRawMessage(error: unknown): string {
 }
 
 function mapCreateObjectError(error: unknown): never {
-  if (error instanceof DuplicateValueError || error instanceof ValidationError) {
+  if (
+    error instanceof DuplicateValueError ||
+    error instanceof ValidationError ||
+    error instanceof StaleWriteError ||
+    error instanceof NotFoundException
+  ) {
     throw error;
   }
   const message = prismaRawMessage(error);
+  if (/40001|изменена другим/.test(message)) {
+    throw new StaleWriteError();
+  }
+  if (/P0002|не найдена/.test(message)) {
+    throw new NotFoundException('Запись не найдена');
+  }
   if (/23505|P2002|уже существует/.test(message)) {
     throw new DuplicateValueError('Объект с таким названием и адресом уже существует');
   }

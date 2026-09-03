@@ -7,6 +7,12 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { DirectoryCombobox } from '@/components/directory-combobox';
+import {
+  DirectoryCreateDialogs,
+  type DirectoryQuickCreateRequest,
+} from '@/components/directory-create-dialogs';
+import { EditPropertyObjectDialog } from '@/components/edit-property-object-dialog';
 import { PageHeader } from '@/components/page-header';
 import { EmptyState, ErrorState, TableSkeleton } from '@/components/states';
 import { Badge } from '@/components/ui/badge';
@@ -53,6 +59,11 @@ export function ObjectsView({
   const query = useMemo(() => {
     const page = Number.parseInt(params.get('page') ?? '1', 10);
     const pageSize = Number.parseInt(params.get('pageSize') ?? '20', 10);
+    const statusParam = params.get('status');
+    const status: 'ACTIVE' | 'ARCHIVED' | 'ALL' | undefined =
+      statusParam === 'ALL' || statusParam === 'ARCHIVED' || statusParam === 'ACTIVE'
+        ? statusParam
+        : undefined;
     return {
       search: params.get('search') ?? '',
       responsibleEngineer: params.get('responsibleEngineer') ?? '',
@@ -60,6 +71,7 @@ export function ObjectsView({
       pageSize: (OBJECTS_DIRECTORY_PAGE_SIZES as readonly number[]).includes(pageSize)
         ? (pageSize as (typeof OBJECTS_DIRECTORY_PAGE_SIZES)[number])
         : 20,
+      status,
     };
   }, [params]);
   const [searchDraft, setSearchDraft] = useState(query.search);
@@ -109,6 +121,9 @@ export function ObjectsView({
   const [linkTarget, setLinkTarget] = useState<ObjectsDirectoryResponse['items'][number] | null>(
     null,
   );
+  const [editTarget, setEditTarget] = useState<ObjectsDirectoryResponse['items'][number] | null>(
+    null,
+  );
   const [createOpen, setCreateOpen] = useState(false);
 
   function navigate(next: typeof query) {
@@ -118,6 +133,9 @@ export function ObjectsView({
     }
     if (next.responsibleEngineer) {
       nextParams.set('responsibleEngineer', next.responsibleEngineer);
+    }
+    if (next.status && next.status !== 'ACTIVE') {
+      nextParams.set('status', next.status);
     }
     if (next.page > 1) {
       nextParams.set('page', String(next.page));
@@ -191,6 +209,30 @@ export function ObjectsView({
             </SelectContent>
           </Select>
         </label>
+        {data?.canEdit ? (
+          <label className="grid min-w-0 gap-1 md:w-56">
+            <span className="text-sm font-medium">Статус</span>
+            <Select
+              value={query.status ?? 'ACTIVE'}
+              onValueChange={(value) =>
+                navigate({
+                  ...query,
+                  page: 1,
+                  status: value as 'ACTIVE' | 'ARCHIVED' | 'ALL',
+                })
+              }
+            >
+              <SelectTrigger aria-label="Статус объекта" className="min-h-11">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ACTIVE">Активные</SelectItem>
+                <SelectItem value="ARCHIVED">Архивные</SelectItem>
+                <SelectItem value="ALL">Все</SelectItem>
+              </SelectContent>
+            </Select>
+          </label>
+        ) : null}
       </div>
       {listQuery.isError ? (
         <ErrorState
@@ -206,10 +248,22 @@ export function ObjectsView({
       {!listQuery.isError && !listQuery.isLoading && rows.length > 0 ? (
         <>
           <div className="hidden min-w-0 md:block">
-            <ObjectsTable data={data!} canManageLinks={canManageLinks} onManage={setLinkTarget} />
+            <ObjectsTable
+              data={data!}
+              canManageLinks={canManageLinks}
+              canEdit={Boolean(data?.canEdit)}
+              onManage={setLinkTarget}
+              onEdit={setEditTarget}
+            />
           </div>
           <div className="md:hidden">
-            <ObjectsCards data={data!} canManageLinks={canManageLinks} onManage={setLinkTarget} />
+            <ObjectsCards
+              data={data!}
+              canManageLinks={canManageLinks}
+              canEdit={Boolean(data?.canEdit)}
+              onManage={setLinkTarget}
+              onEdit={setEditTarget}
+            />
           </div>
         </>
       ) : null}
@@ -268,10 +322,28 @@ export function ObjectsView({
         <CreateObjectDialog
           csrfToken={csrfToken}
           engineers={data.createEngineerOptions}
+          canRegisterEngineer={canManageLinks}
           onClose={() => setCreateOpen(false)}
           onSaved={async () => {
             setCreateOpen(false);
             await queryClient.invalidateQueries({ queryKey: queryKeys.objects.list(query) });
+          }}
+        />
+      ) : null}
+      {editTarget && data?.canEdit ? (
+        <EditPropertyObjectDialog
+          csrfToken={csrfToken}
+          target={{
+            id: editTarget.id,
+            version: editTarget.version,
+            name: editTarget.name,
+            address: editTarget.address,
+            active: editTarget.active,
+          }}
+          onClose={() => setEditTarget(null)}
+          onSaved={async () => {
+            setEditTarget(null);
+            await queryClient.invalidateQueries({ queryKey: queryKeys.objects.all });
           }}
         />
       ) : null}
@@ -294,11 +366,15 @@ export function ObjectsView({
 function ObjectsTable({
   data,
   canManageLinks,
+  canEdit,
   onManage,
+  onEdit,
 }: {
   data: ObjectsDirectoryResponse;
   canManageLinks: boolean;
+  canEdit: boolean;
   onManage: (item: ObjectsDirectoryResponse['items'][number]) => void;
+  onEdit: (item: ObjectsDirectoryResponse['items'][number]) => void;
 }) {
   return (
     <div className="min-w-0 overflow-x-auto rounded-[10px] border bg-card">
@@ -310,6 +386,7 @@ function ObjectsTable({
             <th className="px-3 py-3 whitespace-nowrap">Дата приёмки в эксплуатацию</th>
             <th className="px-3 py-3 whitespace-nowrap">Дата завершения гарантийного срока</th>
             <th className="px-3 py-3">Ответственный инженер</th>
+            {canEdit ? <th className="px-3 py-3">Действия</th> : null}
           </tr>
         </thead>
         <tbody>
@@ -337,6 +414,13 @@ function ObjectsTable({
                   onManage={() => onManage(item)}
                 />
               </td>
+              {canEdit ? (
+                <td className="px-3 py-3">
+                  <Button type="button" variant="outline" size="sm" onClick={() => onEdit(item)}>
+                    Редактировать
+                  </Button>
+                </td>
+              ) : null}
             </tr>
           ))}
         </tbody>
@@ -348,11 +432,15 @@ function ObjectsTable({
 function ObjectsCards({
   data,
   canManageLinks,
+  canEdit,
   onManage,
+  onEdit,
 }: {
   data: ObjectsDirectoryResponse;
   canManageLinks: boolean;
+  canEdit: boolean;
   onManage: (item: ObjectsDirectoryResponse['items'][number]) => void;
+  onEdit: (item: ObjectsDirectoryResponse['items'][number]) => void;
 }) {
   return (
     <ul className="grid gap-3">
@@ -378,6 +466,11 @@ function ObjectsCards({
                 canManageLinks={canManageLinks}
                 onManage={() => onManage(item)}
               />
+              {canEdit ? (
+                <Button type="button" variant="outline" onClick={() => onEdit(item)}>
+                  Редактировать
+                </Button>
+              ) : null}
             </CardContent>
           </Card>
         </li>
@@ -442,18 +535,13 @@ function LinkEngineerDialog({
         <DialogHeader>
           <DialogTitle>Ответственный инженер</DialogTitle>
         </DialogHeader>
-        <Select value={userId} onValueChange={setUserId}>
-          <SelectTrigger aria-label="Учётная запись инженера" className="min-h-11">
-            <SelectValue placeholder="Выберите учётную запись" />
-          </SelectTrigger>
-          <SelectContent>
-            {engineers.map((item) => (
-              <SelectItem key={item.id} value={item.id}>
-                {item.fullName}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <DirectoryCombobox
+          label="Учётная запись инженера"
+          options={engineers.map((item) => ({ id: item.id, label: item.fullName }))}
+          value={userId}
+          onChange={setUserId}
+          emptyText="Нет активных ответственных инженеров"
+        />
         <DialogFooter className="flex-col gap-2 sm:flex-row">
           {object.responsibleEngineer?.linked ? (
             <Button
@@ -503,11 +591,13 @@ function LinkEngineerDialog({
 function CreateObjectDialog({
   csrfToken,
   engineers,
+  canRegisterEngineer,
   onClose,
   onSaved,
 }: {
   csrfToken: string;
   engineers: Array<{ id: string; fullName: string }>;
+  canRegisterEngineer: boolean;
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
@@ -515,127 +605,143 @@ function CreateObjectDialog({
   const [address, setAddress] = useState('');
   const [commissionedAt, setCommissionedAt] = useState('');
   const [warrantyEndsAt, setWarrantyEndsAt] = useState('');
-  const [engineerId, setEngineerId] = useState('none');
+  const [engineerId, setEngineerId] = useState('');
   const [engineerName, setEngineerName] = useState('');
+  const [engineerOptions, setEngineerOptions] = useState(engineers);
   const [pending, setPending] = useState(false);
+  const [quickCreate, setQuickCreate] = useState<DirectoryQuickCreateRequest | null>(null);
   return (
-    <Dialog open onOpenChange={(open) => (!open ? onClose() : undefined)}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Добавить объект</DialogTitle>
-        </DialogHeader>
-        <form
-          className="grid gap-3"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void (async () => {
-              if (pending) {
-                return;
-              }
-              setPending(true);
-              try {
-                await createPropertyObject(csrfToken, {
-                  name,
-                  address: address.trim() ? address : null,
-                  commissionedAt: commissionedAt || null,
-                  warrantyEndsAt: warrantyEndsAt || null,
-                  responsibleEngineerId: engineerId === 'none' ? null : engineerId,
-                  responsibleEngineerName:
-                    engineerId === 'none' && engineerName.trim() ? engineerName : null,
-                });
-                toast.success('Объект создан');
-                await onSaved();
-              } catch (error) {
-                toast.error(
-                  error instanceof ApiError ? error.message : 'Не удалось создать объект',
-                );
-              } finally {
-                setPending(false);
-              }
-            })();
-          }}
-        >
-          <div className="grid gap-1.5">
-            <Label htmlFor="object-name">Название объекта</Label>
-            <Input
-              id="object-name"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              required
-              className="min-h-11"
-            />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="object-address">Адрес</Label>
-            <Input
-              id="object-address"
-              value={address}
-              onChange={(event) => setAddress(event.target.value)}
-              className="min-h-11"
-            />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="object-commissioned">Дата приёмки в эксплуатацию</Label>
-            <Input
-              id="object-commissioned"
-              type="date"
-              value={commissionedAt}
-              onChange={(event) => setCommissionedAt(event.target.value)}
-              className="min-h-11"
-            />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="object-warranty">Дата окончания гарантии</Label>
-            <Input
-              id="object-warranty"
-              type="date"
-              value={warrantyEndsAt}
-              onChange={(event) => setWarrantyEndsAt(event.target.value)}
-              className="min-h-11"
-            />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="object-engineer">Ответственный инженер</Label>
-            <Select value={engineerId} onValueChange={setEngineerId}>
-              <SelectTrigger
-                id="object-engineer"
-                aria-label="Ответственный инженер учётной записи"
-                className="min-h-11"
-              >
-                <SelectValue placeholder="Не выбран" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Не выбран</SelectItem>
-                {engineers.map((item) => (
-                  <SelectItem key={item.id} value={item.id}>
-                    {item.fullName}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          {engineerId === 'none' ? (
+    <>
+      <Dialog open onOpenChange={(open) => (!open ? onClose() : undefined)}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Добавить объект</DialogTitle>
+          </DialogHeader>
+          <form
+            className="grid gap-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void (async () => {
+                if (pending) {
+                  return;
+                }
+                setPending(true);
+                try {
+                  await createPropertyObject(csrfToken, {
+                    name,
+                    address: address.trim() ? address : null,
+                    commissionedAt: commissionedAt || null,
+                    warrantyEndsAt: warrantyEndsAt || null,
+                    responsibleEngineerId: engineerId ? engineerId : null,
+                    responsibleEngineerName:
+                      !engineerId && engineerName.trim() ? engineerName : null,
+                  });
+                  toast.success('Объект создан');
+                  await onSaved();
+                } catch (error) {
+                  toast.error(
+                    error instanceof ApiError ? error.message : 'Не удалось создать объект',
+                  );
+                } finally {
+                  setPending(false);
+                }
+              })();
+            }}
+          >
             <div className="grid gap-1.5">
-              <Label htmlFor="object-engineer-name">ФИО ответственного</Label>
+              <Label htmlFor="object-name">Название объекта</Label>
               <Input
-                id="object-engineer-name"
-                value={engineerName}
-                onChange={(event) => setEngineerName(event.target.value)}
-                placeholder="Василевич М.В."
+                id="object-name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                required
                 className="min-h-11"
               />
             </div>
-          ) : null}
-          <DialogFooter className="flex-col gap-2 sm:flex-row">
-            <Button type="button" variant="outline" onClick={onClose}>
-              Отмена
-            </Button>
-            <Button type="submit" disabled={pending || !name.trim()}>
-              {pending ? 'Создание…' : 'Создать'}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+            <div className="grid gap-1.5">
+              <Label htmlFor="object-address">Адрес</Label>
+              <Input
+                id="object-address"
+                value={address}
+                onChange={(event) => setAddress(event.target.value)}
+                className="min-h-11"
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="object-commissioned">Дата приёмки в эксплуатацию</Label>
+              <Input
+                id="object-commissioned"
+                type="date"
+                value={commissionedAt}
+                onChange={(event) => setCommissionedAt(event.target.value)}
+                className="min-h-11"
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="object-warranty">Дата окончания гарантии</Label>
+              <Input
+                id="object-warranty"
+                type="date"
+                value={warrantyEndsAt}
+                onChange={(event) => setWarrantyEndsAt(event.target.value)}
+                className="min-h-11"
+              />
+            </div>
+            <DirectoryCombobox
+              label="Ответственный инженер"
+              options={engineerOptions.map((item) => ({ id: item.id, label: item.fullName }))}
+              value={engineerId || 'none'}
+              onChange={setEngineerId}
+              noneOption={{ id: 'none', label: 'Не выбран' }}
+              emptyText="Нет активных ответственных инженеров"
+              addLabel={
+                canRegisterEngineer ? 'Зарегистрировать ответственного инженера' : undefined
+              }
+              onAdd={
+                canRegisterEngineer
+                  ? (query) => setQuickCreate({ kind: 'responsible-engineer', query })
+                  : undefined
+              }
+            />
+            {!engineerId ? (
+              <div className="grid gap-1.5">
+                <Label htmlFor="object-engineer-name">ФИО ответственного</Label>
+                <Input
+                  id="object-engineer-name"
+                  value={engineerName}
+                  onChange={(event) => setEngineerName(event.target.value)}
+                  placeholder="Василевич М.В."
+                  className="min-h-11"
+                />
+              </div>
+            ) : null}
+            <DialogFooter className="flex-col gap-2 sm:flex-row">
+              <Button type="button" variant="outline" onClick={onClose}>
+                Отмена
+              </Button>
+              <Button type="submit" disabled={pending || !name.trim()}>
+                {pending ? 'Создание…' : 'Создать'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+      <DirectoryCreateDialogs
+        csrfToken={csrfToken}
+        request={quickCreate}
+        onClose={() => setQuickCreate(null)}
+        onCreated={(kind, created) => {
+          if (kind !== 'responsible-engineer') {
+            return;
+          }
+          setEngineerOptions((current) =>
+            current.some((item) => item.id === created.id)
+              ? current
+              : [...current, { id: created.id, fullName: created.label }],
+          );
+          setEngineerId(created.id);
+        }}
+      />
+    </>
   );
 }

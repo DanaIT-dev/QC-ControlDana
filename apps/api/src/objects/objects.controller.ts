@@ -43,6 +43,18 @@ export class ObjectsController {
     return this.objectsService.create(user, body, request);
   }
 
+  @Patch(':objectId')
+  @RequireCapability('MANAGE_REFERENCE_DATA')
+  @UseGuards(BrowserOriginGuard, CsrfGuard, ObjectCreateRateLimitGuard)
+  update(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('objectId') objectId: string,
+    @Body() body: unknown,
+    @Req() request: FastifyRequest,
+  ) {
+    return this.objectsService.update(user, objectId, body, request);
+  }
+
   @Patch(':objectId/responsible-engineer')
   @RequireCapability('MANAGE_USERS')
   @UseGuards(BrowserOriginGuard, CsrfGuard)

@@ -219,7 +219,7 @@ describe('objects directory API', () => {
     expect(adminBody.items.some((item) => item.id === hidden.id)).toBe(true);
     expect(JSON.stringify(adminBody)).not.toMatch(/passwordHash|sourceImportKey|sourceSystem/);
     expect(adminBody.pageSize).toBeLessThanOrEqual(50);
-    expect(adminBody).toMatchObject({ canCreate: true });
+    expect(adminBody).toMatchObject({ canCreate: true, canEdit: true });
 
     const oversized = await inject({
       method: 'GET',
@@ -686,6 +686,7 @@ describe('objects directory API', () => {
     expect(saBody.items.some((item) => item.id === inactive.id && item.active === false)).toBe(
       true,
     );
+    expect((saList.json() as { canEdit: boolean }).canEdit).toBe(false);
     expect(JSON.stringify(saBody)).not.toMatch(/passwordHash|sourceImportKey|sourceSystem/);
     const adminList = await inject({
       method: 'GET',
@@ -695,5 +696,150 @@ describe('objects directory API', () => {
     expect(adminList.statusCode).toBe(200);
     const adminBody = adminList.json() as { items: Array<{ id: string }> };
     expect(adminBody.items.some((item) => item.id === inactive.id)).toBe(false);
+  });
+
+  it('updates name, address and status without touching import metadata', async () => {
+    const admin = await createUser('ADMIN');
+    const manager = await createUser('MANAGER');
+    const sgr = await createUser('SGR_MANAGER');
+    const engineer = await createUser('RESPONSIBLE_ENGINEER');
+    const superAdmin = await ensureActiveSuperAdmin();
+    const stamp = Date.now();
+    const object = await prisma.propertyObject.create({
+      data: {
+        name: `Patch ${stamp}`,
+        address: 'ул. Исходная, 1',
+        sourceSystem: 'excel',
+        sourceRow: 17,
+        sourceImportKey: `import-key-${stamp}`,
+        sourceResponsibleEngineerName: 'Василевич М.В.',
+      },
+    });
+    createdObjectIds.push(object.id);
+    const adminSession = await login(admin.email);
+    const managerSession = await login(manager.email);
+    const sgrSession = await login(sgr.email);
+    const engineerSession = await login(engineer.email);
+    const superSession = await login(superAdmin.email);
+
+    expect(
+      (
+        await inject({
+          method: 'PATCH',
+          url: `/api/objects/${object.id}`,
+          payload: { expectedVersion: object.version, name: 'x' },
+        })
+      ).statusCode,
+    ).toBe(401);
+
+    for (const session of [engineerSession, superSession]) {
+      expect(
+        (
+          await inject({
+            method: 'PATCH',
+            url: `/api/objects/${object.id}`,
+            cookies: { [SESSION_COOKIE_NAME]: session.cookie },
+            headers: { [CSRF_HEADER_NAME]: session.csrfToken },
+            payload: { expectedVersion: object.version, name: `Denied ${stamp}` },
+          })
+        ).statusCode,
+      ).toBe(403);
+    }
+
+    const unknown = await inject({
+      method: 'PATCH',
+      url: `/api/objects/${object.id}`,
+      cookies: { [SESSION_COOKIE_NAME]: adminSession.cookie },
+      headers: { [CSRF_HEADER_NAME]: adminSession.csrfToken },
+      payload: {
+        expectedVersion: object.version,
+        name: `Patched ${stamp}`,
+        sourceImportKey: 'forged',
+      },
+    });
+    expect(unknown.statusCode).toBe(400);
+
+    const renamed = await inject({
+      method: 'PATCH',
+      url: `/api/objects/${object.id}`,
+      cookies: { [SESSION_COOKIE_NAME]: adminSession.cookie },
+      headers: { [CSRF_HEADER_NAME]: adminSession.csrfToken },
+      payload: {
+        expectedVersion: object.version,
+        name: `Patched ${stamp}`,
+        address: 'ул. Новая, 2',
+      },
+    });
+    expect(renamed.statusCode).toBe(200);
+    const renamedBody = renamed.json() as { version: number; name: string; address: string | null };
+    expect(renamedBody).toMatchObject({ name: `Patched ${stamp}`, address: 'ул. Новая, 2' });
+    const stored = await prisma.propertyObject.findUniqueOrThrow({ where: { id: object.id } });
+    expect(stored.sourceSystem).toBe('excel');
+    expect(stored.sourceRow).toBe(17);
+    expect(stored.sourceImportKey).toBe(`import-key-${stamp}`);
+    expect(stored.sourceResponsibleEngineerName).toBe('Василевич М.В.');
+    expect(
+      await prisma.auditLog.count({
+        where: { entityId: object.id, action: 'PROPERTY_OBJECT_UPDATED' },
+      }),
+    ).toBe(1);
+
+    const stale = await inject({
+      method: 'PATCH',
+      url: `/api/objects/${object.id}`,
+      cookies: { [SESSION_COOKIE_NAME]: managerSession.cookie },
+      headers: { [CSRF_HEADER_NAME]: managerSession.csrfToken },
+      payload: { expectedVersion: object.version, name: `Stale ${stamp}` },
+    });
+    expect(stale.statusCode).toBe(409);
+    expect((stale.json() as { error?: string }).error).toBe('STALE_WRITE');
+
+    const archived = await inject({
+      method: 'PATCH',
+      url: `/api/objects/${object.id}`,
+      cookies: { [SESSION_COOKIE_NAME]: sgrSession.cookie },
+      headers: { [CSRF_HEADER_NAME]: sgrSession.csrfToken },
+      payload: {
+        expectedVersion: renamedBody.version,
+        name: `Patched ${stamp}`,
+        address: 'ул. Новая, 2',
+        active: false,
+      },
+    });
+    expect(archived.statusCode).toBe(200);
+    expect((archived.json() as { active: boolean }).active).toBe(false);
+    expect(
+      await prisma.auditLog.count({
+        where: { entityId: object.id, action: 'PROPERTY_OBJECT_STATUS_CHANGED' },
+      }),
+    ).toBe(1);
+
+    const lookups = await inject({
+      method: 'GET',
+      url: '/api/operations/lookups',
+      cookies: { [SESSION_COOKIE_NAME]: adminSession.cookie },
+    });
+    const lookupObjects = (lookups.json() as { propertyObjects: Array<{ id: string }> })
+      .propertyObjects;
+    expect(lookupObjects.some((item) => item.id === object.id)).toBe(false);
+    expect(JSON.stringify(lookups.json())).not.toMatch(/passwordHash/);
+    const engineerRows = (lookups.json() as { responsibleEngineers: Array<{ email?: string }> })
+      .responsibleEngineers;
+    expect(engineerRows.every((item) => item.email === undefined)).toBe(true);
+
+    const restored = await inject({
+      method: 'PATCH',
+      url: `/api/objects/${object.id}`,
+      cookies: { [SESSION_COOKIE_NAME]: adminSession.cookie },
+      headers: { [CSRF_HEADER_NAME]: adminSession.csrfToken },
+      payload: {
+        expectedVersion: (archived.json() as { version: number }).version,
+        name: `Patched ${stamp}`,
+        address: 'ул. Новая, 2',
+        active: true,
+      },
+    });
+    expect(restored.statusCode).toBe(200);
+    expect((restored.json() as { active: boolean }).active).toBe(true);
   });
 });
