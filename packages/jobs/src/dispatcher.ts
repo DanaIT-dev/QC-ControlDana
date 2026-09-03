@@ -393,12 +393,19 @@ export class NotificationDispatcher {
       const settings = await this.prisma.systemSettings.findUnique({ where: { id: 'default' } });
       const warningDays = settings?.deadlineWarningDays ?? 3;
       const thresholds = settings?.escalationDays?.length ? settings.escalationDays : [0, 3, 7, 14];
-      const [contractorPool, managers, admins] = await Promise.all([
+      const [contractorPool, managers, admins, orgManagers] = await Promise.all([
         this.activeIds('CONTRACTOR_ENGINEER'),
         this.activeIds('SGR_MANAGER'),
         this.activeIds('ADMIN'),
+        this.activeIds('MANAGER'),
       ]);
-      return { warningDays, thresholds, contractorPool, managers, admins };
+      return {
+        warningDays,
+        thresholds,
+        contractorPool,
+        managers,
+        admins: [...admins, ...orgManagers],
+      };
     });
     let cursor: string | undefined;
     let processed = 0;
@@ -582,7 +589,7 @@ export class NotificationDispatcher {
   }
 
   private async activeIds(
-    role: 'ADMIN' | 'SGR_MANAGER' | 'RESPONSIBLE_ENGINEER' | 'CONTRACTOR_ENGINEER',
+    role: 'ADMIN' | 'MANAGER' | 'SGR_MANAGER' | 'RESPONSIBLE_ENGINEER' | 'CONTRACTOR_ENGINEER',
   ) {
     const rows = await this.prisma.user.findMany({
       where: { role, status: 'ACTIVE' },

@@ -24,6 +24,8 @@ export * from './secrets';
 export * from './history';
 export * from './user-commands';
 export * from './admin-grants';
+export * from './role-hierarchy';
+export * from './person-name';
 export * from './reference';
 export * from './objects-import';
 export * from './approved-defect-types';

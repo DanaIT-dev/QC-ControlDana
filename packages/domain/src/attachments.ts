@@ -9,6 +9,7 @@ import type {
 import { DomainError, ValidationError } from './errors';
 import { hasCapability, type Capability } from './capabilities';
 import { canViewProposalGroupBC } from './registry-access';
+import { isBusinessStaffRole } from './role-hierarchy';
 
 export const ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024;
 export const ATTACHMENT_MAX_PER_OWNER = 50;
@@ -186,7 +187,7 @@ export function canArchiveAttachment(input: {
   if (!hasCapability(input.role, 'ARCHIVE_ATTACHMENT')) {
     return false;
   }
-  if (input.role === 'ADMIN' || input.role === 'SGR_MANAGER') {
+  if (isBusinessStaffRole(input.role)) {
     return true;
   }
   return input.uploadedById === input.actorUserId;
@@ -438,7 +439,7 @@ export function shapeAttachmentAuditForRole(value: unknown, role: UserRole): unk
   delete record.bucket;
   delete record.scanTrace;
   delete record.rawScannerResponse;
-  if (role !== 'ADMIN' && role !== 'SGR_MANAGER') {
+  if (!isBusinessStaffRole(role)) {
     delete record.scanSignature;
   }
   if (role === 'RESPONSIBLE_ENGINEER' && (record.slot === 'B' || record.slot === 'C')) {

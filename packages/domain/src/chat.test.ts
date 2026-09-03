@@ -32,6 +32,7 @@ describe('act chat domain', () => {
 
   it('does not treat a contractor role as mentionable', () => {
     expect(isChatMentionableRole('ADMIN')).toBe(true);
+    expect(isChatMentionableRole('MANAGER')).toBe(true);
     expect(isChatMentionableRole('SGR_MANAGER')).toBe(true);
     expect(isChatMentionableRole('RESPONSIBLE_ENGINEER')).toBe(true);
     expect(isChatMentionableRole('CONTRACTOR_ENGINEER')).toBe(false);

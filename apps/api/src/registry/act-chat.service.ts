@@ -27,6 +27,7 @@ import {
   notificationTitle,
   normalizeChatBody,
   roleLabel,
+  BUSINESS_STAFF_ROLES,
 } from '@sgr-registry/domain';
 import type { FastifyRequest } from 'fastify';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
@@ -115,7 +116,7 @@ export class ActChatService {
         role: { in: [...CHAT_MENTIONABLE_ROLES] },
         ...(search.length > 0 ? { fullName: { contains: search, mode: 'insensitive' } } : {}),
         OR: [
-          { role: { in: ['ADMIN', 'SGR_MANAGER'] } },
+          { role: { in: [...BUSINESS_STAFF_ROLES] } },
           {
             role: 'RESPONSIBLE_ENGINEER',
             objectAssignments: {
@@ -274,7 +275,7 @@ export class ActChatService {
         status: 'ACTIVE',
         role: { in: [...CHAT_MENTIONABLE_ROLES] },
         OR: [
-          { role: { in: ['ADMIN', 'SGR_MANAGER'] } },
+          { role: { in: [...BUSINESS_STAFF_ROLES] } },
           {
             role: 'RESPONSIBLE_ENGINEER',
             objectAssignments: {

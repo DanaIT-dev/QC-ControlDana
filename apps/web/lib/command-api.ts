@@ -3,12 +3,14 @@ import { CSRF_HEADER_NAME } from '@sgr-registry/domain';
 export class ApiError extends Error {
   readonly status: number;
   readonly code?: string;
+  readonly field?: string;
   readonly fields?: Record<string, string>;
 
-  constructor(status: number, message: string, code?: string) {
+  constructor(status: number, message: string, code?: string, field?: string) {
     super(message);
     this.status = status;
     this.code = code;
+    this.field = field;
   }
 }
 
@@ -32,12 +34,13 @@ export async function commandFetch<T>(
     body: JSON.stringify(input.body ?? {}),
   });
   const data = (await response.json().catch(() => null)) as
-    (T & { message?: string; error?: string }) | null;
+    (T & { message?: string; error?: string; field?: string }) | null;
   if (!response.ok) {
     throw new ApiError(
       response.status,
       data?.message ?? 'Не удалось выполнить действие',
       data?.error,
+      typeof data?.field === 'string' ? data.field : undefined,
     );
   }
   return data as T;

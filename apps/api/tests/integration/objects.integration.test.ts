@@ -448,6 +448,7 @@ describe('objects directory API', () => {
 
   it('lets ADMIN and SGR_MANAGER create objects and rejects everyone else', async () => {
     const admin = await createUser('ADMIN');
+    const orgManager = await createUser('MANAGER');
     const manager = await createUser('SGR_MANAGER');
     const responsible = await createUser('RESPONSIBLE_ENGINEER');
     const contractor = await createUser('CONTRACTOR_ENGINEER');
@@ -471,6 +472,7 @@ describe('objects directory API', () => {
     }
     const stamp = Date.now();
     const adminSession = await login(admin.email);
+    const orgManagerSession = await login(orgManager.email);
     const managerSession = await login(manager.email);
     const responsibleSession = await login(responsible.email);
     const contractorSession = await login(contractor.email);
@@ -598,6 +600,17 @@ describe('objects directory API', () => {
     });
     expect(managerCreated.statusCode).toBe(201);
     createdObjectIds.push((managerCreated.json() as { id: string }).id);
+
+    const orgManagerName = `OrgManager ${stamp}`;
+    const orgManagerCreated = await inject({
+      method: 'POST',
+      url: '/api/objects',
+      cookies: { [SESSION_COOKIE_NAME]: orgManagerSession.cookie },
+      headers: { [CSRF_HEADER_NAME]: orgManagerSession.csrfToken },
+      payload: { name: orgManagerName, address: 'ул. Руководителя организации, 3' },
+    });
+    expect(orgManagerCreated.statusCode).toBe(201);
+    createdObjectIds.push((orgManagerCreated.json() as { id: string }).id);
 
     const duplicate = await inject({
       method: 'POST',

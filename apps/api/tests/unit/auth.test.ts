@@ -270,6 +270,7 @@ describe('capabilities contract', () => {
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('VIEW_HISTORY');
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('VIEW_ASSIGNED_HISTORY');
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('VIEW_ACT_CHAT');
+    expect(capabilitiesForRole('MANAGER')).toEqual(capabilitiesForRole('ADMIN'));
     expect(capabilitiesForRole('ADMIN')).toContain('VIEW_ACT_CHAT');
   });
 });

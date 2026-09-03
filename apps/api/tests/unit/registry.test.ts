@@ -19,7 +19,7 @@ describe('RegistryAccessScope', () => {
   });
 
   it('does not assign responsible-engineer joins for the other three roles', () => {
-    for (const role of ['ADMIN', 'SGR_MANAGER', 'CONTRACTOR_ENGINEER'] as const) {
+    for (const role of ['ADMIN', 'MANAGER', 'SGR_MANAGER', 'CONTRACTOR_ENGINEER'] as const) {
       const where = new RegistryAccessScope({
         id: '11111111-1111-4111-8111-111111111111',
         role,

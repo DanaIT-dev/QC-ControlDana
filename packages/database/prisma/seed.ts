@@ -55,6 +55,12 @@ const DEMO_USERS = [
     role: 'ADMIN' as const,
   },
   {
+    fullName: 'Ольга Романова',
+    email: 'olga.romanova@example.sgr.local',
+    phone: '+375290000006',
+    role: 'MANAGER' as const,
+  },
+  {
     fullName: 'Марина Соколова',
     email: 'marina.sokolova@example.sgr.local',
     phone: '+375290000002',
@@ -195,8 +201,12 @@ async function seed(): Promise<void> {
             }),
           );
         }
-        const engineerNorth = seededUsers[2];
-        const engineerRiver = seededUsers[3];
+        const engineerNorth = seededUsers.find(
+          (user) => user.email === 'dmitry.orlov@example.sgr.local',
+        );
+        const engineerRiver = seededUsers.find(
+          (user) => user.email === 'elena.krylova@example.sgr.local',
+        );
         if (!engineerNorth || !engineerRiver) {
           throw new Error('Demo engineers were not seeded');
         }
@@ -1232,7 +1242,7 @@ async function upsertDemoUser(
     fullName: string;
     email: string;
     phone: string;
-    role: 'ADMIN' | 'SGR_MANAGER' | 'RESPONSIBLE_ENGINEER' | 'CONTRACTOR_ENGINEER';
+    role: 'ADMIN' | 'SGR_MANAGER' | 'RESPONSIBLE_ENGINEER' | 'CONTRACTOR_ENGINEER' | 'MANAGER';
     passwordHash?: string;
   },
 ) {

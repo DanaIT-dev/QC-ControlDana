@@ -6,6 +6,7 @@ import {
   createUserRequestSchema,
   patchActHeaderRequestSchema,
   patchDeadlinesRequestSchema,
+  patchUserProfileRequestSchema,
   startActRequestSchema,
   upsertProposalRequestSchema,
 } from '@sgr-registry/contracts';
@@ -164,6 +165,30 @@ describe('user lifecycle rules', () => {
         role: 'SUPER_ADMIN',
       }).success,
     ).toBe(false);
+    expect(
+      createUserRequestSchema.safeParse({
+        fullName: 'Ольга Романова',
+        email: 'olga@example.sgr.local',
+        role: 'MANAGER',
+      }).success,
+    ).toBe(true);
+    expect(
+      patchUserProfileRequestSchema.safeParse({
+        expectedVersion: 1,
+        firstName: 'Иван',
+        lastName: 'Иванов',
+        email: 'ivan@example.sgr.local',
+        role: 'ADMIN',
+      }).success,
+    ).toBe(false);
+    expect(
+      patchUserProfileRequestSchema.safeParse({
+        expectedVersion: 1,
+        firstName: 'Иван',
+        lastName: 'Иванов',
+        email: 'ivan@example.sgr.local',
+      }).success,
+    ).toBe(true);
     expect(
       createUnassignedUserRequestSchema.safeParse({
         fullName: 'Иван Иванов',

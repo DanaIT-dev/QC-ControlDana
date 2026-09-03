@@ -13,7 +13,7 @@ type OutboxTx = Prisma.TransactionClient;
 
 async function activeRoleIds(
   tx: OutboxTx,
-  role: 'ADMIN' | 'SGR_MANAGER' | 'CONTRACTOR_ENGINEER' | 'RESPONSIBLE_ENGINEER',
+  role: 'ADMIN' | 'MANAGER' | 'SGR_MANAGER' | 'CONTRACTOR_ENGINEER' | 'RESPONSIBLE_ENGINEER',
 ): Promise<string[]> {
   const rows = await tx.user.findMany({
     where: { role, status: 'ACTIVE' },
@@ -284,6 +284,7 @@ export async function notifyAttachmentScan(
     extraRecipientIds.push(
       ...(await activeRoleIds(tx, 'SGR_MANAGER')),
       ...(await activeRoleIds(tx, 'ADMIN')),
+      ...(await activeRoleIds(tx, 'MANAGER')),
     );
   }
   return [

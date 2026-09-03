@@ -33,6 +33,7 @@ import {
   canUploadCategory,
   canViewAttachmentOwner,
   categoriesForOwner,
+  hasCapability,
   createAttachmentObjectKey,
   type AttachmentOwnerRef,
 } from '@sgr-registry/domain';
@@ -268,11 +269,7 @@ export class AttachmentsService {
         canUpload: categoriesForOwner(owner.type).some((category) =>
           canUploadCategory(user.role, owner.type, category),
         ),
-        canArchive:
-          user.role === 'ADMIN' ||
-          user.role === 'SGR_MANAGER' ||
-          user.role === 'CONTRACTOR_ENGINEER' ||
-          user.role === 'RESPONSIBLE_ENGINEER',
+        canArchive: hasCapability(user.role, 'ARCHIVE_ATTACHMENT'),
         canDownload: true,
       },
     };

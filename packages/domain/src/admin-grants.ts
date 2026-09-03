@@ -30,7 +30,7 @@ export function isAdminPreviousRole(role: UserRole): role is AdminPreviousRole {
 }
 
 export function isWorkingStaffRole(role: UserRole): boolean {
-  return (STAFF_ASSIGNABLE_ROLES as readonly string[]).includes(role);
+  return role === 'MANAGER' || (STAFF_ASSIGNABLE_ROLES as readonly string[]).includes(role);
 }
 
 export function previousRoleAfterAdminRevoke(target: {

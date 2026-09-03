@@ -13,6 +13,7 @@ export type DefectItemStatus = (typeof DEFECT_ITEM_STATUSES)[number];
 export const USER_ROLES = [
   'SUPER_ADMIN',
   'ADMIN',
+  'MANAGER',
   'SGR_MANAGER',
   'RESPONSIBLE_ENGINEER',
   'CONTRACTOR_ENGINEER',
@@ -28,10 +29,14 @@ export const STAFF_ASSIGNABLE_ROLES = [
 ] as const;
 export type StaffAssignableRole = (typeof STAFF_ASSIGNABLE_ROLES)[number];
 
+export const OPERATIONAL_ASSIGNABLE_ROLES = ['MANAGER', ...STAFF_ASSIGNABLE_ROLES] as const;
+export type OperationalAssignableRole = (typeof OPERATIONAL_ASSIGNABLE_ROLES)[number];
+
 export const PENDING_USER_ROLE = 'PENDING_ROLE' as const;
 export const UNASSIGNED_ROLE = 'UNASSIGNED' as const;
 
 export const ADMIN_ELIGIBLE_ROLES = [
+  'MANAGER',
   'SGR_MANAGER',
   'RESPONSIBLE_ENGINEER',
   'CONTRACTOR_ENGINEER',
@@ -40,6 +45,7 @@ export const ADMIN_ELIGIBLE_ROLES = [
 export type AdminEligibleRole = (typeof ADMIN_ELIGIBLE_ROLES)[number];
 
 export const ADMIN_PREVIOUS_ROLES = [
+  'MANAGER',
   'SGR_MANAGER',
   'RESPONSIBLE_ENGINEER',
   'CONTRACTOR_ENGINEER',
@@ -49,7 +55,7 @@ export type AdminPreviousRole = (typeof ADMIN_PREVIOUS_ROLES)[number];
 
 export const ADMIN_BACKFILL_PREVIOUS_ROLE = 'UNASSIGNED' as const;
 
-export const MANAGED_USER_ROLES = ['ADMIN', ...STAFF_ASSIGNABLE_ROLES] as const;
+export const MANAGED_USER_ROLES = ['ADMIN', 'MANAGER', ...STAFF_ASSIGNABLE_ROLES] as const;
 export type ManagedUserRole = (typeof MANAGED_USER_ROLES)[number];
 
 export const LISTABLE_USER_ROLES = [...MANAGED_USER_ROLES, 'PENDING_ROLE'] as const;

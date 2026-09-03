@@ -1,7 +1,14 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import {
   createUserRequestSchema,
   historyQuerySchema,
+  patchUserProfileRequestSchema,
   patchUserRequestSchema,
   usersListQuerySchema,
   versionedReasonSchema,
@@ -10,23 +17,32 @@ import {
   StaleWriteError,
   DuplicateValueError,
   AccountProtectedError,
+  DomainError,
   assertLastActiveAdminProtected,
   assertNotSelfArchive,
+  assertCanAssignRole,
+  assertCanEditUserProfile,
+  assertCanMutateManagedUser,
+  composeOfficialFullName,
   normalizeUserEmail,
   normalizeUserFullName,
+  parsePersonNameInput,
   roleLabel,
+  ValidationError,
 } from '@sgr-registry/domain';
 import {
   reconcileDirectoryEngineerLinks,
   revokeEngineerObjectAccess,
+  updateUserProfileViaDefiner,
   upsertUserCredentialsViaDefiner,
   type Prisma,
+  type PrismaClient,
 } from '@sgr-registry/database';
 import type { FastifyRequest } from 'fastify';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { generateTemporaryPassword } from '../auth/crypto';
 import { Argon2PasswordHasher } from '../auth/password-hasher';
-import { PrismaService } from '../auth/prisma.tokens';
+import { AUTH_PRISMA_CLIENT, PrismaService } from '../auth/prisma.tokens';
 import { RedisSessionStore } from '../auth/redis-session.store';
 import { toJsonValue, writeAuditLog } from '../common/audit-writer';
 import { isPrismaUniqueConflict, parseCommandBody } from '../common/command-body';
@@ -51,34 +67,45 @@ const USER_SELECT = {
   archivedAt: true,
 } as const;
 
+const USER_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(AUTH_PRISMA_CLIENT) private readonly authPrisma: PrismaClient,
     @Inject(RedisSessionStore) private readonly sessions: RedisSessionStore,
     @Inject(Argon2PasswordHasher) private readonly hasher: Argon2PasswordHasher,
   ) {}
 
-  async list(rawQuery: Record<string, unknown>) {
+  async list(actor: AuthenticatedUser, rawQuery: Record<string, unknown>) {
     const query = parseCommandBody(usersListQuerySchema, rawQuery);
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 50;
-    const where: Prisma.UserWhereInput = {
-      role: { not: 'SUPER_ADMIN' },
-    };
+    const filters: Prisma.UserWhereInput[] = [
+      actor.role === 'SUPER_ADMIN'
+        ? { OR: [{ role: { not: 'SUPER_ADMIN' } }, { id: actor.id }] }
+        : { role: { not: 'SUPER_ADMIN' } },
+    ];
     if (query.role) {
-      where.role = query.role;
+      filters.push({ role: query.role });
     }
     if (query.status) {
-      where.status = query.status;
+      filters.push({ status: query.status });
     }
     if (query.search && query.search.trim().length >= 2) {
       const search = query.search.trim();
-      where.OR = [
-        { fullName: { contains: search, mode: 'insensitive' } },
-        { email: { contains: search.toLowerCase(), mode: 'insensitive' } },
-      ];
+      filters.push({
+        OR: [
+          { fullName: { contains: search, mode: 'insensitive' } },
+          { email: { contains: search.toLowerCase(), mode: 'insensitive' } },
+        ],
+      });
     }
+    const where: Prisma.UserWhereInput = { AND: filters };
     const totalCount = await this.prisma.client.user.count({ where });
     const items = await this.prisma.client.user.findMany({
       where,
@@ -98,6 +125,7 @@ export class UsersService {
 
   async create(actor: AuthenticatedUser, body: unknown, request: FastifyRequest) {
     const input = parseCommandBody(createUserRequestSchema, body);
+    assertCanAssignRole(actor.role, input.role);
     const fullName = normalizeUserFullName(input.fullName);
     const email = normalizeUserEmail(input.email);
     const temporaryPassword = generateTemporaryPassword(16, { email, fullName });
@@ -142,87 +170,211 @@ export class UsersService {
       if (isPrismaUniqueConflict(error)) {
         throw new DuplicateValueError('Пользователь с такой почтой уже существует');
       }
-      throw error;
+      throw mapUserMutationError(error);
     }
   }
 
   async update(actor: AuthenticatedUser, userId: string, body: unknown, request: FastifyRequest) {
+    assertUserId(userId);
     const input = parseCommandBody(patchUserRequestSchema, body);
     const ctx = actorContext(actor, request);
-    const result = await this.prisma.client.$transaction(async (tx) => {
-      const current = await tx.user.findUnique({ where: { id: userId }, select: USER_SELECT });
-      if (!current) {
-        throw new NotFoundException('Запись не найдена');
-      }
-      assertOrdinaryStaffAccount(current.role);
-      if (current.version !== input.expectedVersion) {
-        throw new StaleWriteError();
-      }
-      const nextFullName = input.fullName
-        ? normalizeUserFullName(input.fullName)
-        : current.fullName;
-      const nextRole = input.role ?? current.role;
-      if (nextRole !== current.role) {
-        const activeAdminCount = await tx.user.count({
-          where: { role: 'ADMIN', status: 'ACTIVE' },
+    try {
+      const result = await this.prisma.client.$transaction(async (tx) => {
+        const current = await tx.user.findUnique({ where: { id: userId }, select: USER_SELECT });
+        if (!current) {
+          throw new NotFoundException('Запись не найдена');
+        }
+        assertCanMutateManagedUser(actor, current);
+        if (current.version !== input.expectedVersion) {
+          throw new StaleWriteError();
+        }
+        const nextRole = input.role ?? current.role;
+        if (nextRole !== current.role) {
+          assertCanAssignRole(actor.role, nextRole);
+          const activeAdminCount = await tx.user.count({
+            where: { role: 'ADMIN', status: 'ACTIVE' },
+          });
+          assertLastActiveAdminProtected({
+            targetUserId: current.id,
+            targetRole: current.role,
+            nextRole,
+            nextStatus: current.status,
+            activeAdminCount,
+          });
+        }
+        const invalidateSessions = nextRole !== current.role;
+        const updated = await tx.user.updateMany({
+          where: { id: userId, version: input.expectedVersion },
+          data: {
+            role: nextRole,
+            version: { increment: 1 },
+            ...(invalidateSessions ? { sessionVersion: { increment: 1 } } : {}),
+          },
         });
-        assertLastActiveAdminProtected({
-          targetUserId: current.id,
-          targetRole: current.role,
-          nextRole,
-          nextStatus: current.status,
-          activeAdminCount,
+        if (updated.count !== 1) {
+          throw new StaleWriteError();
+        }
+        const fresh = await tx.user.findUniqueOrThrow({
+          where: { id: userId },
+          select: USER_SELECT,
         });
-      }
-      const invalidateSessions = nextRole !== current.role;
-      const updated = await tx.user.updateMany({
-        where: { id: userId, version: input.expectedVersion },
-        data: {
-          fullName: nextFullName,
-          role: nextRole,
-          version: { increment: 1 },
-          ...(invalidateSessions ? { sessionVersion: { increment: 1 } } : {}),
-        },
-      });
-      if (updated.count !== 1) {
-        throw new StaleWriteError();
-      }
-      const fresh = await tx.user.findUniqueOrThrow({ where: { id: userId }, select: USER_SELECT });
-      const assignedFromPending = current.role === 'PENDING_ROLE' && nextRole !== current.role;
-      await writeAuditLog(tx, {
-        ...ctx,
-        action: assignedFromPending ? 'USER_ROLE_ASSIGNED' : 'USER_UPDATED',
-        entityType: 'USER',
-        entityId: userId,
-        oldValue: toJsonValue({
-          fullName: current.fullName,
-          role: current.role,
-          targetUserId: userId,
-          actorId: actor.id,
-        }),
-        newValue: toJsonValue({
+        if (nextRole !== current.role) {
+          const assignedFromPending = current.role === 'PENDING_ROLE';
+          await writeAuditLog(tx, {
+            ...ctx,
+            action: assignedFromPending ? 'USER_ROLE_ASSIGNED' : 'USER_ROLE_CHANGED',
+            entityType: 'USER',
+            entityId: userId,
+            oldValue: toJsonValue({
+              role: current.role,
+              targetUserId: userId,
+              actorId: actor.id,
+            }),
+            newValue: toJsonValue({
+              role: fresh.role,
+              targetUserId: userId,
+              actorId: actor.id,
+            }),
+          });
+          if (current.role !== 'MANAGER' && fresh.role === 'MANAGER') {
+            await writeAuditLog(tx, {
+              ...ctx,
+              action: 'MANAGER_ROLE_GRANTED',
+              entityType: 'USER',
+              entityId: userId,
+              oldValue: toJsonValue({
+                role: current.role,
+                targetUserId: userId,
+                actorId: actor.id,
+              }),
+              newValue: toJsonValue({ role: fresh.role, targetUserId: userId, actorId: actor.id }),
+            });
+          }
+          if (current.role === 'MANAGER' && fresh.role !== 'MANAGER') {
+            await writeAuditLog(tx, {
+              ...ctx,
+              action: 'MANAGER_ROLE_REVOKED',
+              entityType: 'USER',
+              entityId: userId,
+              oldValue: toJsonValue({
+                role: current.role,
+                targetUserId: userId,
+                actorId: actor.id,
+              }),
+              newValue: toJsonValue({ role: fresh.role, targetUserId: userId, actorId: actor.id }),
+            });
+          }
+        }
+        await syncDirectoryEngineerLinks(tx, actor, ctx.requestId, {
+          userId,
           fullName: fresh.fullName,
-          role: fresh.role,
-          targetUserId: userId,
-          actorId: actor.id,
-        }),
+          previousRole: current.role,
+          nextRole: fresh.role,
+          nextStatus: fresh.status,
+        });
+        return { dto: toUserDto(fresh), invalidateSessions };
       });
-      await syncDirectoryEngineerLinks(tx, actor, ctx.requestId, {
-        userId,
-        fullName: fresh.fullName,
-        previousRole: current.role,
-        nextRole: fresh.role,
-        nextStatus: fresh.status,
-      });
-      return { dto: toUserDto(fresh), invalidateSessions };
-    });
-    if (result.invalidateSessions) {
-      await this.sessions.deleteAllForUser(userId);
+      if (result.invalidateSessions) {
+        await this.sessions.deleteAllForUser(userId);
+      }
+      return result.dto;
+    } catch (error) {
+      throw mapUserMutationError(error);
     }
-    return result.dto;
+  }
+
+  async updateProfile(
+    actor: AuthenticatedUser,
+    userId: string,
+    body: unknown,
+    request: FastifyRequest,
+  ) {
+    assertUserId(userId);
+    const input = parseCommandBody(patchUserProfileRequestSchema, body);
+    const parts = parsePersonNameInput({
+      lastName: input.lastName,
+      firstName: input.firstName,
+      middleName: input.middleName ?? null,
+    });
+    const fullName = composeOfficialFullName(parts);
+    const email = normalizeUserEmail(input.email);
+    const current = await this.prisma.client.user.findUnique({
+      where: { id: userId },
+      select: USER_SELECT,
+    });
+    if (!current) {
+      throw new NotFoundException('Запись не найдена');
+    }
+    assertCanEditUserProfile(actor, current);
+    const emailChanged = email !== current.email;
+    if (emailChanged && actor.id === userId) {
+      if (!input.currentPassword) {
+        throw new ValidationError('currentPassword', 'Подтвердите текущий пароль');
+      }
+      const credentials = await this.authPrisma.userCredential.findUnique({
+        where: { userId: actor.id },
+        select: { passwordHash: true },
+      });
+      const matches = credentials?.passwordHash
+        ? await this.hasher.verify(credentials.passwordHash, input.currentPassword)
+        : false;
+      if (!matches) {
+        throw new UnauthorizedException('Неверный пароль');
+      }
+    }
+    const ctx = actorContext(actor, request);
+    const nameChanged = fullName !== current.fullName;
+    let result: { dto: ReturnType<typeof toUserDto>; emailChanged: boolean };
+    try {
+      result = await this.prisma.client.$transaction(async (tx) => {
+        const updated = await updateUserProfileViaDefiner(tx, {
+          targetId: userId,
+          lastName: parts.lastName,
+          firstName: parts.firstName,
+          middleName: parts.middleName,
+          email,
+          expectedVersion: input.expectedVersion,
+          actorUserId: actor.id,
+          actorName: actor.fullName,
+          requestId: ctx.requestId,
+        });
+        const fresh = await tx.user.findUniqueOrThrow({
+          where: { id: userId },
+          select: USER_SELECT,
+        });
+        if (nameChanged) {
+          await syncDirectoryEngineerLinks(tx, actor, ctx.requestId, {
+            userId,
+            fullName: fresh.fullName,
+            previousRole: fresh.role,
+            nextRole: fresh.role,
+            nextStatus: fresh.status,
+          });
+        }
+        return { dto: toUserDto(fresh), emailChanged: updated.emailChanged };
+      });
+    } catch (error) {
+      throw mapUserMutationError(error);
+    }
+    if (result.emailChanged) {
+      try {
+        await this.sessions.deleteAllForUser(userId);
+      } catch (error) {
+        this.logger.warn(
+          `Failed to revoke Redis sessions after email change userId=${userId}: ${
+            error instanceof Error ? error.message : 'unknown'
+          }`,
+        );
+      }
+    }
+    return {
+      user: result.dto,
+      requireReauth: result.emailChanged && actor.id === userId,
+    };
   }
 
   async archive(actor: AuthenticatedUser, userId: string, body: unknown, request: FastifyRequest) {
+    assertUserId(userId);
     const input = parseCommandBody(versionedReasonSchema, body);
     assertNotSelfArchive(actor.id, userId);
     const ctx = actorContext(actor, request);
@@ -231,7 +383,7 @@ export class UsersService {
       if (!current) {
         throw new NotFoundException('Запись не найдена');
       }
-      assertOrdinaryStaffAccount(current.role);
+      assertCanMutateManagedUser(actor, current);
       if (current.version !== input.expectedVersion) {
         throw new StaleWriteError();
       }
@@ -284,6 +436,7 @@ export class UsersService {
   }
 
   async restore(actor: AuthenticatedUser, userId: string, body: unknown, request: FastifyRequest) {
+    assertUserId(userId);
     const input = parseCommandBody(versionedReasonSchema, body);
     const ctx = actorContext(actor, request);
     return this.prisma.client.$transaction(async (tx) => {
@@ -291,7 +444,7 @@ export class UsersService {
       if (!current) {
         throw new NotFoundException('Запись не найдена');
       }
-      assertOrdinaryStaffAccount(current.role);
+      assertCanMutateManagedUser(actor, current);
       if (current.version !== input.expectedVersion) {
         throw new StaleWriteError();
       }
@@ -333,6 +486,7 @@ export class UsersService {
     body: unknown,
     request: FastifyRequest,
   ) {
+    assertUserId(userId);
     const input = parseCommandBody(versionedReasonSchema, body);
     const preview = await this.prisma.client.user.findUnique({
       where: { id: userId },
@@ -341,7 +495,7 @@ export class UsersService {
     if (!preview) {
       throw new NotFoundException('Запись не найдена');
     }
-    assertOrdinaryStaffAccount(preview.role);
+    assertCanMutateManagedUser(actor, preview);
     const temporaryPassword = generateTemporaryPassword(16, {
       email: preview.email,
       fullName: preview.fullName,
@@ -356,7 +510,7 @@ export class UsersService {
       if (!current) {
         throw new NotFoundException('Запись не найдена');
       }
-      assertOrdinaryStaffAccount(current.role);
+      assertCanMutateManagedUser(actor, current);
       if (current.version !== input.expectedVersion) {
         throw new StaleWriteError();
       }
@@ -387,6 +541,7 @@ export class UsersService {
   }
 
   async history(userId: string, rawQuery: Record<string, unknown>) {
+    assertUserId(userId);
     const exists = await this.prisma.client.user.findUnique({
       where: { id: userId },
       select: { id: true, role: true },
@@ -417,10 +572,66 @@ export class UsersService {
   }
 }
 
-function assertOrdinaryStaffAccount(role: AuthenticatedUser['role']): void {
-  if (role === 'ADMIN' || role === 'SUPER_ADMIN' || role === 'UNASSIGNED') {
+function assertUserId(userId: string): void {
+  if (!USER_ID_PATTERN.test(userId)) {
+    throw new NotFoundException('Запись не найдена');
+  }
+}
+
+function prismaRawMessage(error: unknown): string {
+  const parts: string[] = [];
+  if (error instanceof Error) {
+    parts.push(error.message);
+  }
+  if (error && typeof error === 'object' && 'code' in error) {
+    parts.push(String((error as { code: unknown }).code));
+  }
+  if (error && typeof error === 'object' && 'meta' in error) {
+    const meta = (error as { meta?: { message?: unknown; cause?: unknown; code?: unknown } }).meta;
+    if (typeof meta?.message === 'string') {
+      parts.push(meta.message);
+    }
+    if (typeof meta?.cause === 'string') {
+      parts.push(meta.cause);
+    }
+    if (typeof meta?.code === 'string') {
+      parts.push(meta.code);
+    }
+  }
+  return parts.join('\n');
+}
+
+function mapUserMutationError(error: unknown): never {
+  if (
+    error instanceof DomainError ||
+    error instanceof NotFoundException ||
+    error instanceof UnauthorizedException
+  ) {
+    throw error;
+  }
+  const message = prismaRawMessage(error);
+  if (/P0002|не найдена/i.test(message)) {
+    throw new NotFoundException('Запись не найдена');
+  }
+  if (/40001|изменена другим/i.test(message)) {
+    throw new StaleWriteError();
+  }
+  if (/23505|P2002|уже существует/i.test(message)) {
+    throw new DuplicateValueError('Пользователь с такой почтой уже существует');
+  }
+  if (/42501|Недостаточно прав/i.test(message)) {
     throw new AccountProtectedError();
   }
+  if (/22023|обязательн/i.test(message)) {
+    throw new ValidationError('lastName', 'Значение обязательно');
+  }
+  if (/Некорректный адрес/i.test(message)) {
+    throw new ValidationError('email', 'Некорректный адрес электронной почты');
+  }
+  if (/Недопустимые символы/i.test(message)) {
+    throw new ValidationError('lastName', 'Недопустимые символы');
+  }
+  throw error instanceof Error ? error : new Error(String(error));
 }
 
 async function syncDirectoryEngineerLinks(

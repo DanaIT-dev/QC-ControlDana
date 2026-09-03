@@ -1,11 +1,13 @@
 'use client';
 
+import { LISTABLE_USER_ROLES, USER_STATUSES, type UserRole } from '@sgr-registry/contracts';
 import {
-  LISTABLE_USER_ROLES,
-  STAFF_ASSIGNABLE_ROLES,
-  USER_STATUSES,
-} from '@sgr-registry/contracts';
-import { roleLabel } from '@sgr-registry/domain';
+  assignableRolesFor,
+  canEditUserProfile,
+  canMutateManagedUser,
+  parsePersonNameForForm,
+  roleLabel,
+} from '@sgr-registry/domain';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CopyIcon, MoreHorizontal } from 'lucide-react';
 import { useState } from 'react';
@@ -48,7 +50,7 @@ interface UserRow {
   id: string;
   fullName: string;
   email: string;
-  role: (typeof LISTABLE_USER_ROLES)[number];
+  role: UserRole;
   roleLabel: string;
   status: (typeof USER_STATUSES)[number];
   createdAt: string;
@@ -61,13 +63,17 @@ interface UserRow {
 export function UsersView({
   csrfToken,
   currentUserId,
+  currentUserRole,
   canManage,
   canCreateUnassigned,
+  canEditProfiles,
 }: {
   csrfToken: string;
   currentUserId: string;
+  currentUserRole: UserRole;
   canManage: boolean;
   canCreateUnassigned: boolean;
+  canEditProfiles: boolean;
 }) {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
@@ -76,6 +82,8 @@ export function UsersView({
   const [temporaryPassword, setTemporaryPassword] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [conflict, setConflict] = useState(false);
+  const showActions = canManage || canEditProfiles;
+  const assignableRoles = assignableRolesFor(currentUserRole);
   const usersQuery = useQuery({
     queryKey: ['users', search, role, status],
     queryFn: async () => {
@@ -194,7 +202,7 @@ export function UsersView({
               <th className="px-3 py-3">Роль</th>
               <th className="px-3 py-3">Статус</th>
               <th className="px-3 py-3">Последний вход</th>
-              {canManage ? <th className="px-3 py-3">Действия</th> : null}
+              {showActions ? <th className="px-3 py-3">Действия</th> : null}
             </tr>
           </thead>
           <tbody>
@@ -218,9 +226,17 @@ export function UsersView({
                 <td className="px-3 py-3 text-muted-foreground">
                   {formatTimestamp(item.lastLoginAt)}
                 </td>
-                {canManage ? (
+                {showActions ? (
                   <td className="px-3 py-3">
-                    <UserActions user={item} currentUserId={currentUserId} onMutate={mutate} />
+                    <UserActions
+                      user={item}
+                      actor={{ id: currentUserId, role: currentUserRole }}
+                      canManage={canManage}
+                      assignableRoles={assignableRoles}
+                      csrfToken={csrfToken}
+                      onMutate={mutate}
+                      onConflict={() => setConflict(true)}
+                    />
                   </td>
                 ) : null}
               </tr>
@@ -250,8 +266,16 @@ export function UsersView({
               <p className="text-sm text-muted-foreground">
                 Вход: {formatTimestamp(item.lastLoginAt)}
               </p>
-              {canManage ? (
-                <UserActions user={item} currentUserId={currentUserId} onMutate={mutate} />
+              {showActions ? (
+                <UserActions
+                  user={item}
+                  actor={{ id: currentUserId, role: currentUserRole }}
+                  canManage={canManage}
+                  assignableRoles={assignableRoles}
+                  csrfToken={csrfToken}
+                  onMutate={mutate}
+                  onConflict={() => setConflict(true)}
+                />
               ) : null}
             </CardContent>
           </Card>
@@ -260,6 +284,7 @@ export function UsersView({
       {createOpen ? (
         <CreateUserDialog
           unassigned={canCreateUnassigned && !canManage}
+          assignableRoles={assignableRoles}
           onClose={() => setCreateOpen(false)}
           onCreate={async (body) => {
             await mutate(
@@ -286,16 +311,29 @@ export function UsersView({
 
 function UserActions({
   user,
-  currentUserId,
+  actor,
+  canManage,
+  assignableRoles,
+  csrfToken,
   onMutate,
+  onConflict,
 }: {
   user: UserRow;
-  currentUserId: string;
+  actor: { id: string; role: UserRole };
+  canManage: boolean;
+  assignableRoles: readonly UserRole[];
+  csrfToken: string;
   onMutate: (path: string, method: 'POST' | 'PATCH', body: unknown) => Promise<void>;
+  onConflict: () => void;
 }) {
   const [roleOpen, setRoleOpen] = useState(false);
-  const protectedAccount = user.role === 'ADMIN';
-  if (protectedAccount) {
+  const [editOpen, setEditOpen] = useState(false);
+  const queryClient = useQueryClient();
+  const canEdit = canEditUserProfile(actor, user);
+  const canChangeRole = canMutateManagedUser(actor, user) && assignableRoles.length > 0;
+  const canArchiveRestore = canManage && canMutateManagedUser(actor, user);
+  const canResetPassword = canManage && canMutateManagedUser(actor, user);
+  if (!canEdit && !canChangeRole && !canArchiveRestore && !canResetPassword) {
     return null;
   }
   return (
@@ -307,8 +345,13 @@ function UserActions({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem onSelect={() => setRoleOpen(true)}>Изменить роль</DropdownMenuItem>
-          {user.status === 'ACTIVE' && user.id !== currentUserId ? (
+          {canEdit ? (
+            <DropdownMenuItem onSelect={() => setEditOpen(true)}>Редактировать</DropdownMenuItem>
+          ) : null}
+          {canChangeRole ? (
+            <DropdownMenuItem onSelect={() => setRoleOpen(true)}>Изменить роль</DropdownMenuItem>
+          ) : null}
+          {canArchiveRestore && user.status === 'ACTIVE' && user.id !== actor.id ? (
             <DropdownMenuItem
               onSelect={() =>
                 void onMutate(`/api/users/${user.id}/archive`, 'POST', {
@@ -319,7 +362,7 @@ function UserActions({
               Архивировать
             </DropdownMenuItem>
           ) : null}
-          {user.status === 'ARCHIVED' ? (
+          {canArchiveRestore && user.status === 'ARCHIVED' ? (
             <DropdownMenuItem
               onSelect={() =>
                 void onMutate(`/api/users/${user.id}/restore`, 'POST', {
@@ -330,27 +373,50 @@ function UserActions({
               Восстановить
             </DropdownMenuItem>
           ) : null}
-          <DropdownMenuItem
-            onSelect={() =>
-              void onMutate(`/api/users/${user.id}/reset-password`, 'POST', {
-                expectedVersion: user.version,
-              })
-            }
-          >
-            Сбросить пароль
-          </DropdownMenuItem>
+          {canResetPassword ? (
+            <DropdownMenuItem
+              onSelect={() =>
+                void onMutate(`/api/users/${user.id}/reset-password`, 'POST', {
+                  expectedVersion: user.version,
+                })
+              }
+            >
+              Сбросить пароль
+            </DropdownMenuItem>
+          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
       {roleOpen ? (
         <ChangeRoleDialog
           user={user}
+          assignableRoles={assignableRoles}
           onClose={() => setRoleOpen(false)}
-          onSave={(role) => {
+          onSave={(nextRole) => {
             setRoleOpen(false);
             void onMutate(`/api/users/${user.id}`, 'PATCH', {
               expectedVersion: user.version,
-              role,
+              role: nextRole,
             });
+          }}
+        />
+      ) : null}
+      {editOpen ? (
+        <EditUserDialog
+          user={user}
+          csrfToken={csrfToken}
+          requireCurrentPassword={actor.id === user.id}
+          onClose={() => setEditOpen(false)}
+          onConflict={onConflict}
+          onSaved={async (requireReauth) => {
+            setEditOpen(false);
+            if (requireReauth) {
+              toast.success('Данные сохранены. Войдите с новым адресом электронной почты.');
+              window.location.assign('/login');
+              return;
+            }
+            toast.success('Изменения сохранены');
+            await queryClient.invalidateQueries({ queryKey: ['users'] });
+            await queryClient.invalidateQueries({ queryKey: queryKeys.objects.all });
           }}
         />
       ) : null}
@@ -358,18 +424,180 @@ function UserActions({
   );
 }
 
+function EditUserDialog({
+  user,
+  csrfToken,
+  requireCurrentPassword,
+  onClose,
+  onSaved,
+  onConflict,
+}: {
+  user: UserRow;
+  csrfToken: string;
+  requireCurrentPassword: boolean;
+  onClose: () => void;
+  onSaved: (requireReauth: boolean) => Promise<void>;
+  onConflict: () => void;
+}) {
+  const parsed = parsePersonNameForForm(user.fullName);
+  const [lastName, setLastName] = useState(parsed.lastName);
+  const [firstName, setFirstName] = useState(parsed.firstName);
+  const [middleName, setMiddleName] = useState(parsed.middleName ?? '');
+  const [email, setEmail] = useState(user.email);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const emailChanged = email.trim().toLowerCase() !== user.email.toLowerCase();
+
+  async function save() {
+    setSaving(true);
+    setErrors({});
+    try {
+      const result = await commandFetch<{ user: UserRow; requireReauth?: boolean }>(
+        `/api/users/${user.id}/profile`,
+        {
+          method: 'PATCH',
+          csrfToken,
+          body: {
+            expectedVersion: user.version,
+            lastName,
+            firstName,
+            middleName: middleName.trim() === '' ? null : middleName,
+            email,
+            ...(requireCurrentPassword && emailChanged ? { currentPassword } : {}),
+          },
+        },
+      );
+      await onSaved(result.requireReauth === true);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409 && error.code === 'STALE_WRITE') {
+        onConflict();
+        return;
+      }
+      if (error instanceof ApiError && error.status === 409) {
+        setErrors({ email: error.message });
+        return;
+      }
+      if (error instanceof ApiError && error.field) {
+        setErrors({ [error.field]: error.message });
+        return;
+      }
+      toast.error(error instanceof ApiError ? error.message : 'Ошибка');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => (!open && !saving ? onClose() : undefined)}>
+      <DialogContent>
+        <form
+          className="grid gap-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void save();
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Редактировать пользователя</DialogTitle>
+            <DialogDescription>Имя, фамилия, отчество и электронная почта.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-1.5">
+            <Label htmlFor="edit-user-last-name">Фамилия</Label>
+            <Input
+              id="edit-user-last-name"
+              value={lastName}
+              onChange={(event) => setLastName(event.target.value)}
+              required
+              aria-invalid={Boolean(errors.lastName)}
+            />
+            {errors.lastName ? <p className="text-sm text-destructive">{errors.lastName}</p> : null}
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="edit-user-first-name">Имя</Label>
+            <Input
+              id="edit-user-first-name"
+              value={firstName}
+              onChange={(event) => setFirstName(event.target.value)}
+              required
+              aria-invalid={Boolean(errors.firstName)}
+            />
+            {errors.firstName ? (
+              <p className="text-sm text-destructive">{errors.firstName}</p>
+            ) : null}
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="edit-user-middle-name">Отчество</Label>
+            <Input
+              id="edit-user-middle-name"
+              value={middleName}
+              onChange={(event) => setMiddleName(event.target.value)}
+              aria-invalid={Boolean(errors.middleName)}
+            />
+            {errors.middleName ? (
+              <p className="text-sm text-destructive">{errors.middleName}</p>
+            ) : null}
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="edit-user-email">Электронная почта</Label>
+            <Input
+              id="edit-user-email"
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              required
+              aria-invalid={Boolean(errors.email)}
+            />
+            {errors.email ? <p className="text-sm text-destructive">{errors.email}</p> : null}
+          </div>
+          {requireCurrentPassword && emailChanged ? (
+            <div className="grid gap-1.5">
+              <Label htmlFor="edit-user-current-password">Текущий пароль</Label>
+              <Input
+                id="edit-user-current-password"
+                type="password"
+                value={currentPassword}
+                onChange={(event) => setCurrentPassword(event.target.value)}
+                required
+                autoComplete="current-password"
+                aria-invalid={Boolean(errors.currentPassword)}
+              />
+              {errors.currentPassword ? (
+                <p className="text-sm text-destructive">{errors.currentPassword}</p>
+              ) : null}
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
+              Отменить
+            </Button>
+            <Button type="submit" disabled={saving}>
+              Сохранить
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function CreateUserDialog({
   unassigned = false,
+  assignableRoles,
   onClose,
   onCreate,
 }: {
   unassigned?: boolean;
+  assignableRoles: readonly UserRole[];
   onClose: () => void;
   onCreate: (body: unknown) => Promise<void>;
 }) {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState<(typeof STAFF_ASSIGNABLE_ROLES)[number]>('RESPONSIBLE_ENGINEER');
+  const defaultRole = assignableRoles.includes('RESPONSIBLE_ENGINEER')
+    ? 'RESPONSIBLE_ENGINEER'
+    : (assignableRoles[0] ?? 'RESPONSIBLE_ENGINEER');
+  const [role, setRole] = useState<UserRole>(defaultRole);
   return (
     <Dialog open onOpenChange={(open) => (!open ? onClose() : undefined)}>
       <DialogContent>
@@ -410,15 +638,12 @@ function CreateUserDialog({
           {unassigned ? null : (
             <div className="grid gap-1.5">
               <Label htmlFor="new-user-role">Роль</Label>
-              <Select
-                value={role}
-                onValueChange={(value) => setRole(value as (typeof STAFF_ASSIGNABLE_ROLES)[number])}
-              >
+              <Select value={role} onValueChange={(value) => setRole(value as UserRole)}>
                 <SelectTrigger id="new-user-role">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {STAFF_ASSIGNABLE_ROLES.map((item) => (
+                  {assignableRoles.map((item) => (
                     <SelectItem key={item} value={item}>
                       {roleLabel(item)}
                     </SelectItem>
@@ -441,34 +666,31 @@ function CreateUserDialog({
 
 function ChangeRoleDialog({
   user,
+  assignableRoles,
   onClose,
   onSave,
 }: {
   user: UserRow;
+  assignableRoles: readonly UserRole[];
   onClose: () => void;
-  onSave: (role: (typeof STAFF_ASSIGNABLE_ROLES)[number]) => void;
+  onSave: (role: UserRole) => void;
 }) {
-  const initial = STAFF_ASSIGNABLE_ROLES.includes(
-    user.role as (typeof STAFF_ASSIGNABLE_ROLES)[number],
-  )
-    ? (user.role as (typeof STAFF_ASSIGNABLE_ROLES)[number])
-    : 'RESPONSIBLE_ENGINEER';
-  const [role, setRole] = useState<(typeof STAFF_ASSIGNABLE_ROLES)[number]>(initial);
+  const initial = assignableRoles.includes(user.role)
+    ? user.role
+    : (assignableRoles[0] ?? user.role);
+  const [role, setRole] = useState<UserRole>(initial);
   return (
     <Dialog open onOpenChange={(open) => (!open ? onClose() : undefined)}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Изменить роль</DialogTitle>
         </DialogHeader>
-        <Select
-          value={role}
-          onValueChange={(value) => setRole(value as (typeof STAFF_ASSIGNABLE_ROLES)[number])}
-        >
+        <Select value={role} onValueChange={(value) => setRole(value as UserRole)}>
           <SelectTrigger aria-label="Новая роль">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {STAFF_ASSIGNABLE_ROLES.map((item) => (
+            {assignableRoles.map((item) => (
               <SelectItem key={item} value={item}>
                 {roleLabel(item)}
               </SelectItem>

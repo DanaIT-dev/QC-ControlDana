@@ -7,6 +7,7 @@ import {
 } from '@sgr-registry/contracts';
 import { ValidationError } from './errors';
 import { assertAuditPayloadSafe, containsSensitiveAuditKey } from './secrets';
+import { isBusinessStaffRole } from './role-hierarchy';
 
 export type { NotificationType, SlaClockKind };
 
@@ -79,7 +80,7 @@ export function recipientsForDeadlineAlert(input: {
 }
 
 export function canReceiveDeadlineKind(role: UserRole, kind: SlaClockKind): boolean {
-  if (role === 'ADMIN' || role === 'SGR_MANAGER') {
+  if (isBusinessStaffRole(role)) {
     return true;
   }
   if (role === 'RESPONSIBLE_ENGINEER') {

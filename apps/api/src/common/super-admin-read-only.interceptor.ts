@@ -16,6 +16,8 @@ const ALLOWED: Array<{ method: string; pattern: RegExp }> = [
   { method: 'POST', pattern: new RegExp(`^/api/super-admin/admins/${UUID}/?$`, 'i') },
   { method: 'DELETE', pattern: new RegExp(`^/api/super-admin/admins/${UUID}/?$`, 'i') },
   { method: 'POST', pattern: /^\/api\/super-admin\/users\/?$/ },
+  { method: 'PATCH', pattern: new RegExp(`^/api/users/${UUID}/profile/?$`, 'i') },
+  { method: 'PATCH', pattern: new RegExp(`^/api/users/${UUID}/?$`, 'i') },
 ];
 
 @Injectable()

@@ -331,6 +331,7 @@ describe('auth integration', () => {
     const roles: UserRole[] = [
       'SUPER_ADMIN',
       'ADMIN',
+      'MANAGER',
       'SGR_MANAGER',
       'RESPONSIBLE_ENGINEER',
       'CONTRACTOR_ENGINEER',

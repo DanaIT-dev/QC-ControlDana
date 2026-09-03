@@ -27,8 +27,8 @@ export class UsersController {
 
   @Get()
   @RequireCapability('MANAGE_USERS', 'VIEW_ALL_BUSINESS_DATA', 'CREATE_UNASSIGNED_USER')
-  list(@Query() query: Record<string, unknown>) {
-    return this.usersService.list(query);
+  list(@CurrentUser() user: AuthenticatedUser, @Query() query: Record<string, unknown>) {
+    return this.usersService.list(user, query);
   }
 
   @Post()
@@ -43,8 +43,20 @@ export class UsersController {
     return this.usersService.create(user, body, request);
   }
 
+  @Patch(':userId/profile')
+  @RequireCapability('MANAGE_USERS', 'VIEW_ALL_BUSINESS_DATA')
+  @UseGuards(BrowserOriginGuard, CsrfGuard)
+  updateProfile(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('userId') userId: string,
+    @Body() body: unknown,
+    @Req() request: FastifyRequest,
+  ) {
+    return this.usersService.updateProfile(user, userId, body, request);
+  }
+
   @Patch(':userId')
-  @RequireCapability('MANAGE_USERS')
+  @RequireCapability('MANAGE_USERS', 'VIEW_ALL_BUSINESS_DATA')
   @UseGuards(BrowserOriginGuard, CsrfGuard)
   update(
     @CurrentUser() user: AuthenticatedUser,

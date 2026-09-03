@@ -438,7 +438,14 @@ describe('capabilities', () => {
       'CHANGE_OWN_PASSWORD',
       'VIEW_OWN_PROFILE',
     ]);
+    expect(capabilitiesForRole('MANAGER')).toEqual(capabilitiesForRole('ADMIN'));
+    expect(capabilitiesForRole('MANAGER')).not.toContain('MANAGE_ADMIN_GRANTS');
+    expect(roleLabel('MANAGER')).toBe('Руководитель');
+    expect(roleLabel('SGR_MANAGER')).toBe('Руководитель СГР');
     expect(canCreatePropertyObject('ADMIN')).toBe(true);
+    expect(canCreatePropertyObject('MANAGER')).toBe(true);
+    expect(canViewProposalASum('MANAGER')).toBe(true);
+    expect(visibleProposalSlots('MANAGER')).toEqual(['A', 'B', 'C']);
     expect(canCreatePropertyObject('SGR_MANAGER')).toBe(true);
     expect(canCreatePropertyObject('SUPER_ADMIN')).toBe(false);
     expect(canCreatePropertyObject('RESPONSIBLE_ENGINEER')).toBe(false);
@@ -693,6 +700,7 @@ describe('property object linked selection', () => {
     expect(canAccessReferenceKind('RESPONSIBLE_ENGINEER', 'defect-types')).toBe(false);
     expect(canAccessReferenceKind('CONTRACTOR_ENGINEER', 'property-objects')).toBe(false);
     expect(canViewObjectsDirectory('ADMIN')).toBe(true);
+    expect(canViewObjectsDirectory('MANAGER')).toBe(true);
     expect(canViewObjectsDirectory('SGR_MANAGER')).toBe(true);
     expect(canViewObjectsDirectory('RESPONSIBLE_ENGINEER')).toBe(true);
     expect(canViewObjectsDirectory('SUPER_ADMIN')).toBe(true);

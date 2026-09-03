@@ -52,6 +52,7 @@ import {
   reopenDefectItem,
   shapeHistoryForRole,
   visibleProposalSlots,
+  isBusinessStaffRole,
 } from '@sgr-registry/domain';
 import type { FastifyRequest } from 'fastify';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
@@ -509,7 +510,7 @@ export class OperationsService {
       normalizeRequiredReason(input.reason);
     }
     if (item.status === 'COMPLETED') {
-      if (user.role !== 'ADMIN' && user.role !== 'SGR_MANAGER') {
+      if (!isBusinessStaffRole(user.role)) {
         throw new InvalidTransitionError('Завершённый дефект нельзя изменить');
       }
       if (!input.confirmCompletedEdit) {

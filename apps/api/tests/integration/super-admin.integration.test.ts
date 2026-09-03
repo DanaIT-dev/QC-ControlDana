@@ -464,7 +464,10 @@ describe('super-admin admin grants', () => {
           payload: { expectedVersion: 1, role: 'SGR_MANAGER' },
         })
       ).statusCode,
-    ).toBe(403);
+    ).toBe(200);
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: pendingBody.user.id } })).role).toBe(
+      'SGR_MANAGER',
+    );
     const assigned = await mutate(adminSession, {
       method: 'PATCH',
       url: `/api/users/${pendingBody.user.id}`,
@@ -573,11 +576,23 @@ describe('super-admin admin grants', () => {
       (
         await mutate(sa, {
           method: 'PATCH',
-          url: `/api/users/${engineer.id}`,
-          payload: { expectedVersion: engineer.version, role: 'SGR_MANAGER' },
+          url: `/api/users/${ordinaryAdmin.id}`,
+          payload: { expectedVersion: ordinaryAdmin.version, role: 'SGR_MANAGER' },
         })
       ).statusCode,
     ).toBe(403);
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: ordinaryAdmin.id } })).role).toBe(
+      'ADMIN',
+    );
+    expect(
+      (
+        await mutate(sa, {
+          method: 'PATCH',
+          url: `/api/users/${engineer.id}`,
+          payload: { expectedVersion: engineer.version, role: 'ADMIN' },
+        })
+      ).statusCode,
+    ).toBe(400);
     expect((await prisma.user.findUniqueOrThrow({ where: { id: engineer.id } })).role).toBe(
       'RESPONSIBLE_ENGINEER',
     );

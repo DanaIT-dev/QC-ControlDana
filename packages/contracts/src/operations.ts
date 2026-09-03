@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import {
   LISTABLE_USER_ROLES,
+  OPERATIONAL_ASSIGNABLE_ROLES,
   ORGANIZATION_ROLES,
-  STAFF_ASSIGNABLE_ROLES,
   USER_STATUSES,
 } from './enums';
 
@@ -16,15 +16,25 @@ export const createUserRequestSchema = z
   .object({
     fullName: z.string(),
     email: z.string(),
-    role: z.enum(STAFF_ASSIGNABLE_ROLES),
+    role: z.enum(OPERATIONAL_ASSIGNABLE_ROLES),
   })
   .strict();
 
 export const patchUserRequestSchema = z
   .object({
     expectedVersion: expectedVersionSchema,
-    fullName: z.string().optional(),
-    role: z.enum(STAFF_ASSIGNABLE_ROLES).optional(),
+    role: z.enum(OPERATIONAL_ASSIGNABLE_ROLES).optional(),
+  })
+  .strict();
+
+export const patchUserProfileRequestSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    firstName: z.string(),
+    lastName: z.string(),
+    middleName: z.union([z.string(), z.null()]).optional(),
+    email: z.string(),
+    currentPassword: z.string().min(1).max(128).optional(),
   })
   .strict();
 
@@ -196,6 +206,7 @@ export const historyQuerySchema = z
 
 export type CreateUserRequest = z.infer<typeof createUserRequestSchema>;
 export type PatchUserRequest = z.infer<typeof patchUserRequestSchema>;
+export type PatchUserProfileRequest = z.infer<typeof patchUserProfileRequestSchema>;
 export type CreateActRequest = z.infer<typeof createActRequestSchema>;
 export type PatchActHeaderRequest = z.infer<typeof patchActHeaderRequestSchema>;
 export type AddDefectRequest = z.infer<typeof addDefectRequestSchema>;

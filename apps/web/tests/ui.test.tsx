@@ -223,6 +223,8 @@ describe('role-aware navigation', () => {
       'Пользователи',
       'Состояние системы',
     ]);
+    expect(navItemsForRole('MANAGER').map((item) => item.label)).toEqual(admin);
+    expect(navItemsForRole('MANAGER').map((item) => item.href)).not.toContain('/super-admin');
     expect(responsible).toEqual([
       'Реестр',
       'Объекты',

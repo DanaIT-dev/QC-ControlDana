@@ -1,5 +1,6 @@
 import type { UserRole } from '@sgr-registry/contracts';
 import type { ProposalSlot } from '@sgr-registry/contracts';
+import { isBusinessStaffRole } from './role-hierarchy';
 
 export type RegistryAccessMode = 'all_uncancelled' | 'object_assigned';
 
@@ -15,19 +16,14 @@ export function visibleProposalSlots(role: UserRole): ProposalSlot[] {
   if (role === 'RESPONSIBLE_ENGINEER') {
     return ['A'];
   }
-  if (
-    role === 'ADMIN' ||
-    role === 'SGR_MANAGER' ||
-    role === 'CONTRACTOR_ENGINEER' ||
-    role === 'SUPER_ADMIN'
-  ) {
+  if (isBusinessStaffRole(role) || role === 'CONTRACTOR_ENGINEER' || role === 'SUPER_ADMIN') {
     return ['A', 'B', 'C'];
   }
   return [];
 }
 
 export function canViewProposalASum(role: UserRole): boolean {
-  return role === 'ADMIN' || role === 'SGR_MANAGER' || role === 'SUPER_ADMIN';
+  return isBusinessStaffRole(role) || role === 'SUPER_ADMIN';
 }
 
 export function canViewProposalGroupBC(role: UserRole): boolean {

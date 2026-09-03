@@ -7,7 +7,12 @@ import {
   Logger,
 } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { DomainError, CONFLICT_ERROR_CODES, VALIDATION_ERROR_CODES } from '@sgr-registry/domain';
+import {
+  DomainError,
+  CONFLICT_ERROR_CODES,
+  VALIDATION_ERROR_CODES,
+  ValidationError,
+} from '@sgr-registry/domain';
 import { MissingConfigurationError } from '@sgr-registry/config';
 
 interface ErrorBody {
@@ -15,6 +20,7 @@ interface ErrorBody {
   error: string;
   message: string;
   requestId?: string;
+  field?: string;
 }
 
 @Catch()
@@ -72,6 +78,7 @@ export class SafeExceptionFilter implements ExceptionFilter {
         error: exception.code,
         message: exception.message,
         requestId,
+        ...(exception instanceof ValidationError ? { field: exception.field } : {}),
       };
     }
 

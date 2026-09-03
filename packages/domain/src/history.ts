@@ -42,6 +42,11 @@ export const AUDIT_ACTIONS = [
   'SUPER_ADMIN_PROVISIONED',
   'USER_CREATED_PENDING_ROLE',
   'USER_ROLE_ASSIGNED',
+  'USER_PROFILE_UPDATED',
+  'USER_EMAIL_CHANGED',
+  'USER_ROLE_CHANGED',
+  'MANAGER_ROLE_GRANTED',
+  'MANAGER_ROLE_REVOKED',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
@@ -86,6 +91,11 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction | string, string> = {
   SUPER_ADMIN_PROVISIONED: 'Создана учётная запись суперадминистратора',
   USER_CREATED_PENDING_ROLE: 'Создана учётная запись без рабочей роли',
   USER_ROLE_ASSIGNED: 'Назначена рабочая роль',
+  USER_PROFILE_UPDATED: 'Изменены данные пользователя',
+  USER_EMAIL_CHANGED: 'Изменена электронная почта пользователя',
+  USER_ROLE_CHANGED: 'Изменена роль пользователя',
+  MANAGER_ROLE_GRANTED: 'Назначена роль руководителя',
+  MANAGER_ROLE_REVOKED: 'Снята роль руководителя',
   LOGIN_SUCCEEDED: 'Вход выполнен',
   LOGIN_FAILED: 'Неудачная попытка входа',
   LOGIN_RATE_LIMITED: 'Превышен лимит попыток входа',
