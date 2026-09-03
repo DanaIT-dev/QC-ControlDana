@@ -6,6 +6,7 @@ import { isOversightRole, postLoginPath, satisfiesCapability } from '@sgr-regist
 import { MenuIcon } from 'lucide-react';
 import { useState } from 'react';
 import { AppNav } from './app-nav';
+import { AppFooter } from '@/components/app-footer';
 import { NotificationBell } from '@/components/notification-bell';
 import { QcLogo } from '@/components/qc-logo';
 import { Button } from '@/components/ui/button';
@@ -19,7 +20,7 @@ export function AppShell({ user, children }: { user: SafeUserProfile; children: 
   const showNotifications = satisfiesCapability(user.role, 'VIEW_NOTIFICATIONS');
   const readOnly = isOversightRole(user.role);
   return (
-    <div className="min-h-dvh bg-background">
+    <div className="flex min-h-dvh flex-col bg-background">
       <header className="sticky top-0 z-40 overflow-visible border-b bg-white">
         <div
           data-slot="app-header"
@@ -91,9 +92,10 @@ export function AppShell({ user, children }: { user: SafeUserProfile; children: 
           </div>
         </div>
       </header>
-      <main className="mx-auto w-full min-w-0 max-w-[1600px] px-4 py-6 md:px-6 md:py-6 lg:px-8">
+      <main className="mx-auto w-full min-w-0 flex-1 max-w-[1600px] px-4 py-6 md:px-6 md:py-6 lg:px-8">
         {children}
       </main>
+      <AppFooter />
     </div>
   );
 }

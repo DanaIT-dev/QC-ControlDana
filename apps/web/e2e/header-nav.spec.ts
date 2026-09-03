@@ -43,6 +43,59 @@ async function noOverflow(page: Page) {
   expect(overflow).toBe(false);
 }
 
+async function expectAppFooter(page: Page) {
+  const footer = page.getByRole('contentinfo');
+  await expect(footer).toBeVisible();
+  await expect(footer).toHaveText('Inspired by Andrew Rodkevich');
+  await expect(footer.getByRole('link')).toHaveCount(0);
+  const metrics = await footer.evaluate((el) => {
+    const style = getComputedStyle(el);
+    const box = el.getBoundingClientRect();
+    return {
+      position: style.position,
+      height: box.height,
+      wraps: el.scrollHeight > el.clientHeight + 2,
+    };
+  });
+  expect(metrics.position).not.toBe('fixed');
+  expect(metrics.position).not.toBe('sticky');
+  expect(metrics.height).toBeLessThanOrEqual(40);
+  expect(metrics.height).toBeGreaterThan(20);
+  expect(metrics.wraps).toBe(false);
+}
+
+async function expectFooterAtViewportBottom(page: Page) {
+  const result = await page.evaluate(() => {
+    const footer = document.querySelector('[data-slot="app-footer"]');
+    if (!(footer instanceof HTMLElement)) {
+      return { found: false, bottom: 0, viewport: 0 };
+    }
+    const box = footer.getBoundingClientRect();
+    return {
+      found: true,
+      bottom: Math.round(box.bottom),
+      viewport: Math.round(window.innerHeight),
+    };
+  });
+  expect(result.found).toBe(true);
+  expect(result.bottom).toBeGreaterThanOrEqual(result.viewport - 2);
+  expect(result.bottom).toBeLessThanOrEqual(result.viewport + 2);
+}
+
+async function expectFooterBelowContent(page: Page) {
+  const result = await page.evaluate(() => {
+    const footer = document.querySelector('[data-slot="app-footer"]');
+    const main = document.querySelector('main');
+    if (!(footer instanceof HTMLElement) || !(main instanceof HTMLElement)) {
+      return { ok: false, footerTop: 0, mainBottom: 0 };
+    }
+    const footerTop = footer.getBoundingClientRect().top + window.scrollY;
+    const mainBottom = main.getBoundingClientRect().bottom + window.scrollY;
+    return { ok: footerTop >= mainBottom - 1, footerTop, mainBottom };
+  });
+  expect(result.ok).toBe(true);
+}
+
 async function headerMetrics(page: Page) {
   return page.evaluate(() => {
     const header = document.querySelector('[data-slot="app-header"]');
@@ -167,6 +220,7 @@ test.describe('responsive header navigation', () => {
     await expectNoAdminMenu(page);
     await expectPrimaryNavItem(page, 'Реестр', true);
     await expectPrimaryNavItem(page, 'Справочники', false);
+    await expectAppFooter(page);
     expect(errors.filter((message) => !message.includes('favicon'))).toEqual([]);
   });
 
@@ -235,7 +289,85 @@ test.describe('responsive header navigation', () => {
       }
       await clickPrimaryNavItem(page, 'Реестр');
       await expect(page).toHaveURL(/\/registry/);
+      await expectAppFooter(page);
+      await noOverflow(page);
       expect(errors.filter((message) => !message.includes('favicon'))).toEqual([]);
+    });
+  }
+});
+
+test.describe('app shell footer', () => {
+  test('appears on internal pages with exact credit and stays out of the way', async ({ page }) => {
+    test.setTimeout(90_000);
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/login');
+    await expect(page.getByRole('contentinfo')).toHaveCount(0);
+    await login(page, ACCOUNTS.admin);
+    const pages = [
+      '/registry',
+      '/objects',
+      '/deadlines',
+      '/notifications',
+      '/reference-data',
+      '/users',
+      '/history',
+      '/system-status',
+      '/change-password',
+      '/acts/new',
+    ];
+    for (const href of pages) {
+      await page.goto(href);
+      await expectAppFooter(page);
+      await expectFooterBelowContent(page);
+      await noOverflow(page);
+    }
+    await page.goto('/change-password');
+    await expectFooterAtViewportBottom(page);
+    await page.goto('/registry');
+    await expect(page.locator('.registry-table tbody tr').first()).toBeVisible();
+    await expectFooterBelowContent(page);
+    const overlap = await page.evaluate(() => {
+      const footer = document.querySelector('[data-slot="app-footer"]');
+      const table = document.querySelector('.registry-table');
+      if (!(footer instanceof HTMLElement) || !(table instanceof HTMLElement)) {
+        return true;
+      }
+      const a = footer.getBoundingClientRect();
+      const b = table.getBoundingClientRect();
+      return (
+        a.left < b.right - 1 && a.right > b.left + 1 && a.top < b.bottom - 1 && a.bottom > b.top + 1
+      );
+    });
+    expect(overlap).toBe(false);
+
+    await page.getByRole('button', { name: 'Меню пользователя' }).click();
+    await page.getByRole('menuitem', { name: 'Выйти' }).click();
+    await login(page, ACCOUNTS.superAdmin);
+    await page.goto('/super-admin');
+    await expectAppFooter(page);
+    expect(errors.filter((message) => !message.includes('favicon'))).toEqual([]);
+  });
+
+  for (const viewport of VIEWPORTS) {
+    test(`footer stays compact at ${viewport.width}px`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+      await login(page, ACCOUNTS.admin);
+      await expectAppFooter(page);
+      await expectFooterBelowContent(page);
+      await noOverflow(page);
+      await page.goto('/change-password');
+      await expectAppFooter(page);
+      const pageScrolls = await page.evaluate(
+        () => document.documentElement.scrollHeight > window.innerHeight + 2,
+      );
+      if (pageScrolls) {
+        await expectFooterBelowContent(page);
+      } else {
+        await expectFooterAtViewportBottom(page);
+      }
+      await noOverflow(page);
     });
   }
 });
