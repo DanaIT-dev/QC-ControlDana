@@ -92,7 +92,7 @@ export function AppShell({ user, children }: { user: SafeUserProfile; children: 
           </div>
         </div>
       </header>
-      <main className="mx-auto w-full min-w-0 flex-1 max-w-[1600px] px-4 py-6 md:px-6 md:py-6 lg:px-8">
+      <main className="mx-auto w-full min-w-0 flex-1 max-w-[1600px] px-3 py-6 md:px-6 md:py-6 lg:px-8 xl:px-4 2xl:px-6">
         {children}
       </main>
       <AppFooter />

@@ -184,7 +184,8 @@ test.describe('directory quick create and engineer select', () => {
     const editDialog = page.getByRole('dialog', { name: 'Редактировать объект' });
     await editDialog.getByLabel('Название объекта').fill(`${name} изменён`);
     await editDialog.getByLabel('Адрес').fill('ул. Редактируемая, 6');
-    await editDialog.getByLabel('Статус объекта').selectOption('ARCHIVED');
+    await editDialog.getByRole('combobox', { name: 'Статус объекта' }).click();
+    await page.getByRole('option', { name: 'Архив' }).click();
     await editDialog.getByRole('button', { name: 'Сохранить' }).click();
     await expect(page.getByRole('alertdialog')).toBeVisible();
     await page.getByRole('button', { name: 'Подтвердить' }).click();

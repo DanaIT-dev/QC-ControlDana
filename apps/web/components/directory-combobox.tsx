@@ -13,6 +13,7 @@ import {
   CommandList,
 } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { controlTriggerClasses, controlTriggerIconClasses } from '@/lib/control-styles';
 import { cn } from '@/lib/utils';
 
 export interface DirectoryOption {
@@ -127,7 +128,10 @@ export function DirectoryCombobox({
             aria-haspopup="listbox"
             aria-label={label}
             disabled={disabled}
-            className="h-11 min-h-11 w-full justify-between px-3 font-normal"
+            className={cn(
+              'h-11 min-h-11 w-full justify-between font-normal',
+              controlTriggerClasses,
+            )}
           >
             <span className="flex min-w-0 flex-1 items-center text-left">
               {multiple && selected.length > 1 ? (
@@ -141,7 +145,7 @@ export function DirectoryCombobox({
                 <span className="truncate text-muted-foreground">{placeholder}</span>
               )}
             </span>
-            <ChevronsUpDownIcon className="size-4 shrink-0 text-muted-foreground" />
+            <ChevronsUpDownIcon className={controlTriggerIconClasses} />
           </Button>
         </PopoverTrigger>
         <PopoverContent

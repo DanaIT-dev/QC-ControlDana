@@ -22,6 +22,13 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { ApiError } from '@/lib/command-api';
 import { updatePropertyObject } from '@/lib/objects-api';
 
@@ -113,15 +120,18 @@ export function EditPropertyObjectDialog({
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="edit-object-status">Статус объекта</Label>
-              <select
-                id="edit-object-status"
-                className="h-11 rounded-lg border border-input bg-white px-3 text-sm"
+              <Select
                 value={active ? 'ACTIVE' : 'ARCHIVED'}
-                onChange={(event) => setActive(event.target.value === 'ACTIVE')}
+                onValueChange={(value) => setActive(value === 'ACTIVE')}
               >
-                <option value="ACTIVE">Активен</option>
-                <option value="ARCHIVED">Архив</option>
-              </select>
+                <SelectTrigger id="edit-object-status" aria-label="Статус объекта">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ACTIVE">Активен</SelectItem>
+                  <SelectItem value="ARCHIVED">Архив</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={onClose} disabled={pending}>
