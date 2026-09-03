@@ -35,7 +35,8 @@ export const CAPABILITIES = [
   'DOWNLOAD_ATTACHMENT',
   'VIEW_NOTIFICATIONS',
   'VIEW_DEADLINE_CONTROL',
-  'MANAGE_NOTIFICATION_SETTINGS',
+  'VIEW_SYSTEM_SETTINGS',
+  'MANAGE_SYSTEM_SETTINGS',
   'CHANGE_OWN_PASSWORD',
   'VIEW_OWN_PROFILE',
 ] as const;
@@ -72,7 +73,7 @@ const ADMIN_CAPABILITIES = [
   'DOWNLOAD_ATTACHMENT',
   'VIEW_NOTIFICATIONS',
   'VIEW_DEADLINE_CONTROL',
-  'MANAGE_NOTIFICATION_SETTINGS',
+  'MANAGE_SYSTEM_SETTINGS',
   'CHANGE_OWN_PASSWORD',
   'VIEW_OWN_PROFILE',
 ] as const satisfies readonly Capability[];
@@ -177,6 +178,7 @@ export const OVERSIGHT_READ_CAPABILITIES: readonly Capability[] = [
   'DOWNLOAD_ATTACHMENT',
   'VIEW_NOTIFICATIONS',
   'VIEW_DEADLINE_CONTROL',
+  'VIEW_SYSTEM_SETTINGS',
 ];
 
 const OVERSIGHT_READ_SET = new Set<Capability>(OVERSIGHT_READ_CAPABILITIES);
@@ -216,7 +218,8 @@ export const CAPABILITY_LABELS: Record<Capability, string> = {
   DOWNLOAD_ATTACHMENT: 'Скачивание вложений',
   VIEW_NOTIFICATIONS: 'Просмотр уведомлений',
   VIEW_DEADLINE_CONTROL: 'Контроль сроков',
-  MANAGE_NOTIFICATION_SETTINGS: 'Настройки уведомлений',
+  VIEW_SYSTEM_SETTINGS: 'Просмотр системных настроек',
+  MANAGE_SYSTEM_SETTINGS: 'Управление системными настройками',
   CHANGE_OWN_PASSWORD: 'Смена собственного пароля',
   VIEW_OWN_PROFILE: 'Просмотр собственного профиля',
 };
@@ -321,6 +324,17 @@ export function canViewActChat(role: UserRole): boolean {
 
 export function canManageAdminGrants(role: UserRole): boolean {
   return hasCapability(role, 'MANAGE_ADMIN_GRANTS');
+}
+
+export function canViewSystemSettings(role: UserRole): boolean {
+  return (
+    satisfiesCapability(role, 'VIEW_SYSTEM_SETTINGS') ||
+    hasCapability(role, 'MANAGE_SYSTEM_SETTINGS')
+  );
+}
+
+export function canManageSystemSettings(role: UserRole): boolean {
+  return hasCapability(role, 'MANAGE_SYSTEM_SETTINGS');
 }
 
 export function postLoginPath(role: UserRole, mustChangePassword = false): string {

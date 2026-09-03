@@ -238,6 +238,7 @@ describe('SUPER_ADMIN complete read-only visibility', () => {
       '/api/notifications?pageSize=20',
       '/api/audit-log?pageSize=20',
       '/api/system-status',
+      '/api/system/notification-settings',
       '/api/reference-data/work-types?status=ALL',
       '/api/reference-data/defect-types?status=ALL',
       '/api/sla/summary',
@@ -288,7 +289,7 @@ describe('SUPER_ADMIN complete read-only visibility', () => {
           payload: { expectedVersion: 1 },
         })
       ).statusCode,
-    ).toBeGreaterThanOrEqual(400);
+    ).toBe(403);
     expect((await mutate(sa, { method: 'POST', url: '/api/system-status' })).statusCode).toBe(403);
     expect(
       (

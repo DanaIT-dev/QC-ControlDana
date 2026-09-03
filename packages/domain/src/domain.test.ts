@@ -22,6 +22,8 @@ import {
   canViewActChat,
   canViewFullHistory,
   canViewHistory,
+  canViewSystemSettings,
+  canManageSystemSettings,
   completeDefectItem,
   computeActStatus,
   createDefectItem,
@@ -365,7 +367,7 @@ describe('capabilities', () => {
       'DOWNLOAD_ATTACHMENT',
       'VIEW_NOTIFICATIONS',
       'VIEW_DEADLINE_CONTROL',
-      'MANAGE_NOTIFICATION_SETTINGS',
+      'MANAGE_SYSTEM_SETTINGS',
       'CHANGE_OWN_PASSWORD',
       'VIEW_OWN_PROFILE',
     ]);
@@ -430,6 +432,13 @@ describe('capabilities', () => {
     expect(canViewActChat('SUPER_ADMIN')).toBe(true);
     expect(hasCapability('SUPER_ADMIN', 'VIEW_ACT_CHAT')).toBe(false);
     expect(satisfiesCapability('SUPER_ADMIN', 'VIEW_ACT_CHAT')).toBe(true);
+    expect(satisfiesCapability('SUPER_ADMIN', 'VIEW_SYSTEM_SETTINGS')).toBe(true);
+    expect(canViewSystemSettings('SUPER_ADMIN')).toBe(true);
+    expect(canManageSystemSettings('SUPER_ADMIN')).toBe(false);
+    expect(canViewSystemSettings('ADMIN')).toBe(true);
+    expect(canManageSystemSettings('ADMIN')).toBe(true);
+    expect(canViewSystemSettings('SGR_MANAGER')).toBe(false);
+    expect(canManageSystemSettings('SGR_MANAGER')).toBe(false);
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('VIEW_ACT_CHAT');
     expect(capabilitiesForRole('SUPER_ADMIN')).toEqual([
       'VIEW_ALL_BUSINESS_DATA',

@@ -8,7 +8,22 @@ import { Label } from '@/components/ui/label';
 import { fetchNotificationSettings, patchNotificationSettings } from '@/lib/notifications-api';
 import { queryKeys } from '@/lib/query-keys';
 
-export function NotificationSettingsForm({ csrfToken }: { csrfToken: string }) {
+function ReadOnlyField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="grid gap-1">
+      <span className="text-[13px] font-medium text-muted-foreground">{label}</span>
+      <p className="text-sm font-medium text-foreground">{value}</p>
+    </div>
+  );
+}
+
+export function NotificationSettingsForm({
+  csrfToken,
+  readOnly = false,
+}: {
+  csrfToken: string;
+  readOnly?: boolean;
+}) {
   const queryClient = useQueryClient();
   const settings = useQuery({
     queryKey: queryKeys.notificationSettings,
@@ -52,6 +67,31 @@ export function NotificationSettingsForm({ csrfToken }: { csrfToken: string }) {
     return <p className="text-sm text-error-foreground">Не удалось загрузить настройки</p>;
   }
   const current = settings.data;
+
+  if (readOnly) {
+    return (
+      <div
+        className="grid max-w-xl gap-3"
+        data-slot="notification-settings-readonly"
+        aria-readonly="true"
+      >
+        <ReadOnlyField label="Дней до предупреждения" value={String(current.deadlineWarningDays)} />
+        <ReadOnlyField label="Пороги эскалации (дни)" value={current.escalationDays.join(', ')} />
+        <ReadOnlyField
+          label="Ежедневная проверка (Europe/Minsk)"
+          value={current.dailyEvaluationTime}
+        />
+        <ReadOnlyField
+          label="Email-уведомления"
+          value={current.emailEnabled ? 'Включены' : 'Выключены'}
+        />
+        <p className="text-xs text-muted-foreground">
+          SMTP-пароль не отображается и не доступен через API.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <form
       className="grid max-w-xl gap-3"

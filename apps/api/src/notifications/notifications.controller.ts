@@ -55,18 +55,19 @@ export class NotificationsController {
 
 @Controller('system/notification-settings')
 @UseGuards(AuthenticationGuard, CapabilityGuard)
-@RequireCapability('MANAGE_NOTIFICATION_SETTINGS')
 export class NotificationSettingsController {
   constructor(
     @Inject(NotificationsService) private readonly notificationsService: NotificationsService,
   ) {}
 
   @Get()
+  @RequireCapability('VIEW_SYSTEM_SETTINGS', 'MANAGE_SYSTEM_SETTINGS')
   settings() {
     return this.notificationsService.settings();
   }
 
   @Patch()
+  @RequireCapability('MANAGE_SYSTEM_SETTINGS')
   @UseGuards(BrowserOriginGuard, CsrfGuard, NotificationMutationRateLimitGuard)
   patch(
     @CurrentUser() user: AuthenticatedUser,

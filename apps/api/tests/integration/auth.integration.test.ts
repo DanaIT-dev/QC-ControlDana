@@ -522,6 +522,37 @@ describe('auth integration', () => {
     });
     expect(adminMutated.statusCode).toBe(403);
     expect(JSON.stringify(mutated.json())).not.toMatch(/stack|passwordHash|DATABASE_URL/);
+    const settingsGet = await inject({
+      method: 'GET',
+      url: '/api/system/notification-settings',
+      cookies: { [SESSION_COOKIE_NAME]: superSession },
+    });
+    expect(settingsGet.statusCode).toBe(200);
+    const settingsBody = settingsGet.json() as Record<string, unknown>;
+    expect(JSON.stringify(settingsBody)).not.toMatch(/SMTP_PASSWORD|smtpPassword|passwordHash/);
+    expect(Object.keys(settingsBody).sort()).toEqual([
+      'dailyEvaluationTime',
+      'deadlineWarningDays',
+      'emailEnabled',
+      'escalationDays',
+      'version',
+    ]);
+    const settingsPatch = await inject({
+      method: 'PATCH',
+      url: '/api/system/notification-settings',
+      cookies: { [SESSION_COOKIE_NAME]: superSession },
+      headers: { [CSRF_HEADER_NAME]: 'invalid' },
+      payload: { expectedVersion: settingsBody.version, emailEnabled: settingsBody.emailEnabled },
+    });
+    expect(settingsPatch.statusCode).toBe(403);
+    const manager = await createUser('SGR_MANAGER');
+    const managerSession = cookieValue(await login(manager.email, DEMO_PASSWORD))!;
+    const managerSettings = await inject({
+      method: 'GET',
+      url: '/api/system/notification-settings',
+      cookies: { [SESSION_COOKIE_NAME]: managerSession },
+    });
+    expect(managerSettings.statusCode).toBe(403);
   });
 
   it('sets cookie maxAge to absolute lifetime and Redis TTL to idle timeout', async () => {

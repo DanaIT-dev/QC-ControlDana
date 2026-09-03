@@ -1,5 +1,9 @@
 import type { ComponentHealth, SystemStatusResponse } from '@sgr-registry/contracts';
-import { hasCapability, satisfiesCapability } from '@sgr-registry/domain';
+import {
+  canManageSystemSettings,
+  canViewSystemSettings,
+  satisfiesCapability,
+} from '@sgr-registry/domain';
 import { CheckCircle2, Database, Server, Wifi } from 'lucide-react';
 import { AppShell } from '../app-shell';
 import { ForbiddenState } from '@/components/forbidden-state';
@@ -32,7 +36,8 @@ export default async function SystemStatusPage() {
   const data = status.data as SystemStatusResponse | null;
   const overview = data?.overview ?? [];
   const checkedAt = overview[0]?.checkedAt ?? data?.timestamp ?? null;
-  const canManageSettings = hasCapability(user.role, 'MANAGE_NOTIFICATION_SETTINGS');
+  const canViewSettings = canViewSystemSettings(user.role);
+  const canManageSettings = canManageSystemSettings(user.role);
 
   return (
     <AppShell user={user}>
@@ -66,13 +71,13 @@ export default async function SystemStatusPage() {
           Время последней проверки: {formatCheckedAt(checkedAt)}
         </p>
       ) : null}
-      {canManageSettings ? (
+      {canViewSettings ? (
         <Card className="mt-4 shadow-none">
           <CardHeader>
             <CardTitle className="text-sm">Настройки уведомлений</CardTitle>
           </CardHeader>
           <CardContent>
-            <NotificationSettingsForm csrfToken={user.csrfToken} />
+            <NotificationSettingsForm csrfToken={user.csrfToken} readOnly={!canManageSettings} />
           </CardContent>
         </Card>
       ) : null}

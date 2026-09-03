@@ -287,7 +287,9 @@ test.describe('read-only SUPER_ADMIN oversight', () => {
     await expect(page.getByText('Фоновые очереди')).toBeVisible();
     await expect(page.getByText('Время последней проверки')).toBeVisible();
     await expect(page.getByText('Исходящие уведомления')).toBeVisible();
-    await expect(page.getByText('Настройки уведомлений')).toHaveCount(0);
+    await expect(page.getByText('Настройки уведомлений')).toBeVisible();
+    await expect(page.locator('[data-slot="notification-settings-readonly"]')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Сохранить настройки' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Перезапустить' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Очистить очередь' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Применить миграции' })).toHaveCount(0);
