@@ -3,6 +3,7 @@ import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nest
 import {
   addDefectRequestSchema,
   archiveProposalRequestSchema,
+  auditLogQuerySchema,
   completeDefectRequestSchema,
   createActRequestSchema,
   historyQuerySchema,
@@ -40,6 +41,7 @@ import {
   deadlineFieldsForRole,
   historyVisibleToRole,
   isObjectScopedRole,
+  isOversightRole,
   isProposalBcEvent,
   normalizeClaimDetails,
   normalizeDocumentRef,
@@ -51,6 +53,7 @@ import {
   parseProposalAmount,
   reopenDefectItem,
   shapeHistoryForRole,
+  scrubSensitiveValue,
   visibleProposalSlots,
   isBusinessStaffRole,
 } from '@sgr-registry/domain';
@@ -87,8 +90,9 @@ export class OperationsService {
 
   async lookups(user: AuthenticatedUser) {
     const scope = new RegistryAccessScope(user);
+    const includeInactive = isOversightRole(user.role);
     const objectWhere: Prisma.PropertyObjectWhereInput = {
-      active: true,
+      ...(includeInactive ? {} : { active: true }),
       ...(scope.objectScoped ? { engineers: { some: scope.assignedObjectRelationWhere() } } : {}),
     };
     const [objects, customers, liable, alternatives, defectTypes, workTypes, engineers] =
@@ -107,32 +111,44 @@ export class OperationsService {
           orderBy: { name: 'asc' },
         }),
         this.prisma.client.organization.findMany({
-          where: { active: true, roles: { some: { role: 'CUSTOMER' } } },
+          where: {
+            ...(includeInactive ? {} : { active: true }),
+            roles: { some: { role: 'CUSTOMER' } },
+          },
           select: { id: true, officialName: true },
           orderBy: { officialName: 'asc' },
         }),
         this.prisma.client.organization.findMany({
-          where: { active: true, roles: { some: { role: 'LIABLE_CONTRACTOR' } } },
+          where: {
+            ...(includeInactive ? {} : { active: true }),
+            roles: { some: { role: 'LIABLE_CONTRACTOR' } },
+          },
           select: { id: true, officialName: true },
           orderBy: { officialName: 'asc' },
         }),
         this.prisma.client.organization.findMany({
-          where: { active: true, roles: { some: { role: 'ALTERNATIVE_CONTRACTOR' } } },
+          where: {
+            ...(includeInactive ? {} : { active: true }),
+            roles: { some: { role: 'ALTERNATIVE_CONTRACTOR' } },
+          },
           select: { id: true, officialName: true },
           orderBy: { officialName: 'asc' },
         }),
         this.prisma.client.defectType.findMany({
-          where: { active: true },
+          where: includeInactive ? {} : { active: true },
           select: { id: true, name: true, code: true },
           orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
         }),
         this.prisma.client.workType.findMany({
-          where: { active: true },
+          where: includeInactive ? {} : { active: true },
           select: { id: true, name: true, code: true },
           orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
         }),
         this.prisma.client.user.findMany({
-          where: { status: 'ACTIVE', role: ASSIGNABLE_ENGINEER_ROLE },
+          where: {
+            role: ASSIGNABLE_ENGINEER_ROLE,
+            ...(includeInactive ? {} : { status: 'ACTIVE' }),
+          },
           select: { id: true, fullName: true, email: true },
           orderBy: { fullName: 'asc' },
         }),
@@ -1020,7 +1036,104 @@ export class OperationsService {
     if (!canViewFullHistory(user.role)) {
       throw new ForbiddenException('Недостаточно прав');
     }
-    return this.paginateHistory(user, {}, new Set(), '', rawQuery);
+    const query = parseCommandBody(auditLogQuerySchema, rawQuery);
+    const pageSize = query.pageSize ?? query.limit ?? 50;
+    const page = query.page ?? 1;
+    const search = query.search?.trim() ?? '';
+    const filters: Prisma.AuditLogWhereInput[] = [];
+    if (query.actorUserId) {
+      filters.push({ actorUserId: query.actorUserId });
+    }
+    if (query.action) {
+      filters.push({ action: query.action });
+    }
+    if (query.entityType) {
+      filters.push({ entityType: query.entityType });
+    }
+    if (query.entityId) {
+      filters.push({ entityId: query.entityId });
+    }
+    if (query.from || query.to) {
+      filters.push({
+        occurredAt: {
+          ...(query.from ? { gte: new Date(`${query.from}T00:00:00.000Z`) } : {}),
+          ...(query.to ? { lte: new Date(`${query.to}T23:59:59.999Z`) } : {}),
+        },
+      });
+    }
+    if (search.length >= 2) {
+      const uuidMatch = UUID_PATTERN.test(search);
+      filters.push({
+        OR: [
+          { actorName: { contains: search, mode: 'insensitive' } },
+          { action: { contains: search, mode: 'insensitive' } },
+          { entityType: { contains: search, mode: 'insensitive' } },
+          { reason: { contains: search, mode: 'insensitive' } },
+          ...(uuidMatch ? [{ entityId: search }, { actorUserId: search }] : []),
+        ],
+      });
+    }
+    const cursor = query.cursor && !query.page ? decodeHistoryCursor(query.cursor) : null;
+    if (cursor) {
+      filters.push(historyWhereAfter(cursor));
+    }
+    const where: Prisma.AuditLogWhereInput = filters.length > 0 ? { AND: filters } : {};
+    const [totalCount, rows] = await this.prisma.client.$transaction([
+      this.prisma.client.auditLog.count({ where }),
+      this.prisma.client.auditLog.findMany({
+        where,
+        orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
+        skip: cursor ? 0 : (page - 1) * pageSize,
+        take: pageSize + 1,
+        select: {
+          id: true,
+          action: true,
+          entityType: true,
+          entityId: true,
+          parentEntityType: true,
+          parentEntityId: true,
+          oldValue: true,
+          newValue: true,
+          reason: true,
+          actorUserId: true,
+          actorName: true,
+          occurredAt: true,
+        },
+      }),
+    ]);
+    const overflow = rows.length > pageSize;
+    const pageRows = overflow ? rows.slice(0, pageSize) : rows;
+    const items = pageRows.map((row) => {
+      const shaped = shapeHistoryForRole(
+        {
+          ...row,
+          requestId: null,
+        },
+        user.role,
+      );
+      return {
+        id: shaped.id,
+        action: shaped.action,
+        entityType: shaped.entityType,
+        entityId: shaped.entityId,
+        parentEntityType: shaped.parentEntityType,
+        parentEntityId: shaped.parentEntityId,
+        oldValue: scrubSensitiveValue(shaped.oldValue),
+        newValue: scrubSensitiveValue(shaped.newValue),
+        reason: shaped.reason,
+        actorUserId: shaped.actorUserId,
+        actorName: shaped.actorName,
+        occurredAt: shaped.occurredAt.toISOString(),
+      };
+    });
+    return {
+      items,
+      page: cursor ? 1 : page,
+      pageSize,
+      totalCount,
+      totalPages: totalCount === 0 ? 0 : Math.ceil(totalCount / pageSize),
+      nextCursor: overflow ? encodeHistoryCursor(pageRows[pageRows.length - 1]!) : null,
+    };
   }
 
   private assertHistoryRead(user: AuthenticatedUser) {
@@ -1074,8 +1187,8 @@ export class OperationsService {
         entityId: row.entityId,
         parentEntityType: row.parentEntityType,
         parentEntityId: row.parentEntityId,
-        oldValue: row.oldValue,
-        newValue: row.newValue,
+        oldValue: scrubSensitiveValue(row.oldValue),
+        newValue: scrubSensitiveValue(row.newValue),
         reason: row.reason,
         actorUserId: row.actorUserId,
         actorName: row.actorName,

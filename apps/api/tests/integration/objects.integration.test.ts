@@ -70,6 +70,24 @@ async function createUser(role: UserRole) {
   return user;
 }
 
+async function ensureActiveSuperAdmin() {
+  const existing = await prisma.user.findFirst({
+    where: { role: 'SUPER_ADMIN', status: 'ACTIVE' },
+  });
+  if (!existing) {
+    return createUser('SUPER_ADMIN');
+  }
+  await prisma.user.update({
+    where: { id: existing.id },
+    data: { mustChangePassword: false },
+  });
+  await upsertUserCredentials(prisma, {
+    userId: existing.id,
+    passwordHash: await hashArgon2id(DEMO_PASSWORD, { memoryCost: 4096, timeCost: 1 }),
+  });
+  return existing;
+}
+
 async function login(email: string) {
   const response = await inject({
     method: 'POST',
@@ -641,5 +659,41 @@ describe('objects directory API', () => {
     expect(JSON.stringify(concurrent.map((item) => item.json()))).not.toMatch(
       /passwordHash|DATABASE_URL/,
     );
+  });
+
+  it('lets SUPER_ADMIN see inactive objects while ADMIN does not', async () => {
+    const superAdmin = await ensureActiveSuperAdmin();
+    const admin = await createUser('ADMIN');
+    const name = `Objects inactive ${Date.now()}`;
+    const inactive = await prisma.propertyObject.create({
+      data: {
+        name,
+        address: 'ул. Архивная, 9',
+        active: false,
+        archivedAt: new Date(),
+      },
+    });
+    createdObjectIds.push(inactive.id);
+    const sa = await login(superAdmin.email);
+    const adminSession = await login(admin.email);
+    const saList = await inject({
+      method: 'GET',
+      url: `/api/objects?search=${encodeURIComponent('inactive')}&pageSize=50`,
+      cookies: { [SESSION_COOKIE_NAME]: sa.cookie },
+    });
+    expect(saList.statusCode).toBe(200);
+    const saBody = saList.json() as { items: Array<{ id: string; active?: boolean }> };
+    expect(saBody.items.some((item) => item.id === inactive.id && item.active === false)).toBe(
+      true,
+    );
+    expect(JSON.stringify(saBody)).not.toMatch(/passwordHash|sourceImportKey|sourceSystem/);
+    const adminList = await inject({
+      method: 'GET',
+      url: `/api/objects?search=${encodeURIComponent('inactive')}&pageSize=50`,
+      cookies: { [SESSION_COOKIE_NAME]: adminSession.cookie },
+    });
+    expect(adminList.statusCode).toBe(200);
+    const adminBody = adminList.json() as { items: Array<{ id: string }> };
+    expect(adminBody.items.some((item) => item.id === inactive.id)).toBe(false);
   });
 });

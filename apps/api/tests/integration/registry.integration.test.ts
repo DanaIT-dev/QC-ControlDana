@@ -70,6 +70,24 @@ async function createUser(role: UserRole) {
   return user;
 }
 
+async function ensureActiveSuperAdmin() {
+  const existing = await prisma.user.findFirst({
+    where: { role: 'SUPER_ADMIN', status: 'ACTIVE' },
+  });
+  if (!existing) {
+    return createUser('SUPER_ADMIN');
+  }
+  await prisma.user.update({
+    where: { id: existing.id },
+    data: { mustChangePassword: false },
+  });
+  await upsertUserCredentials(prisma, {
+    userId: existing.id,
+    passwordHash: await hashArgon2id(DEMO_PASSWORD, { memoryCost: 4096, timeCost: 1 }),
+  });
+  return existing;
+}
+
 async function login(email: string) {
   const response = await inject({
     method: 'POST',
@@ -309,6 +327,21 @@ describe('registry integration', () => {
       expect(ids).toContain(foreignActId);
       expect(ids).not.toContain(cancelledActId);
     }
+  });
+
+  it('lets SUPER_ADMIN see cancelled acts and foreign objects', async () => {
+    const superAdmin = await ensureActiveSuperAdmin();
+    const cookie = await login(superAdmin.email);
+    const response = await authedGet(cookie, '/api/registry/defects?pageSize=200');
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as { items: Array<{ actId: string }> };
+    const ids = body.items.map((item) => item.actId);
+    expect(ids).toContain(cancelledActId);
+    expect(ids).toContain(foreignActId);
+    expect(ids).toContain(sharedActId);
+    const detail = await authedGet(cookie, `/api/acts/${cancelledActId}`);
+    expect(detail.statusCode).toBe(200);
+    expect(JSON.stringify(detail.json())).not.toMatch(/passwordHash|sessionVersion|objectKey/);
   });
 
   it('scopes RESPONSIBLE_ENGINEER rows, counts and hidden commercial fields', async () => {

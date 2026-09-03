@@ -61,6 +61,9 @@ export type ManagedUserRole = (typeof MANAGED_USER_ROLES)[number];
 export const LISTABLE_USER_ROLES = [...MANAGED_USER_ROLES, 'PENDING_ROLE'] as const;
 export type ListableUserRole = (typeof LISTABLE_USER_ROLES)[number];
 
+export const USERS_LIST_ROLE_FILTERS = [...LISTABLE_USER_ROLES, 'SUPER_ADMIN'] as const;
+export type UsersListRoleFilter = (typeof USERS_LIST_ROLE_FILTERS)[number];
+
 export const USER_STATUSES = ['ACTIVE', 'ARCHIVED'] as const;
 export type UserStatus = (typeof USER_STATUSES)[number];
 

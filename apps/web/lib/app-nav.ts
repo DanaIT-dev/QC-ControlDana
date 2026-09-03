@@ -1,4 +1,4 @@
-import { hasCapability, isPendingRole } from '@sgr-registry/domain';
+import { hasCapability, isPendingRole, satisfiesCapability } from '@sgr-registry/domain';
 import type { UserRole } from '@sgr-registry/contracts';
 
 export interface AppNavItem {
@@ -13,9 +13,8 @@ export function navItemsForRole(role: UserRole): AppNavItem[] {
   }
   const items: AppNavItem[] = [];
   if (
-    hasCapability(role, 'VIEW_ALL_BUSINESS_DATA') ||
-    hasCapability(role, 'VIEW_ALL_ACTS') ||
-    hasCapability(role, 'VIEW_ASSIGNED_DEFECTS')
+    satisfiesCapability(role, 'VIEW_ALL_ACTS') ||
+    satisfiesCapability(role, 'VIEW_ASSIGNED_DEFECTS')
   ) {
     items.push({
       href: '/registry',
@@ -24,7 +23,7 @@ export function navItemsForRole(role: UserRole): AppNavItem[] {
         pathname === '/registry' || (pathname.startsWith('/acts/') && pathname !== '/acts/new'),
     });
   }
-  if (hasCapability(role, 'VIEW_REFERENCE_DATA') || hasCapability(role, 'VIEW_ALL_BUSINESS_DATA')) {
+  if (satisfiesCapability(role, 'VIEW_REFERENCE_DATA')) {
     items.push({
       href: '/objects',
       label: 'Объекты',
@@ -38,21 +37,32 @@ export function navItemsForRole(role: UserRole): AppNavItem[] {
       match: (pathname) => pathname === '/acts/new',
     });
   }
-  if (
-    hasCapability(role, 'VIEW_DEADLINE_CONTROL') ||
-    hasCapability(role, 'VIEW_ALL_BUSINESS_DATA')
-  ) {
+  if (satisfiesCapability(role, 'VIEW_DEADLINE_CONTROL')) {
     items.push({
       href: '/deadlines',
       label: 'Контроль сроков',
       match: (pathname) => pathname.startsWith('/deadlines'),
     });
   }
-  if (hasCapability(role, 'VIEW_REFERENCE_DATA') || hasCapability(role, 'VIEW_ALL_BUSINESS_DATA')) {
+  if (satisfiesCapability(role, 'VIEW_NOTIFICATIONS')) {
+    items.push({
+      href: '/notifications',
+      label: 'Уведомления',
+      match: (pathname) => pathname.startsWith('/notifications'),
+    });
+  }
+  if (satisfiesCapability(role, 'VIEW_REFERENCE_DATA')) {
     items.push({
       href: '/reference-data',
       label: 'Справочники',
       match: (pathname) => pathname.startsWith('/reference-data'),
+    });
+  }
+  if (satisfiesCapability(role, 'VIEW_HISTORY')) {
+    items.push({
+      href: '/history',
+      label: 'Журнал аудита',
+      match: (pathname) => pathname === '/history' || pathname.startsWith('/history/'),
     });
   }
   if (
@@ -66,7 +76,7 @@ export function navItemsForRole(role: UserRole): AppNavItem[] {
       match: (pathname) => pathname.startsWith('/users'),
     });
   }
-  if (hasCapability(role, 'VIEW_SYSTEM_STATUS') || hasCapability(role, 'VIEW_ALL_BUSINESS_DATA')) {
+  if (satisfiesCapability(role, 'VIEW_SYSTEM_STATUS')) {
     items.push({
       href: '/system-status',
       label: 'Состояние системы',

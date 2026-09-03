@@ -27,6 +27,7 @@ import {
   canAddProposalSlot,
   completeDefectItem,
   containsSensitiveAuditKey,
+  findSensitiveApiResponseLeaks,
   deadlineChangeRequiresReason,
   deadlineFieldsForRole,
   DuplicateValueError,
@@ -232,6 +233,22 @@ describe('audit secret exclusion', () => {
     expect(containsSensitiveAuditKey({ passwordChangedAt: '2026-01-01' })).toBe(false);
     expect(() => assertAuditPayloadSafe({ password: 'x' })).toThrow(/Sensitive/);
     assertAuditPayloadSafe({ mustChangePassword: true, role: 'ADMIN' });
+    expect(omitSensitiveKeys({ nested: { passwordHash: 'x', role: 'ADMIN' } })).toEqual({
+      nested: { role: 'ADMIN' },
+    });
+    expect(
+      findSensitiveApiResponseLeaks({
+        items: [{ id: '1', passwordHash: 'secret', passwordConfigured: true }],
+      }),
+    ).toEqual(['$.items[0].passwordHash']);
+    expect(
+      findSensitiveApiResponseLeaks({
+        passwordConfigured: true,
+        passwordChangedAt: '2026-01-01',
+        mustChangePassword: false,
+        minio: { status: 'up' },
+      }),
+    ).toEqual([]);
   });
 });
 

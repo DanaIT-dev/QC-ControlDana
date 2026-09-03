@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import {
-  LISTABLE_USER_ROLES,
   OPERATIONAL_ASSIGNABLE_ROLES,
   ORGANIZATION_ROLES,
+  USERS_LIST_ROLE_FILTERS,
   USER_STATUSES,
 } from './enums';
 
@@ -48,7 +48,7 @@ export const versionedReasonSchema = z
 export const usersListQuerySchema = z
   .object({
     search: z.string().optional(),
-    role: z.enum(LISTABLE_USER_ROLES).optional(),
+    role: z.enum(USERS_LIST_ROLE_FILTERS).optional(),
     status: z.enum(USER_STATUSES).optional(),
     page: z.coerce.number().int().positive().optional(),
     pageSize: z.coerce.number().int().positive().max(100).optional(),
@@ -203,6 +203,61 @@ export const historyQuerySchema = z
     limit: z.coerce.number().int().positive().max(100).optional(),
   })
   .strict();
+
+const auditEntityTypes = [
+  'USER',
+  'ACT',
+  'DEFECT_ITEM',
+  'PROPOSAL',
+  'ATTACHMENT',
+  'PROPERTY_OBJECT',
+  'ORGANIZATION',
+  'WORK_TYPE',
+  'DEFECT_TYPE',
+  'NOTIFICATION',
+] as const;
+
+export const auditLogQuerySchema = z
+  .object({
+    cursor: z.string().optional(),
+    limit: z.coerce.number().int().positive().max(100).optional(),
+    page: z.coerce.number().int().positive().optional(),
+    pageSize: z.coerce.number().int().positive().max(100).optional(),
+    search: z.string().max(200).optional(),
+    actorUserId: uuid.optional(),
+    action: z.string().max(80).optional(),
+    entityType: z.enum(auditEntityTypes).optional(),
+    entityId: uuid.optional(),
+    from: calendarDate.optional(),
+    to: calendarDate.optional(),
+  })
+  .strict();
+
+export type AuditLogQuery = z.infer<typeof auditLogQuerySchema>;
+
+export interface AuditLogListItem {
+  id: string;
+  action: string;
+  entityType: string;
+  entityId: string;
+  parentEntityType: string | null;
+  parentEntityId: string | null;
+  oldValue: unknown;
+  newValue: unknown;
+  reason: string | null;
+  actorUserId: string | null;
+  actorName: string | null;
+  occurredAt: string;
+}
+
+export interface AuditLogListResponse {
+  items: AuditLogListItem[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+  nextCursor: string | null;
+}
 
 export type CreateUserRequest = z.infer<typeof createUserRequestSchema>;
 export type PatchUserRequest = z.infer<typeof patchUserRequestSchema>;

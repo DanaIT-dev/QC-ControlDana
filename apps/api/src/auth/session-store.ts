@@ -23,6 +23,7 @@ export interface SessionStore {
   get(sessionHash: string): Promise<StoredSession | null>;
   delete(sessionHash: string, userId: string): Promise<void>;
   deleteAllForUser(userId: string): Promise<void>;
+  countForUsers(userIds: readonly string[]): Promise<Map<string, number>>;
   peekLoginFailures(email: string, ip: string): Promise<{ emailCount: number; ipCount: number }>;
   incrementLoginFailures(
     email: string,

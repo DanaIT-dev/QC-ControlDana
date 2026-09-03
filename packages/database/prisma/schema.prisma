@@ -481,6 +481,8 @@ model AuditLog {
   @@index([entityType, entityId, occurredAt])
   @@index([parentEntityType, parentEntityId, occurredAt])
   @@index([occurredAt])
+  @@index([actorUserId, occurredAt])
+  @@index([action, occurredAt])
   @@map("audit_logs")
 }
 

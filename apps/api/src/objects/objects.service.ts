@@ -17,6 +17,7 @@ import {
   canViewObjectsDirectory,
   classifyEngineerMatch,
   DuplicateValueError,
+  isOversightRole,
   parseManualObjectInput,
   ValidationError,
 } from '@sgr-registry/domain';
@@ -61,10 +62,16 @@ export class ObjectsService {
     const requestedPage = query.page ?? 1;
     const search = query.search?.trim() ?? '';
     const engineer = query.responsibleEngineer?.trim() ?? '';
+    const includeInactive = isOversightRole(user.role);
+    const statusFilter = includeInactive ? (query.status ?? 'ALL') : 'ACTIVE';
     const scope = new RegistryAccessScope(user);
     const where: Prisma.PropertyObjectWhereInput = {
       AND: [
-        { active: true },
+        ...(statusFilter === 'ACTIVE'
+          ? [{ active: true }]
+          : statusFilter === 'ARCHIVED'
+            ? [{ active: false }]
+            : []),
         ...(scope.objectScoped ? [scope.assignedObjectWhere()] : []),
         ...(engineer
           ? [
@@ -111,7 +118,7 @@ export class ObjectsService {
     };
 
     const optionWhere: Prisma.PropertyObjectWhereInput = {
-      active: true,
+      ...(statusFilter === 'ALL' ? {} : { active: statusFilter === 'ACTIVE' }),
       ...(scope.objectScoped ? scope.assignedObjectWhere() : {}),
     };
 
@@ -143,6 +150,7 @@ export class ObjectsService {
         address: true,
         commissionedAt: true,
         warrantyEndsAt: true,
+        active: true,
         sourceResponsibleEngineerName: true,
         engineers: {
           where: { directoryLinkMethod: { not: null } },
@@ -176,6 +184,7 @@ export class ObjectsService {
         warrantyEndsAt: item.warrantyEndsAt
           ? calendarDateInTimeZone(item.warrantyEndsAt, BUSINESS_TIME_ZONE)
           : null,
+        active: item.active,
         responsibleEngineer: toResponsibleEngineer(item, engineerAccounts),
       })),
       page,

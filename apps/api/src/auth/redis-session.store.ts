@@ -67,6 +67,30 @@ export class RedisSessionStore implements SessionStore {
     }
   }
 
+  async countForUsers(userIds: readonly string[]): Promise<Map<string, number>> {
+    const counts = new Map<string, number>();
+    if (userIds.length === 0) {
+      return counts;
+    }
+    const config = loadConfig();
+    const prefix = config.REDIS_KEY_PREFIX;
+    try {
+      const pipeline = this.redis.pipeline();
+      for (const userId of userIds) {
+        pipeline.scard(userSessionsKey(prefix, userId));
+      }
+      const result = await pipeline.exec();
+      userIds.forEach((userId, index) => {
+        const value = result?.[index]?.[1];
+        const count = typeof value === 'number' ? value : Number(value);
+        counts.set(userId, Number.isFinite(count) ? count : 0);
+      });
+      return counts;
+    } catch {
+      return counts;
+    }
+  }
+
   async deleteAllForUser(userId: string): Promise<void> {
     const config = loadConfig();
     const prefix = config.REDIS_KEY_PREFIX;

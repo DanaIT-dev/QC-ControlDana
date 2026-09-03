@@ -34,6 +34,7 @@ import {
   canViewAttachmentOwner,
   categoriesForOwner,
   hasCapability,
+  isOversightRole,
   createAttachmentObjectKey,
   type AttachmentOwnerRef,
 } from '@sgr-registry/domain';
@@ -246,7 +247,12 @@ export class AttachmentsService {
     const assigned = await this.assignedDefectIds(user, owner.actId);
     const where = ownerWhere(owner);
     const items = await this.prisma.client.attachment.findMany({
-      where: { ...where, status: { notIn: ['UPLOADING', 'ARCHIVED'] } },
+      where: {
+        ...where,
+        status: isOversightRole(user.role)
+          ? { not: 'UPLOADING' }
+          : { notIn: ['UPLOADING', 'ARCHIVED'] },
+      },
       include: { uploadedBy: true },
       orderBy: { createdAt: 'desc' },
     });

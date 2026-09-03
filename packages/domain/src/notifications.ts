@@ -5,6 +5,7 @@ import {
   type SlaClockKind,
   type UserRole,
 } from '@sgr-registry/contracts';
+import { isOversightRole } from './capabilities';
 import { ValidationError } from './errors';
 import { assertAuditPayloadSafe, containsSensitiveAuditKey } from './secrets';
 import { isBusinessStaffRole } from './role-hierarchy';
@@ -80,7 +81,7 @@ export function recipientsForDeadlineAlert(input: {
 }
 
 export function canReceiveDeadlineKind(role: UserRole, kind: SlaClockKind): boolean {
-  if (isBusinessStaffRole(role)) {
+  if (isOversightRole(role) || isBusinessStaffRole(role)) {
     return true;
   }
   if (role === 'RESPONSIBLE_ENGINEER') {

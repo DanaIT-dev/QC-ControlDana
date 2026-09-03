@@ -56,6 +56,7 @@ import {
   postLoginPath,
   canViewProposalASum,
   canViewProposalGroupBC,
+  canReceiveDeadlineKind,
   countActiveRegistryFilters,
   shapeProposals,
   shapeSummary,
@@ -520,6 +521,7 @@ describe('registry access and proposal shaping', () => {
     expect(registryAccessMode('ADMIN')).toBe('all_uncancelled');
     expect(registryAccessMode('SGR_MANAGER')).toBe('all_uncancelled');
     expect(registryAccessMode('CONTRACTOR_ENGINEER')).toBe('all_uncancelled');
+    expect(registryAccessMode('SUPER_ADMIN')).toBe('all');
     expect(registryAccessMode('RESPONSIBLE_ENGINEER')).toBe('object_assigned');
     expect(isObjectScopedRole('RESPONSIBLE_ENGINEER')).toBe(true);
     expect(isObjectScopedRole('ADMIN')).toBe(false);
@@ -529,6 +531,9 @@ describe('registry access and proposal shaping', () => {
     expect(canViewProposalASum('SGR_MANAGER')).toBe(true);
     expect(canViewProposalASum('CONTRACTOR_ENGINEER')).toBe(false);
     expect(canViewProposalGroupBC('RESPONSIBLE_ENGINEER')).toBe(false);
+    expect(canReceiveDeadlineKind('SUPER_ADMIN', 'GENERAL')).toBe(true);
+    expect(canReceiveDeadlineKind('SUPER_ADMIN', 'THIRD_PARTY')).toBe(true);
+    expect(canReceiveDeadlineKind('RESPONSIBLE_ENGINEER', 'THIRD_PARTY')).toBe(false);
   });
 });
 
@@ -707,5 +712,7 @@ describe('property object linked selection', () => {
     expect(canViewObjectsDirectory('CONTRACTOR_ENGINEER')).toBe(false);
     expect(canAccessReferenceKind('ADMIN', 'defect-types')).toBe(true);
     expect(canAccessReferenceKind('SGR_MANAGER', 'organizations')).toBe(true);
+    expect(canAccessReferenceKind('SUPER_ADMIN', 'work-types')).toBe(true);
+    expect(canAccessReferenceKind('SUPER_ADMIN', 'defect-types')).toBe(true);
   });
 });

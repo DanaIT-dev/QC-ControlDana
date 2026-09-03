@@ -1,5 +1,7 @@
 'use client';
 
+import { canAccessReferenceKind } from '@sgr-registry/domain';
+import type { UserRole } from '@sgr-registry/contracts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -52,14 +54,14 @@ type TabId = (typeof TABS)[number]['id'];
 export function ReferenceDataView({
   csrfToken,
   canMutate,
+  role,
 }: {
   csrfToken: string;
   canMutate: boolean;
+  role: UserRole;
 }) {
   const queryClient = useQueryClient();
-  const visibleTabs = canMutate
-    ? TABS
-    : TABS.filter((item) => item.id === 'property-objects' || item.id === 'organizations');
+  const visibleTabs = TABS.filter((item) => canAccessReferenceKind(role, item.id));
   const [tab, setTab] = useState<TabId>('property-objects');
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('ALL');
@@ -136,7 +138,9 @@ export function ReferenceDataView({
         description={
           canMutate
             ? 'Объекты, организации, виды работ и дефектов.'
-            : 'Просмотр объектов и организаций.'
+            : visibleTabs.length > 2
+              ? 'Просмотр объектов, организаций, видов работ и дефектов.'
+              : 'Просмотр объектов и организаций.'
         }
       />
       <Tabs value={tab} onValueChange={(value) => setTab(value as TabId)}>

@@ -86,6 +86,8 @@ test.describe('read-only SUPER_ADMIN oversight', () => {
     await expect(page.getByRole('link', { name: 'Реестр' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Справочники' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Пользователи' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Уведомления' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Журнал аудита' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Состояние системы' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Администраторы' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Создать акт' })).toHaveCount(0);
@@ -100,16 +102,39 @@ test.describe('read-only SUPER_ADMIN oversight', () => {
     await page.locator('.registry-table tbody tr').first().click();
     await expect(page).toHaveURL(/\/acts\//);
     await expect(page.locator('.act-detail')).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'История изменений' })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Обсуждение' })).toBeVisible();
+    await page.getByRole('tab', { name: 'Обсуждение' }).click();
     await expect(page.getByRole('button', { name: 'Отправить' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Загрузить' })).toHaveCount(0);
     await expect(page.getByLabel('Сообщение')).toHaveCount(0);
+    const download = page.getByRole('link', { name: 'Скачать' });
+    if ((await download.count()) > 0) {
+      const href = await download.first().getAttribute('href');
+      expect(href).toMatch(/\/api\/attachments\/.+\/content/);
+      const file = await page.request.get(href ?? '');
+      expect(file.status()).toBe(200);
+    }
+
+    await page.goto('/reference-data');
+    await expect(page.getByRole('tab', { name: 'Виды работ' })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Виды дефектов' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Создать' })).toHaveCount(0);
 
     await page.goto('/acts/new');
     await expect(page.getByText('Недостаточно прав для создания акта.')).toBeVisible();
 
+    await page.goto('/history');
+    await expect(page.getByRole('heading', { name: 'Журнал аудита' })).toBeVisible();
+    await expect(page.getByLabel('Поиск по журналу')).toBeVisible();
+
+    await page.goto('/notifications');
+    await expect(page.getByRole('heading', { name: 'Уведомления' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Прочитать все' })).toHaveCount(0);
+
     await page.goto('/users');
     await expect(page.getByRole('button', { name: 'Добавить пользователя' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Действия' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Действия' }).first()).toBeVisible();
     await page.getByRole('button', { name: 'Добавить пользователя' }).click();
     await expect(page.getByRole('dialog').locator('#new-user-role')).toHaveCount(0);
     const stamp = Date.now();
@@ -246,6 +271,7 @@ test.describe('read-only SUPER_ADMIN oversight', () => {
     await expect(page.getByText('Миграции')).toBeVisible();
     await expect(page.getByText('Фоновые очереди')).toBeVisible();
     await expect(page.getByText('Время последней проверки')).toBeVisible();
+    await expect(page.getByText('Исходящие уведомления')).toBeVisible();
     await expect(page.getByText('Настройки уведомлений')).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Перезапустить' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Очистить очередь' })).toHaveCount(0);
@@ -262,6 +288,12 @@ test.describe('read-only SUPER_ADMIN oversight', () => {
       await page.goto('/registry');
       await noHorizontalOverflow(page);
       await page.goto('/system-status');
+      await noHorizontalOverflow(page);
+      await page.goto('/history');
+      await noHorizontalOverflow(page);
+      await page.goto('/notifications');
+      await noHorizontalOverflow(page);
+      await page.goto('/users');
       await noHorizontalOverflow(page);
       await page.goto('/super-admin');
       await noHorizontalOverflow(page);

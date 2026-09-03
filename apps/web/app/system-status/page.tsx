@@ -76,6 +76,33 @@ export default async function SystemStatusPage() {
           </CardContent>
         </Card>
       ) : null}
+      {data?.notifications ? (
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <OverviewCard
+            title="Исходящие уведомления"
+            status={data.notifications.outboxPending > 0 ? 'degraded' : 'up'}
+            message={`В очереди: ${data.notifications.outboxPending}`}
+          />
+          <OverviewCard
+            title="Доставка email"
+            status={
+              data.notifications.emailFailed > 0 || data.notifications.emailDead > 0
+                ? 'degraded'
+                : 'up'
+            }
+            message={`Ожидают: ${data.notifications.emailQueued}, ошибки: ${data.notifications.emailFailed}, отложены: ${data.notifications.emailDead}`}
+          />
+          <OverviewCard
+            title="Проверка сроков"
+            status={data.notifications.lastSlaRunAt ? 'up' : 'checking'}
+            message={
+              data.notifications.lastSlaRunAt
+                ? `Последний запуск: ${formatCheckedAt(data.notifications.lastSlaRunAt)}`
+                : 'Запуск ещё не выполнялся'
+            }
+          />
+        </div>
+      ) : null}
     </AppShell>
   );
 }

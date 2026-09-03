@@ -30,10 +30,14 @@ export class RegistryAccessScope {
   }
 
   defectItemWhere(): Prisma.DefectItemWhereInput {
+    const mode = registryAccessMode(this.role);
+    if (mode === 'all') {
+      return {};
+    }
     const uncancelled: Prisma.DefectItemWhereInput = {
       act: { status: { not: 'CANCELLED' } },
     };
-    if (registryAccessMode(this.role) === 'object_assigned') {
+    if (mode === 'object_assigned') {
       return {
         AND: [uncancelled, { act: { propertyObject: this.assignedObjectWhere() } }],
       };

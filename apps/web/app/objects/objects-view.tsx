@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/page-header';
 import { EmptyState, ErrorState, TableSkeleton } from '@/components/states';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import {
@@ -314,7 +315,12 @@ function ObjectsTable({
         <tbody>
           {data.items.map((item) => (
             <tr key={item.id} className="border-b align-top">
-              <td className="max-w-[22rem] px-3 py-3 font-medium break-words">{item.name}</td>
+              <td className="max-w-[22rem] px-3 py-3 font-medium break-words">
+                <span className="inline-flex flex-wrap items-center gap-2">
+                  {item.name}
+                  {item.active === false ? <Badge variant="outline">Неактивен</Badge> : null}
+                </span>
+              </td>
               <td className="max-w-[16rem] px-3 py-3 break-words text-muted-foreground">
                 {emptyDash(item.address)}
               </td>
@@ -354,7 +360,14 @@ function ObjectsCards({
         <li key={item.id}>
           <Card className="shadow-none">
             <CardContent className="grid gap-2 p-4">
-              <h2 className="text-base font-semibold break-words">{item.name}</h2>
+              <h2 className="text-base font-semibold break-words">
+                {item.name}
+                {item.active === false ? (
+                  <Badge variant="outline" className="ml-2 align-middle">
+                    Неактивен
+                  </Badge>
+                ) : null}
+              </h2>
               <p className="text-sm break-words">{emptyDash(item.address)}</p>
               <p className="text-sm">
                 Принят в эксплуатацию: {formatCalendarDate(item.commissionedAt)}

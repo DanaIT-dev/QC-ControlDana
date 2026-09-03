@@ -17,6 +17,7 @@ import {
   defectItemStatusLabel,
   effectiveDeadlineOf,
   formLabel,
+  isOversightRole,
   normalizeQueryInput,
   parseRegistryListQuery,
   RegistryQueryError,
@@ -227,7 +228,10 @@ export class RegistryService {
               orderBy: { organization: { officialName: 'asc' } },
             },
             proposals: {
-              where: { slot: { in: visibleProposalSlots(user.role) }, status: 'ACTIVE' },
+              where: {
+                slot: { in: visibleProposalSlots(user.role) },
+                ...(isOversightRole(user.role) ? {} : { status: 'ACTIVE' as const }),
+              },
               select: {
                 id: true,
                 slot: true,

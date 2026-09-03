@@ -108,7 +108,11 @@ export class UsersController {
 
   @Get(':userId/history')
   @RequireCapability('MANAGE_USERS', 'VIEW_ALL_BUSINESS_DATA')
-  history(@Param('userId') userId: string, @Query() query: Record<string, unknown>) {
-    return this.usersService.history(userId, query);
+  history(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('userId') userId: string,
+    @Query() query: Record<string, unknown>,
+  ) {
+    return this.usersService.history(user, userId, query);
   }
 }

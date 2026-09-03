@@ -10,6 +10,7 @@ export const objectsListQuerySchema = z
     page: z.coerce.number().int().positive().optional(),
     pageSize: z.coerce.number().int().positive().max(50).optional(),
     sort: z.enum(['source']).optional(),
+    status: z.enum(['ACTIVE', 'ARCHIVED', 'ALL']).optional(),
   })
   .strict();
 
@@ -60,6 +61,7 @@ export interface ObjectsDirectoryItem {
   address: string | null;
   commissionedAt: string | null;
   warrantyEndsAt: string | null;
+  active: boolean;
   responsibleEngineer: ObjectsResponsibleEngineer | null;
 }
 

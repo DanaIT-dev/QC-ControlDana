@@ -5,11 +5,12 @@ import {
   assignableRolesFor,
   canEditUserProfile,
   canMutateManagedUser,
+  isOversightRole,
   parsePersonNameForForm,
   roleLabel,
 } from '@sgr-registry/domain';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CopyIcon, MoreHorizontal } from 'lucide-react';
+import { CopyIcon, ChevronLeft, ChevronRight, MoreHorizontal } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { ConflictDialog } from '@/components/conflict-dialog';
@@ -58,6 +59,9 @@ interface UserRow {
   lastLoginAt: string | null;
   mustChangePassword: boolean;
   version: number;
+  archivedAt?: string | null;
+  passwordConfigured?: boolean;
+  activeSessionsCount?: number;
 }
 
 export function UsersView({
@@ -79,13 +83,17 @@ export function UsersView({
   const [search, setSearch] = useState('');
   const [role, setRole] = useState('ALL');
   const [status, setStatus] = useState('ALL');
+  const [page, setPage] = useState(1);
   const [temporaryPassword, setTemporaryPassword] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [conflict, setConflict] = useState(false);
   const showActions = canManage || canEditProfiles;
   const assignableRoles = assignableRolesFor(currentUserRole);
+  const roleFilters = isOversightRole(currentUserRole)
+    ? [...LISTABLE_USER_ROLES, 'SUPER_ADMIN' as const]
+    : LISTABLE_USER_ROLES;
   const usersQuery = useQuery({
-    queryKey: ['users', search, role, status],
+    queryKey: ['users', search, role, status, page],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (search.trim().length >= 2) {
@@ -97,11 +105,19 @@ export function UsersView({
       if (status !== 'ALL') {
         params.set('status', status);
       }
+      params.set('page', String(page));
+      params.set('pageSize', '50');
       const response = await fetch(`/api/users?${params.toString()}`, { credentials: 'include' });
       if (!response.ok) {
         throw new Error('list');
       }
-      return (await response.json()) as { items: UserRow[] };
+      return (await response.json()) as {
+        items: UserRow[];
+        page: number;
+        pageSize: number;
+        totalCount: number;
+        totalPages: number;
+      };
     },
   });
 
@@ -128,6 +144,8 @@ export function UsersView({
   }
 
   const items = usersQuery.data?.items ?? [];
+  const totalPages = usersQuery.data?.totalPages ?? 0;
+  const currentPage = usersQuery.data?.page ?? page;
 
   return (
     <section className="grid gap-4">
@@ -147,23 +165,38 @@ export function UsersView({
           aria-label="Поиск пользователей"
           placeholder="Поиск"
           value={search}
-          onChange={(event) => setSearch(event.target.value)}
+          onChange={(event) => {
+            setSearch(event.target.value);
+            setPage(1);
+          }}
           className="md:max-w-sm"
         />
-        <Select value={role} onValueChange={setRole}>
+        <Select
+          value={role}
+          onValueChange={(value) => {
+            setRole(value);
+            setPage(1);
+          }}
+        >
           <SelectTrigger aria-label="Роль" className="md:w-56">
             <SelectValue placeholder="Все роли" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="ALL">Все роли</SelectItem>
-            {LISTABLE_USER_ROLES.map((item) => (
+            {roleFilters.map((item) => (
               <SelectItem key={item} value={item}>
                 {roleLabel(item)}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
-        <Select value={status} onValueChange={setStatus}>
+        <Select
+          value={status}
+          onValueChange={(value) => {
+            setStatus(value);
+            setPage(1);
+          }}
+        >
           <SelectTrigger aria-label="Статус" className="md:w-48">
             <SelectValue placeholder="Все статусы" />
           </SelectTrigger>
@@ -281,6 +314,35 @@ export function UsersView({
           </Card>
         ))}
       </div>
+      {totalPages > 1 ? (
+        <div className="flex items-center justify-end gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="min-h-11 min-w-11"
+            disabled={currentPage <= 1}
+            aria-label="Назад"
+            onClick={() => setPage((value) => Math.max(1, value - 1))}
+          >
+            <ChevronLeft />
+          </Button>
+          <span className="text-sm text-muted-foreground">
+            {currentPage} / {totalPages}
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="min-h-11 min-w-11"
+            disabled={currentPage >= totalPages}
+            aria-label="Вперёд"
+            onClick={() => setPage((value) => value + 1)}
+          >
+            <ChevronRight />
+          </Button>
+        </div>
+      ) : null}
       {createOpen ? (
         <CreateUserDialog
           unassigned={canCreateUnassigned && !canManage}

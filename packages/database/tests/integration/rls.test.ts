@@ -944,6 +944,20 @@ describe('PostgreSQL RLS', () => {
     );
   });
 
+  it('does not grant global read without a verified request context', async () => {
+    const acts = await sql(appUrl, 'SELECT id FROM public.acts LIMIT 5');
+    expect(acts.rows).toHaveLength(0);
+    const users = await sql(appUrl, 'SELECT id FROM public.users LIMIT 5');
+    expect(users.rows).toHaveLength(0);
+    await sql(
+      appUrl,
+      `SELECT set_config('sgr.role', 'SUPER_ADMIN', true), set_config('sgr.user_id', $1, true)`,
+      [adminId],
+    );
+    const afterForge = await sql(appUrl, 'SELECT id FROM public.acts LIMIT 5');
+    expect(afterForge.rows).toHaveLength(0);
+  });
+
   it('scopes sla_clocks writes to object visibility and worker workflow', async () => {
     const sentinel = `rls-sla-${MARKER}`;
     await owner.propertyObjectEngineer.create({

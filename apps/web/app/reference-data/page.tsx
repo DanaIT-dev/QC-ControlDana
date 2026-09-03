@@ -17,7 +17,11 @@ export default async function ReferenceDataPage() {
   }
   return (
     <AppShell user={user}>
-      <ReferenceDataView csrfToken={user.csrfToken} canMutate={canManageReferenceData(user.role)} />
+      <ReferenceDataView
+        csrfToken={user.csrfToken}
+        canMutate={canManageReferenceData(user.role)}
+        role={user.role}
+      />
     </AppShell>
   );
 }

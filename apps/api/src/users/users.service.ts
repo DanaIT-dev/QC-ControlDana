@@ -24,10 +24,12 @@ import {
   assertCanEditUserProfile,
   assertCanMutateManagedUser,
   composeOfficialFullName,
+  hasCapability,
   normalizeUserEmail,
   normalizeUserFullName,
   parsePersonNameInput,
   roleLabel,
+  scrubSensitiveValue,
   ValidationError,
 } from '@sgr-registry/domain';
 import {
@@ -85,11 +87,10 @@ export class UsersService {
     const query = parseCommandBody(usersListQuerySchema, rawQuery);
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 50;
-    const filters: Prisma.UserWhereInput[] = [
-      actor.role === 'SUPER_ADMIN'
-        ? { OR: [{ role: { not: 'SUPER_ADMIN' } }, { id: actor.id }] }
-        : { role: { not: 'SUPER_ADMIN' } },
-    ];
+    const filters: Prisma.UserWhereInput[] = [];
+    if (!hasCapability(actor.role, 'VIEW_ALL_BUSINESS_DATA')) {
+      filters.push({ role: { not: 'SUPER_ADMIN' } });
+    }
     if (query.role) {
       filters.push({ role: query.role });
     }
@@ -105,7 +106,7 @@ export class UsersService {
         ],
       });
     }
-    const where: Prisma.UserWhereInput = { AND: filters };
+    const where: Prisma.UserWhereInput = filters.length > 0 ? { AND: filters } : {};
     const totalCount = await this.prisma.client.user.count({ where });
     const items = await this.prisma.client.user.findMany({
       where,
@@ -114,8 +115,27 @@ export class UsersService {
       skip: (page - 1) * pageSize,
       take: pageSize,
     });
+    const credentialFlags = await this.authPrisma.userCredential.findMany({
+      where: { userId: { in: items.map((item) => item.id) } },
+      select: { userId: true, passwordChangedAt: true },
+    });
+    const credentialsByUser = new Map(
+      credentialFlags.map((row) => [row.userId, row.passwordChangedAt] as const),
+    );
+    let sessionCounts = new Map<string, number>();
+    try {
+      sessionCounts = await this.sessions.countForUsers(items.map((item) => item.id));
+    } catch {
+      sessionCounts = new Map();
+    }
     return {
-      items: items.map(toUserDto),
+      items: items.map((item) =>
+        toUserDto(item, {
+          passwordConfigured: credentialsByUser.has(item.id),
+          passwordChangedAt: credentialsByUser.get(item.id)?.toISOString() ?? null,
+          activeSessionsCount: sessionCounts.get(item.id) ?? 0,
+        }),
+      ),
       page,
       pageSize,
       totalCount,
@@ -540,13 +560,16 @@ export class UsersService {
     return { user: toUserDto(user), temporaryPassword };
   }
 
-  async history(userId: string, rawQuery: Record<string, unknown>) {
+  async history(actor: AuthenticatedUser, userId: string, rawQuery: Record<string, unknown>) {
     assertUserId(userId);
     const exists = await this.prisma.client.user.findUnique({
       where: { id: userId },
       select: { id: true, role: true },
     });
-    if (!exists || exists.role === 'SUPER_ADMIN') {
+    if (!exists) {
+      throw new NotFoundException('Запись не найдена');
+    }
+    if (exists.role === 'SUPER_ADMIN' && !hasCapability(actor.role, 'VIEW_ALL_BUSINESS_DATA')) {
       throw new NotFoundException('Запись не найдена');
     }
     const query = parseCommandBody(historyQuerySchema, rawQuery);
@@ -672,19 +695,26 @@ async function syncDirectoryEngineerLinks(
   await reconcileDirectoryEngineerLinks(tx, ctx, { extraCandidates });
 }
 
-function toUserDto(user: {
-  id: string;
-  fullName: string;
-  email: string;
-  role: AuthenticatedUser['role'];
-  status: 'ACTIVE' | 'ARCHIVED';
-  createdAt: Date;
-  updatedAt: Date;
-  lastLoginAt: Date | null;
-  mustChangePassword: boolean;
-  version: number;
-  archivedAt: Date | null;
-}) {
+function toUserDto(
+  user: {
+    id: string;
+    fullName: string;
+    email: string;
+    role: AuthenticatedUser['role'];
+    status: 'ACTIVE' | 'ARCHIVED';
+    createdAt: Date;
+    updatedAt: Date;
+    lastLoginAt: Date | null;
+    mustChangePassword: boolean;
+    version: number;
+    archivedAt: Date | null;
+  },
+  extras?: {
+    passwordConfigured?: boolean;
+    passwordChangedAt?: string | null;
+    activeSessionsCount?: number;
+  },
+) {
   return {
     id: user.id,
     fullName: user.fullName,
@@ -698,6 +728,15 @@ function toUserDto(user: {
     mustChangePassword: user.mustChangePassword,
     version: user.version,
     archivedAt: user.archivedAt?.toISOString() ?? null,
+    ...(extras?.passwordConfigured !== undefined
+      ? { passwordConfigured: extras.passwordConfigured }
+      : {}),
+    ...(extras && 'passwordChangedAt' in extras
+      ? { passwordChangedAt: extras.passwordChangedAt ?? null }
+      : {}),
+    ...(extras?.activeSessionsCount !== undefined
+      ? { activeSessionsCount: extras.activeSessionsCount }
+      : {}),
   };
 }
 
@@ -739,8 +778,8 @@ function toHistoryDto(row: {
     entityId: row.entityId,
     parentEntityType: row.parentEntityType,
     parentEntityId: row.parentEntityId,
-    oldValue: row.oldValue,
-    newValue: row.newValue,
+    oldValue: scrubSensitiveValue(row.oldValue),
+    newValue: scrubSensitiveValue(row.newValue),
     reason: row.reason,
     actorUserId: row.actorUserId,
     actorName: row.actorName,

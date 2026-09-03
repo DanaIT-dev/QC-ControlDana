@@ -48,7 +48,9 @@ function toDto(proposal: ProposalSource): ShapedProposal {
 
 export function shapeProposals(proposals: ProposalSource[], role: UserRole): ShapedProposals {
   const allowed = new Set(visibleProposalSlots(role));
-  const visible = proposals.filter((proposal) => allowed.has(proposal.slot)).map(toDto);
+  const visible = preferActivePerSlot(
+    proposals.filter((proposal) => allowed.has(proposal.slot)).map(toDto),
+  );
   const proposalA = visible.find((proposal) => proposal.slot === 'A') ?? null;
   if (!canViewProposalGroupBC(role)) {
     return { proposalA };
@@ -57,6 +59,17 @@ export function shapeProposals(proposals: ProposalSource[], role: UserRole): Sha
     proposalA,
     proposalsBC: visible.filter((proposal) => proposal.slot === 'B' || proposal.slot === 'C'),
   };
+}
+
+function preferActivePerSlot(proposals: ShapedProposal[]): ShapedProposal[] {
+  const bySlot = new Map<ProposalSlot, ShapedProposal>();
+  for (const proposal of proposals) {
+    const current = bySlot.get(proposal.slot);
+    if (!current || (current.status === 'ARCHIVED' && proposal.status !== 'ARCHIVED')) {
+      bySlot.set(proposal.slot, proposal);
+    }
+  }
+  return [...bySlot.values()];
 }
 
 export function shapeSummary<T extends Record<string, unknown>>(

@@ -87,7 +87,7 @@ export function AttachmentsPanel({
   const [archiveId, setArchiveId] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ src: string; name: string; mime: string } | null>(null);
 
-  const items = (query.data?.items ?? []).filter((item) => item.status !== 'ARCHIVED');
+  const items = query.data?.items ?? [];
 
   return (
     <section className="grid gap-2">

@@ -40,4 +40,5 @@ export const queryKeys = {
     all: ['objects'] as const,
     list: (query: unknown) => ['objects', 'list', query] as const,
   },
+  auditLog: (query: string) => ['audit-log', query] as const,
 } as const;
