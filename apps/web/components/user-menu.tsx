@@ -22,22 +22,34 @@ export function UserMenu({ user }: { user: SafeUserProfile }) {
         <Button
           type="button"
           variant="ghost"
-          className="h-11 min-h-11 gap-2 px-2"
+          className="h-9 min-h-9 max-w-[min(18rem,42vw)] shrink-0 gap-2 overflow-hidden px-2 whitespace-nowrap 2xl:max-w-[22rem]"
           aria-label="Меню пользователя"
         >
           <UserAvatar name={user.fullName} />
-          <span className="hidden text-left md:grid">
-            <span className="text-sm font-medium leading-tight">{user.fullName}</span>
-            <span className="text-[12px] font-normal text-muted-foreground">{user.roleLabel}</span>
+          <span className="flex min-w-0 items-center gap-2">
+            <span
+              className="min-w-0 max-w-[7.5rem] truncate text-sm font-medium 2xl:max-w-[12rem]"
+              title={user.fullName}
+            >
+              {user.fullName}
+            </span>
+            <span
+              className="min-w-0 max-w-[7rem] truncate text-[12px] leading-none font-normal text-muted-foreground 2xl:max-w-[11rem]"
+              title={user.roleLabel}
+            >
+              {user.roleLabel}
+            </span>
           </span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-56">
         <DropdownMenuLabel className="font-normal">
           <div className="grid gap-0.5">
-            <span className="text-sm font-medium">{user.fullName}</span>
-            <span className="text-xs text-muted-foreground">{user.email}</span>
-            <span className="text-xs text-muted-foreground">{user.roleLabel}</span>
+            <span className="text-sm font-medium break-words">{user.fullName}</span>
+            <span className="text-xs break-all text-muted-foreground">{user.email}</span>
+            <span className="text-xs whitespace-nowrap text-muted-foreground">
+              {user.roleLabel}
+            </span>
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
@@ -57,8 +69,12 @@ export function MobileUserBlock({ user }: { user: SafeUserProfile }) {
       <div className="mb-3 flex items-center gap-3">
         <UserAvatar name={user.fullName} />
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium">{user.fullName}</p>
-          <p className="truncate text-xs text-muted-foreground">{user.roleLabel}</p>
+          <p className="truncate text-sm font-medium" title={user.fullName}>
+            {user.fullName}
+          </p>
+          <p className="truncate text-xs text-muted-foreground" title={user.roleLabel}>
+            {user.roleLabel}
+          </p>
         </div>
       </div>
       <Button asChild variant="outline" className="mb-2 min-h-11 w-full">

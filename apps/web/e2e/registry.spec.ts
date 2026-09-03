@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { e2eApiOrigin } from './e2e-origins';
+import { clickAdminNavItem } from './nav';
 
 const DEMO_PASSWORD = 'Dana-SGR-Demo-2026!';
 
@@ -36,7 +37,7 @@ test.describe('role-aware registry', () => {
     expect(JSON.stringify(payload)).toMatch(/"slot":"B"/);
     await page.getByRole('button', { name: 'Развернуть предложения B и C' }).click();
     await expect(page.getByRole('button', { name: 'Свернуть предложения B и C' })).toBeVisible();
-    await page.getByRole('link', { name: 'Состояние системы' }).click();
+    await clickAdminNavItem(page, 'Состояние системы');
     await expect(page).toHaveURL(/\/system-status/);
     expect(errors).toEqual([]);
   });
@@ -137,11 +138,12 @@ test.describe('role-aware registry', () => {
 
   test('ADMIN logout then CONTRACTOR does not keep admin navigation', async ({ page }) => {
     await login(page, ACCOUNTS.admin.email);
-    await expect(page.getByRole('link', { name: 'Состояние системы' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Администрирование' })).toBeVisible();
     await page.getByRole('button', { name: 'Меню пользователя' }).click();
     await page.getByRole('menuitem', { name: 'Выйти' }).click();
     await expect(page).toHaveURL(/\/login/);
     await login(page, ACCOUNTS.contractor.email);
+    await expect(page.getByRole('button', { name: 'Администрирование' })).toHaveCount(0);
     await expect(page.getByRole('link', { name: 'Состояние системы' })).toHaveCount(0);
     await expect(page.getByRole('link', { name: 'Создать акт' })).toHaveCount(0);
     await expect(page.getByRole('link', { name: 'Пользователи' })).toHaveCount(0);

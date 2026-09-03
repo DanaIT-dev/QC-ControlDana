@@ -9,3 +9,6 @@ class ResizeObserverMock {
 globalThis.ResizeObserver = ResizeObserverMock;
 
 Element.prototype.scrollIntoView = () => {};
+Element.prototype.hasPointerCapture ??= () => false;
+Element.prototype.setPointerCapture ??= () => {};
+Element.prototype.releasePointerCapture ??= () => {};

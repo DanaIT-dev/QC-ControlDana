@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { clickAdminNavItem } from './nav';
 
 const DEMO_PASSWORD = 'Dana-SGR-Demo-2026!';
 
@@ -36,9 +37,8 @@ test.describe('authentication browser flows', () => {
     await expect(page).toHaveURL(/\/registry$/);
     await expect(page.getByText(ACCOUNTS.admin.name)).toBeVisible();
     await expect(page.getByText(ACCOUNTS.admin.role)).toBeVisible();
-    const statusLink = page.getByRole('link', { name: 'Состояние системы' });
-    await expect(statusLink).toBeVisible();
-    await statusLink.click();
+    await expect(page.getByRole('button', { name: 'Администрирование' })).toBeVisible();
+    await clickAdminNavItem(page, 'Состояние системы');
     await expect(page).toHaveURL(/\/system-status$/, { timeout: 20_000 });
     await expect(
       page.getByRole('heading', { name: 'Техническое состояние системы' }),

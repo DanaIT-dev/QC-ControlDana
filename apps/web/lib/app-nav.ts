@@ -7,16 +7,24 @@ export interface AppNavItem {
   match: (pathname: string) => boolean;
 }
 
-export function navItemsForRole(role: UserRole): AppNavItem[] {
+export interface AppNavSections {
+  primary: AppNavItem[];
+  administration: AppNavItem[];
+}
+
+export const ADMINISTRATION_LABEL = 'Администрирование';
+
+export function navSectionsForRole(role: UserRole): AppNavSections {
   if (isPendingRole(role)) {
-    return [];
+    return { primary: [], administration: [] };
   }
-  const items: AppNavItem[] = [];
+  const primary: AppNavItem[] = [];
+  const administration: AppNavItem[] = [];
   if (
     satisfiesCapability(role, 'VIEW_ALL_ACTS') ||
     satisfiesCapability(role, 'VIEW_ASSIGNED_DEFECTS')
   ) {
-    items.push({
+    primary.push({
       href: '/registry',
       label: 'Реестр',
       match: (pathname) =>
@@ -24,45 +32,38 @@ export function navItemsForRole(role: UserRole): AppNavItem[] {
     });
   }
   if (satisfiesCapability(role, 'VIEW_REFERENCE_DATA')) {
-    items.push({
+    primary.push({
       href: '/objects',
       label: 'Объекты',
       match: (pathname) => pathname === '/objects' || pathname.startsWith('/objects/'),
     });
   }
   if (hasCapability(role, 'CREATE_ACT')) {
-    items.push({
+    primary.push({
       href: '/acts/new',
       label: 'Создать акт',
       match: (pathname) => pathname === '/acts/new',
     });
   }
   if (satisfiesCapability(role, 'VIEW_DEADLINE_CONTROL')) {
-    items.push({
+    primary.push({
       href: '/deadlines',
       label: 'Контроль сроков',
       match: (pathname) => pathname.startsWith('/deadlines'),
     });
   }
   if (satisfiesCapability(role, 'VIEW_NOTIFICATIONS')) {
-    items.push({
+    primary.push({
       href: '/notifications',
       label: 'Уведомления',
       match: (pathname) => pathname.startsWith('/notifications'),
     });
   }
   if (satisfiesCapability(role, 'VIEW_REFERENCE_DATA')) {
-    items.push({
+    primary.push({
       href: '/reference-data',
       label: 'Справочники',
       match: (pathname) => pathname.startsWith('/reference-data'),
-    });
-  }
-  if (satisfiesCapability(role, 'VIEW_HISTORY')) {
-    items.push({
-      href: '/history',
-      label: 'Журнал аудита',
-      match: (pathname) => pathname === '/history' || pathname.startsWith('/history/'),
     });
   }
   if (
@@ -70,25 +71,37 @@ export function navItemsForRole(role: UserRole): AppNavItem[] {
     hasCapability(role, 'CREATE_UNASSIGNED_USER') ||
     hasCapability(role, 'VIEW_ALL_BUSINESS_DATA')
   ) {
-    items.push({
+    administration.push({
       href: '/users',
       label: 'Пользователи',
       match: (pathname) => pathname.startsWith('/users'),
     });
   }
-  if (satisfiesCapability(role, 'VIEW_SYSTEM_STATUS')) {
-    items.push({
-      href: '/system-status',
-      label: 'Состояние системы',
-      match: (pathname) => pathname === '/system-status',
-    });
-  }
   if (hasCapability(role, 'MANAGE_ADMIN_GRANTS')) {
-    items.push({
+    administration.push({
       href: '/super-admin',
       label: 'Администраторы',
       match: (pathname) => pathname.startsWith('/super-admin'),
     });
   }
-  return items;
+  if (satisfiesCapability(role, 'VIEW_HISTORY')) {
+    administration.push({
+      href: '/history',
+      label: 'Журнал аудита',
+      match: (pathname) => pathname === '/history' || pathname.startsWith('/history/'),
+    });
+  }
+  if (satisfiesCapability(role, 'VIEW_SYSTEM_STATUS')) {
+    administration.push({
+      href: '/system-status',
+      label: 'Состояние системы',
+      match: (pathname) => pathname === '/system-status',
+    });
+  }
+  return { primary, administration };
+}
+
+export function navItemsForRole(role: UserRole): AppNavItem[] {
+  const { primary, administration } = navSectionsForRole(role);
+  return [...primary, ...administration];
 }

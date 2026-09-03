@@ -77,7 +77,7 @@ export function NotificationBell({
           type="button"
           variant="ghost"
           size="icon"
-          className="relative min-h-11 min-w-11"
+          className="relative size-9 min-h-9 min-w-9"
           aria-label={count > 0 ? `Уведомления, непрочитанных ${badge}` : 'Уведомления'}
         >
           <BellIcon className="size-5" aria-hidden />

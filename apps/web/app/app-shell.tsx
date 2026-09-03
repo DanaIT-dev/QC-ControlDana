@@ -20,61 +20,75 @@ export function AppShell({ user, children }: { user: SafeUserProfile; children: 
   const readOnly = isOversightRole(user.role);
   return (
     <div className="min-h-dvh bg-background">
-      <header className="sticky top-0 z-40 border-b bg-white">
-        <div className="mx-auto flex h-16 w-full min-w-0 max-w-[1600px] items-center gap-3 px-4 md:h-[64px] md:px-6 lg:px-8">
-          <QcLogo href={homeHref} />
-          <AppNav role={user.role} className="hidden min-w-0 flex-1 overflow-x-auto md:flex" />
-          {readOnly ? (
-            <span className="hidden rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground md:inline">
-              Режим просмотра
-            </span>
-          ) : null}
-          <div className="ml-auto hidden items-center gap-1 md:flex">
-            {showNotifications ? (
-              <NotificationBell csrfToken={user.csrfToken} canMutate={!readOnly} />
-            ) : null}
-            <UserMenu user={user} />
+      <header className="sticky top-0 z-40 overflow-visible border-b bg-white">
+        <div
+          data-slot="app-header"
+          className="mx-auto flex h-16 w-full min-w-0 max-w-[1600px] flex-nowrap items-center gap-2 px-3 xl:gap-2 xl:px-4 2xl:gap-3 2xl:px-6"
+        >
+          <div data-slot="app-logo" className="shrink-0">
+            <QcLogo href={homeHref} />
           </div>
-          <Sheet open={open} onOpenChange={setOpen}>
-            <SheetTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="ml-auto md:hidden"
-                aria-label="Открыть меню"
-              >
-                <MenuIcon />
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="right" className="w-full max-w-sm sm:max-w-sm">
-              <SheetHeader>
-                <SheetTitle className="flex items-center">
-                  <QcLogo size="sheet" decorative />
-                  <span className="sr-only">QC.Dana</span>
-                </SheetTitle>
-              </SheetHeader>
-              <div className="flex flex-1 flex-col gap-4 px-4 pb-6">
-                {showNotifications ? (
-                  <div className="flex items-center justify-end gap-2">
-                    {readOnly ? (
-                      <span className="rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                        Режим просмотра
-                      </span>
-                    ) : null}
-                    <NotificationBell csrfToken={user.csrfToken} canMutate={!readOnly} />
-                  </div>
-                ) : readOnly ? (
-                  <p className="text-right text-[11px] font-medium text-muted-foreground">
-                    Режим просмотра
-                  </p>
-                ) : null}
-                <AppNav role={user.role} onNavigate={() => setOpen(false)} />
-                <Separator />
-                <MobileUserBlock user={user} />
-              </div>
-            </SheetContent>
-          </Sheet>
+          <AppNav
+            role={user.role}
+            variant="desktop"
+            className="hidden min-w-0 flex-1 flex-nowrap xl:flex"
+          />
+          <div
+            data-slot="app-header-actions"
+            className="ml-auto flex shrink-0 flex-nowrap items-center gap-1"
+          >
+            {readOnly ? (
+              <span className="hidden shrink-0 whitespace-nowrap rounded-full border border-border px-2 py-0.5 text-[11px] leading-none font-medium text-muted-foreground xl:inline">
+                Режим просмотра
+              </span>
+            ) : null}
+            <div className="hidden items-center gap-1 xl:flex">
+              {showNotifications ? (
+                <NotificationBell csrfToken={user.csrfToken} canMutate={!readOnly} />
+              ) : null}
+              <UserMenu user={user} />
+            </div>
+            <Sheet open={open} onOpenChange={setOpen}>
+              <SheetTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="xl:hidden"
+                  aria-label="Открыть меню"
+                >
+                  <MenuIcon />
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="right" className="z-[70] w-full max-w-sm sm:max-w-sm">
+                <SheetHeader>
+                  <SheetTitle className="flex items-center">
+                    <QcLogo size="sheet" decorative />
+                    <span className="sr-only">QC.Dana</span>
+                  </SheetTitle>
+                </SheetHeader>
+                <div className="flex flex-1 flex-col gap-4 px-4 pb-6">
+                  {showNotifications ? (
+                    <div className="flex items-center justify-end gap-2">
+                      {readOnly ? (
+                        <span className="shrink-0 whitespace-nowrap rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                          Режим просмотра
+                        </span>
+                      ) : null}
+                      <NotificationBell csrfToken={user.csrfToken} canMutate={!readOnly} />
+                    </div>
+                  ) : readOnly ? (
+                    <p className="text-right text-[11px] font-medium whitespace-nowrap text-muted-foreground">
+                      Режим просмотра
+                    </p>
+                  ) : null}
+                  <AppNav role={user.role} variant="drawer" onNavigate={() => setOpen(false)} />
+                  <Separator />
+                  <MobileUserBlock user={user} />
+                </div>
+              </SheetContent>
+            </Sheet>
+          </div>
         </div>
       </header>
       <main className="mx-auto w-full min-w-0 max-w-[1600px] px-4 py-6 md:px-6 md:py-6 lg:px-8">

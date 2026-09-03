@@ -1,4 +1,5 @@
 import { expect, test, type ConsoleMessage, type Page } from '@playwright/test';
+import { clickAdminNavItem } from './nav';
 
 const DEMO_PASSWORD = 'Dana-SGR-Demo-2026!';
 const ORG_MANAGER = 'olga.romanova@example.sgr.local';
@@ -60,12 +61,8 @@ function primaryNav(page: Page) {
   return page.getByLabel('Основная навигация').filter({ visible: true });
 }
 
-async function openUsers(page: Page, viewportWidth: number) {
-  if (viewportWidth < 768) {
-    await page.goto('/users');
-  } else {
-    await primaryNav(page).getByRole('link', { name: 'Пользователи' }).click();
-  }
+async function openUsers(page: Page) {
+  await clickAdminNavItem(page, 'Пользователи');
   await expect(page).toHaveURL(/\/users/);
 }
 
@@ -86,8 +83,9 @@ test.describe('MANAGER role and profile editing', () => {
     await expect(nav.getByRole('link', { name: 'Создать акт' })).toBeVisible();
     await expect(nav.getByRole('link', { name: 'Контроль сроков' })).toBeVisible();
     await expect(nav.getByRole('link', { name: 'Справочники' })).toBeVisible();
-    await expect(nav.getByRole('link', { name: 'Пользователи' })).toBeVisible();
-    await expect(nav.getByRole('link', { name: 'Состояние системы' })).toBeVisible();
+    await expect(nav.getByRole('button', { name: 'Администрирование' })).toBeVisible();
+    await expect(nav.getByRole('link', { name: 'Пользователи' })).toHaveCount(0);
+    await expect(nav.getByRole('link', { name: 'Состояние системы' })).toHaveCount(0);
     await expect(nav.getByRole('link', { name: 'Администраторы' })).toHaveCount(0);
 
     const stamp = Date.now();
@@ -121,7 +119,7 @@ test.describe('MANAGER role and profile editing', () => {
 
   test('MANAGER can edit a lower user and cannot assign MANAGER or ADMIN', async ({ page }) => {
     await login(page, ORG_MANAGER);
-    await openUsers(page, 1440);
+    await openUsers(page);
     await expect(page.getByText('Руководитель СГР').first()).toBeVisible();
     await expect(page.getByText('Руководитель', { exact: true }).first()).toBeVisible();
 
@@ -161,7 +159,7 @@ test.describe('MANAGER role and profile editing', () => {
 
   test('ADMIN can open profile editing for a lower user', async ({ page }) => {
     await login(page, ADMIN);
-    await openUsers(page, 1440);
+    await openUsers(page);
     await page.getByLabel('Поиск пользователей').fill('olga.romanova');
     const row = page.getByRole('row', { name: /Ольга Романова|Романова Ольга/ });
     await expect(row).toBeVisible();
@@ -178,7 +176,7 @@ test.describe('MANAGER role and profile editing', () => {
       const consoleState = attachConsole(page);
       await page.setViewportSize(viewport);
       await login(page, ORG_MANAGER);
-      await openUsers(page, viewport.width);
+      await openUsers(page);
       await page.getByRole('button', { name: 'Добавить пользователя' }).click();
       await expect(page.getByLabel('ФИО')).toBeVisible();
       const overflow = await page.evaluate(

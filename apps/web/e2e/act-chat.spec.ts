@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { e2eApiOrigin } from './e2e-origins';
+import { DESKTOP_NAV_MIN_WIDTH } from './nav';
 
 const DEMO_PASSWORD = 'Dana-SGR-Demo-2026!';
 const ACCOUNTS = {
@@ -50,7 +51,7 @@ async function expectMessageSent(page: Page, text: string | RegExp) {
 
 async function logout(page: Page) {
   const width = page.viewportSize()?.width ?? 1440;
-  if (width < 768) {
+  if (width < DESKTOP_NAV_MIN_WIDTH) {
     await page.getByRole('button', { name: 'Открыть меню' }).click();
     await page.getByRole('button', { name: 'Выйти' }).click();
   } else {

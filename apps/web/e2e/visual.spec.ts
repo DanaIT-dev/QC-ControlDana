@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { clickAdminNavItem } from './nav';
 
 const DEMO_PASSWORD = 'Dana-SGR-Demo-2026!';
 const ARTIFACTS = resolve(process.cwd(), 'test-results/visual');
@@ -105,7 +106,7 @@ test.describe('visual and responsive QA', () => {
     await expect(page.getByRole('heading', { name: 'Создание акта' })).toBeVisible();
     await page.screenshot({ path: `${ARTIFACTS}/create-act-desktop.png`, fullPage: true });
 
-    await page.getByRole('link', { name: 'Пользователи' }).click();
+    await clickAdminNavItem(page, 'Пользователи');
     await expect(page).toHaveURL(/\/users$/);
     await expect(page.getByRole('heading', { name: 'Пользователи' })).toBeVisible();
     await expect(page.locator('.data-table tbody tr').first()).toBeVisible();

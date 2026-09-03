@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
+import { clickAdminNavItem } from './nav';
 
 const DEMO_PASSWORD = 'Dana-SGR-Demo-2026!';
 const SUPER_ADMIN_EMAIL = 'super.admin@example.sgr.local';
@@ -70,7 +71,7 @@ test.describe('read-only SUPER_ADMIN oversight', () => {
     browser,
     page,
   }) => {
-    test.setTimeout(90_000);
+    test.setTimeout(120_000);
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
     page.on('console', (message) => {
@@ -85,11 +86,25 @@ test.describe('read-only SUPER_ADMIN oversight', () => {
     await expect(page.getByText('Режим просмотра')).toBeVisible();
     await expect(page.getByRole('link', { name: 'Реестр' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Справочники' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Пользователи' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Уведомления' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Журнал аудита' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Состояние системы' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Администраторы' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Администрирование' })).toBeVisible();
+    await expect(
+      page
+        .getByRole('navigation', { name: 'Основная навигация' })
+        .getByRole('link', { name: 'Пользователи' }),
+    ).toHaveCount(0);
+    await clickAdminNavItem(page, 'Пользователи');
+    await expect(page).toHaveURL(/\/users/);
+    await page.goto('/super-admin');
+    await expect(page.getByRole('heading', { name: 'Администраторы', exact: true })).toBeVisible();
+    await clickAdminNavItem(page, 'Журнал аудита');
+    await expect(page).toHaveURL(/\/history/);
+    await page.goto('/super-admin');
+    await clickAdminNavItem(page, 'Состояние системы');
+    await expect(page).toHaveURL(/\/system-status/);
+    await page.goto('/super-admin');
+    await clickAdminNavItem(page, 'Администраторы');
+    await expect(page).toHaveURL(/\/super-admin/);
     await expect(page.getByRole('link', { name: 'Создать акт' })).toHaveCount(0);
     await expect(page.getByText('Удалить администратора')).toHaveCount(0);
     await expect(
@@ -165,7 +180,7 @@ test.describe('read-only SUPER_ADMIN oversight', () => {
     await page.getByRole('menuitem', { name: 'Выйти' }).click();
     await login(page, ADMIN_EMAIL);
     await expect(page).toHaveURL(/\/registry/);
-    await page.getByRole('link', { name: 'Пользователи' }).click();
+    await clickAdminNavItem(page, 'Пользователи');
     await page.getByLabel('Поиск пользователей').fill(pendingEmail);
     const pendingRow = page.locator('tr').filter({ hasText: pendingEmail });
     await expect(pendingRow).toBeVisible();
@@ -238,7 +253,7 @@ test.describe('read-only SUPER_ADMIN oversight', () => {
 
     await login(page, ADMIN_EMAIL);
     await expect(page).toHaveURL(/\/registry/);
-    await page.getByRole('link', { name: 'Пользователи' }).click();
+    await clickAdminNavItem(page, 'Пользователи');
     await page.getByRole('button', { name: 'Добавить пользователя' }).click();
     await page.getByRole('dialog').locator('#new-user-role').click();
     const options = await page.getByRole('option').allTextContents();
@@ -257,8 +272,8 @@ test.describe('read-only SUPER_ADMIN oversight', () => {
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
     await login(page, SUPER_ADMIN_EMAIL);
-    await expect(page.getByRole('link', { name: 'Состояние системы' })).toBeVisible();
-    await page.getByRole('link', { name: 'Состояние системы' }).click();
+    await expect(page.getByRole('button', { name: 'Администрирование' })).toBeVisible();
+    await clickAdminNavItem(page, 'Состояние системы');
     await expect(page).toHaveURL(/\/system-status$/);
     await expect(
       page.getByRole('heading', { name: 'Техническое состояние системы' }),

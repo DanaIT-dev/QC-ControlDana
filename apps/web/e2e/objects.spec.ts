@@ -1,6 +1,7 @@
 import { expect, test, type ConsoleMessage, type Page } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
+import { clickAdminNavItem, clickPrimaryNavItem } from './nav';
 
 const DEMO_PASSWORD = 'Dana-SGR-Demo-2026!';
 const ACCOUNTS = {
@@ -91,12 +92,7 @@ test.describe('objects directory', () => {
       const errors = attachConsole(page);
       await page.setViewportSize(viewport);
       await login(page, ACCOUNTS.admin);
-      if (viewport.width < 768) {
-        await page.getByRole('button', { name: 'Открыть меню' }).click();
-        await page.getByRole('link', { name: 'Объекты' }).click();
-      } else {
-        await page.getByRole('link', { name: 'Объекты' }).click();
-      }
+      await clickPrimaryNavItem(page, 'Объекты');
       await expect(page).toHaveURL(/\/objects/);
       await expect(page.getByRole('heading', { name: 'Объекты' })).toBeVisible();
       if (viewport.width <= 390) {
@@ -200,7 +196,7 @@ test.describe('objects directory', () => {
       page.getByText('Не связан с учетной записью').filter({ visible: true }),
     ).toHaveCount(1);
 
-    await page.getByRole('link', { name: 'Пользователи' }).click();
+    await clickAdminNavItem(page, 'Пользователи');
     await page.getByRole('button', { name: 'Добавить пользователя' }).click();
     const stamp = Date.now();
     const email = `e2e.unique.${stamp}@example.sgr.local`;
@@ -213,7 +209,7 @@ test.describe('objects directory', () => {
     const tempPassword = (await page.locator('.temp-password').innerText()).trim();
     await page.getByRole('button', { name: 'Закрыть' }).click();
 
-    await page.getByRole('link', { name: 'Объекты' }).click();
+    await clickPrimaryNavItem(page, 'Объекты');
     await page.getByLabel('Поиск по объектам').fill('уникальная привязка');
     await expect(
       page.getByText('Единственный Эдуард Эдуардович').filter({ visible: true }),
@@ -310,7 +306,7 @@ test.describe('objects directory', () => {
     const errors = attachConsole(page);
     await page.setViewportSize({ width: 1280, height: 800 });
     await login(page, ACCOUNTS.admin);
-    await page.getByRole('link', { name: 'Пользователи' }).click();
+    await clickAdminNavItem(page, 'Пользователи');
     const stamp = Date.now();
     for (const [index, fullName] of [
       'Двойник Дмитрий Дмитриевич',
@@ -325,7 +321,7 @@ test.describe('objects directory', () => {
       await expect(page.getByText('Временный пароль показывается один раз')).toBeVisible();
       await page.getByRole('button', { name: 'Закрыть' }).click();
     }
-    await page.getByRole('link', { name: 'Объекты' }).click();
+    await clickPrimaryNavItem(page, 'Объекты');
     await page.getByLabel('Поиск по объектам').fill('неоднозначная привязка');
     await expect(
       page.getByText('E2E неоднозначная привязка').filter({ visible: true }),

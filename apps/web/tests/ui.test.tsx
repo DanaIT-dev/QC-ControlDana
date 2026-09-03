@@ -17,7 +17,7 @@ import { DateRange } from '../app/registry/registry-filters';
 import { RegistryTable } from '../app/registry/registry-table';
 import { RegistryCards } from '../app/registry/registry-cards';
 import { ProposalValue } from '../components/proposal-value';
-import { navItemsForRole } from '../lib/app-nav';
+import { navItemsForRole, navSectionsForRole } from '../lib/app-nav';
 import { buildRegistryFilterChips } from '../lib/filter-chips';
 import { TooltipProvider } from '../components/ui/tooltip';
 import type { RegistryDefectRow } from '@sgr-registry/contracts';
@@ -210,10 +210,24 @@ describe('filter chips', () => {
 });
 
 describe('role-aware navigation', () => {
-  it('hides unavailable items', () => {
+  it('hides unavailable items and groups administration pages', () => {
+    const adminSections = navSectionsForRole('ADMIN');
     const admin = navItemsForRole('ADMIN').map((item) => item.label);
     const responsible = navItemsForRole('RESPONSIBLE_ENGINEER').map((item) => item.label);
     const contractor = navItemsForRole('CONTRACTOR_ENGINEER').map((item) => item.label);
+    expect(adminSections.primary.map((item) => item.label)).toEqual([
+      'Реестр',
+      'Объекты',
+      'Создать акт',
+      'Контроль сроков',
+      'Уведомления',
+      'Справочники',
+    ]);
+    expect(adminSections.administration.map((item) => item.label)).toEqual([
+      'Пользователи',
+      'Журнал аудита',
+      'Состояние системы',
+    ]);
     expect(admin).toEqual([
       'Реестр',
       'Объекты',
@@ -221,12 +235,18 @@ describe('role-aware navigation', () => {
       'Контроль сроков',
       'Уведомления',
       'Справочники',
-      'Журнал аудита',
       'Пользователи',
+      'Журнал аудита',
       'Состояние системы',
     ]);
     expect(navItemsForRole('MANAGER').map((item) => item.label)).toEqual(admin);
     expect(navItemsForRole('MANAGER').map((item) => item.href)).not.toContain('/super-admin');
+    expect(navSectionsForRole('SGR_MANAGER').administration.map((item) => item.label)).toEqual([
+      'Журнал аудита',
+    ]);
+    expect(navSectionsForRole('SGR_MANAGER').administration.map((item) => item.href)).not.toContain(
+      '/users',
+    );
     expect(responsible).toEqual([
       'Реестр',
       'Объекты',
@@ -235,23 +255,29 @@ describe('role-aware navigation', () => {
       'Уведомления',
       'Справочники',
     ]);
+    expect(navSectionsForRole('RESPONSIBLE_ENGINEER').administration).toEqual([]);
     expect(contractor).toEqual(['Реестр', 'Контроль сроков', 'Уведомления']);
     expect(contractor).not.toContain('Справочники');
     expect(contractor).not.toContain('Объекты');
     expect(contractor).not.toContain('Создать акт');
-    expect(navItemsForRole('SUPER_ADMIN').map((item) => item.label)).toEqual([
+    expect(navSectionsForRole('CONTRACTOR_ENGINEER').administration).toEqual([]);
+    expect(navSectionsForRole('SUPER_ADMIN').primary.map((item) => item.label)).toEqual([
       'Реестр',
       'Объекты',
       'Контроль сроков',
       'Уведомления',
       'Справочники',
-      'Журнал аудита',
+    ]);
+    expect(navSectionsForRole('SUPER_ADMIN').administration.map((item) => item.label)).toEqual([
       'Пользователи',
-      'Состояние системы',
       'Администраторы',
+      'Журнал аудита',
+      'Состояние системы',
     ]);
     expect(navItemsForRole('SUPER_ADMIN').map((item) => item.href)).toContain('/registry');
     expect(navItemsForRole('SUPER_ADMIN').map((item) => item.href)).not.toContain('/acts/new');
+    const allHrefs = navItemsForRole('ADMIN').map((item) => item.href);
+    expect(new Set(allHrefs).size).toBe(allHrefs.length);
     expect(navItemsForRole('PENDING_ROLE')).toEqual([]);
   });
 });

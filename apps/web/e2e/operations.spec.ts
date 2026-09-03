@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { clickAdminNavItem, clickPrimaryNavItem } from './nav';
 
 const DEMO_PASSWORD = 'Dana-SGR-Demo-2026!';
 
@@ -18,7 +19,7 @@ async function chooseFirst(page: Page, label: string) {
 test.describe('operational workflow', () => {
   test('ADMIN can manage users, reference data and create an act', async ({ page }) => {
     await login(page, 'alexey.viktorov@example.sgr.local');
-    await page.getByRole('link', { name: 'Пользователи' }).click();
+    await clickAdminNavItem(page, 'Пользователи');
     await expect(page).toHaveURL(/\/users$/);
     await page.getByRole('button', { name: 'Добавить пользователя' }).click();
     const stamp = Date.now();
@@ -28,14 +29,14 @@ test.describe('operational workflow', () => {
     await expect(page.getByText('Временный пароль показывается один раз')).toBeVisible();
     await page.getByRole('button', { name: 'Закрыть' }).click();
 
-    await page.getByRole('link', { name: 'Справочники' }).click();
+    await clickPrimaryNavItem(page, 'Справочники');
     await page.getByRole('button', { name: 'Создать' }).click();
     await page.getByLabel('Название объекта').fill(`Е2Е объект ${stamp}`);
     await page.getByLabel('Адрес объекта').fill('Минск, тест');
     await page.getByRole('button', { name: 'Создать', exact: true }).click();
     await expect(page.getByRole('cell', { name: `Е2Е объект ${stamp}` })).toBeVisible();
 
-    await page.getByRole('link', { name: 'Создать акт' }).click();
+    await clickPrimaryNavItem(page, 'Создать акт');
     await page.getByRole('combobox', { name: 'Объект', exact: true }).click();
     await page.getByRole('option', { name: /Северный парк/ }).click();
     await chooseFirst(page, 'Заказчик');
@@ -89,7 +90,7 @@ test.describe('operational workflow', () => {
   test('360px create act form does not overflow', async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 800 });
     await login(page, 'alexey.viktorov@example.sgr.local');
-    await page.getByRole('link', { name: 'Создать акт' }).click();
+    await clickPrimaryNavItem(page, 'Создать акт');
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
     );
