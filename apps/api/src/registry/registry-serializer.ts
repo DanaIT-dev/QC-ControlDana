@@ -7,6 +7,7 @@ import {
   deadlineStateLabel,
   deadlineStateOf,
   defectItemStatusLabel,
+  displayActNumber,
   effectiveDeadlineOf,
   formLabel,
   shapeProposals,
@@ -16,6 +17,7 @@ const LIST_SELECT = {
   id: true,
   status: true,
   location: true,
+  sourceDeadlineRaw: true,
   plannedDeadline: true,
   claimDeadline: true,
   effectiveDeadline: true,
@@ -25,6 +27,7 @@ const LIST_SELECT = {
     select: {
       id: true,
       officialNumber: true,
+      sourceActNumberRaw: true,
       formCode: true,
       signedDocumentRef: true,
       status: true,
@@ -36,8 +39,17 @@ const LIST_SELECT = {
   },
   defectType: { select: { id: true, name: true } },
   responsibleEngineers: {
-    select: { user: { select: { id: true, fullName: true } } },
-    orderBy: { user: { fullName: 'asc' } },
+    select: {
+      user: {
+        select: { id: true, lastName: true, firstName: true, middleName: true, fullName: true },
+      },
+    },
+    orderBy: { user: { lastName: 'asc' } },
+  },
+  importedEngineerReferences: {
+    where: { resolutionStatus: 'UNMATCHED' },
+    select: { id: true, sourceNameRaw: true },
+    orderBy: { sourceNameRaw: 'asc' },
   },
   liableOrganizations: {
     select: { organization: { select: { id: true, officialName: true } } },
@@ -97,7 +109,10 @@ export function toRegistryRow(
     actId: item.act.id,
     formCode: item.act.formCode as ActFormCode,
     formLabel: formLabel(item.act.formCode as ActFormCode),
-    actNumber: item.act.officialNumber,
+    actNumber: displayActNumber({
+      officialNumber: item.act.officialNumber,
+      sourceActNumberRaw: item.act.sourceActNumberRaw,
+    }),
     actStatus: item.act.status as ActStatus,
     actStatusLabel: actStatusLabel(item.act.status as ActStatus),
     defectStatus: item.status as DefectItemStatus,
@@ -106,6 +121,7 @@ export function toRegistryRow(
     objectName: item.act.propertyObject.name,
     objectAddress: item.act.propertyObject.address ?? '',
     location: item.location,
+    sourceDeadlineRaw: item.sourceDeadlineRaw,
     defectTypeId: item.defectType.id,
     defectTypeName: item.defectType.name,
     customerOrganizationId: item.act.customerOrganizationId,
@@ -114,10 +130,23 @@ export function toRegistryRow(
       id: entry.organization.id,
       name: entry.organization.officialName,
     })),
-    responsibleEngineers: item.responsibleEngineers.map((entry) => ({
-      id: entry.user.id,
-      fullName: entry.user.fullName,
-    })),
+    responsibleEngineers: [
+      ...item.responsibleEngineers.map((entry) => ({
+        id: entry.user.id,
+        lastName: entry.user.lastName,
+        firstName: entry.user.firstName,
+        middleName: entry.user.middleName,
+        fullName: entry.user.fullName,
+        unmatched: false,
+      })),
+      ...item.importedEngineerReferences.map((entry) => ({
+        id: null,
+        fullName: entry.sourceNameRaw,
+        unmatched: true,
+        sourceNameRaw: entry.sourceNameRaw,
+        referenceId: entry.id,
+      })),
+    ],
     plannedDeadline: calendarField(item.plannedDeadline, timeZone),
     claimDeadline: calendarField(item.claimDeadline, timeZone),
     effectiveDeadline: calendarField(
@@ -138,7 +167,8 @@ export function toRegistryRow(
 export function toActHeader(act: {
   id: string;
   formCode: ActFormCode;
-  officialNumber: string;
+  officialNumber: string | null;
+  sourceActNumberRaw?: string | null;
   status: ActStatus;
   version?: number;
   objectId?: string;
@@ -149,7 +179,18 @@ export function toActHeader(act: {
   cancellationReason: string | null;
   signedDocumentRef: string | null;
   startedAt?: Date | null;
-  startedBy?: { id: string; fullName: string } | null;
+  startedBy?: {
+    id: string;
+    lastName: string;
+    firstName: string;
+    middleName: string | null;
+    fullName: string;
+  } | null;
+  sourceStatusRaw?: string | null;
+  sourceExternalUrl?: string | null;
+  sourceRows?: number[];
+  importedAt?: Date | null;
+  sourceDeadlineRaws?: string[];
   propertyObject: {
     name: string;
     address: string | null;
@@ -162,7 +203,10 @@ export function toActHeader(act: {
     id: act.id,
     formCode: act.formCode,
     formLabel: formLabel(act.formCode),
-    officialNumber: act.officialNumber,
+    officialNumber: displayActNumber({
+      officialNumber: act.officialNumber,
+      sourceActNumberRaw: act.sourceActNumberRaw,
+    }),
     status: act.status,
     statusLabel: actStatusLabel(act.status),
     version: act.version ?? 1,
@@ -177,8 +221,26 @@ export function toActHeader(act: {
     signedDocumentRef: act.signedDocumentRef,
     createdAt: act.createdAt.toISOString(),
     startedAt: timestampField(act.startedAt ?? null),
-    startedBy: act.startedBy ?? null,
+    startedBy: act.startedBy
+      ? {
+          id: act.startedBy.id,
+          lastName: act.startedBy.lastName,
+          firstName: act.startedBy.firstName,
+          middleName: act.startedBy.middleName,
+          fullName: act.startedBy.fullName,
+        }
+      : null,
     cancelledAt: timestampField(act.cancelledAt),
     cancellationReason: act.cancellationReason,
+    legacyImport: act.importedAt
+      ? {
+          sourceActNumberRaw: act.sourceActNumberRaw ?? null,
+          sourceStatusRaw: act.sourceStatusRaw ?? null,
+          sourceDeadlineRaws: act.sourceDeadlineRaws ?? [],
+          sourceExternalUrl: act.sourceExternalUrl ?? null,
+          sourceRows: act.sourceRows ?? [],
+          importedAt: act.importedAt.toISOString(),
+        }
+      : null,
   };
 }

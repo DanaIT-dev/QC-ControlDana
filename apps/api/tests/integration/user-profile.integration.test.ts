@@ -9,7 +9,7 @@ import {
   upsertUserCredentials,
   type PrismaClient,
 } from '@sgr-registry/database';
-import { CSRF_HEADER_NAME, SESSION_COOKIE_NAME } from '@sgr-registry/domain';
+import { CSRF_HEADER_NAME, SESSION_COOKIE_NAME, personNameWriteFields } from '@sgr-registry/domain';
 import Redis from 'ioredis';
 import { AppModule } from '../../src/app.module';
 import { configureHttpApp } from '../../src/configure-http';
@@ -59,7 +59,7 @@ async function createUser(role: UserRole, extras: { fullName?: string } = {}) {
   const passwordHash = await hashArgon2id(DEMO_PASSWORD, { memoryCost: 4096, timeCost: 1 });
   const user = await prisma.user.create({
     data: {
-      fullName: extras.fullName ?? `Профиль ${role}`,
+      ...personNameWriteFields(extras.fullName ?? `Профиль ${role}`),
       email,
       role,
       status: 'ACTIVE',

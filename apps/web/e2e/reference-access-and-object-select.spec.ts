@@ -192,7 +192,7 @@ test.describe('reference access and linked object selection', () => {
     const errors = attachConsole(page);
     await login(page, ACCOUNTS.admin);
     await page.getByRole('link', { name: 'Справочники' }).click();
-    await expect(page.getByText('Дмитрий Орлов').first()).toBeVisible();
+    await expect(page.getByText('Дмитрий О.').first()).toBeVisible();
     const stamp = Date.now();
     await page.getByRole('button', { name: 'Создать' }).click();
     await page.getByLabel('Название объекта').fill(`Е2Е объект инженеры ${stamp}`);
@@ -210,7 +210,7 @@ test.describe('reference access and linked object selection', () => {
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await page.getByLabel('Поиск справочника').fill(String(stamp));
     await expect(page.getByRole('cell', { name: `Е2Е объект инженеры ${stamp}` })).toBeVisible();
-    await expect(page.getByText('Дмитрий Орлов').first()).toBeVisible();
+    await expect(page.getByText('Дмитрий О.').first()).toBeVisible();
     expect(applicationErrors(errors)).toEqual([]);
   });
 

@@ -219,7 +219,7 @@ test.describe('UI acceptance defects', () => {
     await page.getByRole('tab', { name: 'История изменений' }).click();
     const first = page.locator('.timeline__item').first();
     await expect(first.getByText('Изменён срок')).toBeVisible();
-    await expect(first.getByText('Алексей Викторов')).toBeVisible();
+    await expect(first.getByText('Алексей В.')).toBeVisible();
     await expect(first.getByText('Причина: Перенос по заявке заказчика')).toBeVisible();
     await expect(first.getByText(/plannedDeadline: 2026-09-01/)).toBeVisible();
     await expect(first.getByText(/plannedDeadline: 2026-09-15/)).toBeVisible();

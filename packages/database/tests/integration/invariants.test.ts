@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { allocateActNumber } from '../../src/act-number';
 import { createOwnerPrismaClient } from '../../src/client';
 import { assertSafeTestDatabaseUrl } from '../../src/test-database';
+import { personNameWriteFields } from '@sgr-registry/domain';
 
 const databaseUrl = process.env.MIGRATION_DATABASE_URL ?? process.env.DATABASE_URL ?? '';
 assertSafeTestDatabaseUrl(databaseUrl);
@@ -142,7 +143,11 @@ describe('database invariants', () => {
 
     await expect(
       prisma.act.update({
-        where: { officialNumber: first.officialNumber },
+        where: {
+          id: (
+            await prisma.act.findFirstOrThrow({ where: { officialNumber: first.officialNumber } })
+          ).id,
+        },
         data: { officialNumber: 'С-1-2026-999999' },
       }),
     ).rejects.toThrow(/cannot be changed/i);
@@ -194,14 +199,14 @@ describe('database invariants', () => {
     });
     const engineerA = await prisma.user.create({
       data: {
-        fullName: 'Инженер А',
+        ...personNameWriteFields('Инженер А'),
         email: `eng-a-${randomUUID()}@example.sgr.local`,
         role: 'RESPONSIBLE_ENGINEER',
       },
     });
     const engineerB = await prisma.user.create({
       data: {
-        fullName: 'Инженер Б',
+        ...personNameWriteFields('Инженер Б'),
         email: `eng-b-${randomUUID()}@example.sgr.local`,
         role: 'RESPONSIBLE_ENGINEER',
       },
@@ -299,7 +304,7 @@ describe('database invariants', () => {
     });
     const actor = await prisma.user.create({
       data: {
-        fullName: 'Аудитор Демо',
+        ...personNameWriteFields('Аудитор Демо'),
         email: `audit-${randomUUID()}@example.sgr.local`,
         role: 'ADMIN',
       },
@@ -353,7 +358,7 @@ describe('database invariants', () => {
     });
     const engineer = await prisma.user.create({
       data: {
-        fullName: 'Уникальный инженер',
+        ...personNameWriteFields('Уникальный инженер'),
         email: `uniq-eng-${randomUUID()}@example.sgr.local`,
         role: 'RESPONSIBLE_ENGINEER',
       },
@@ -374,7 +379,7 @@ describe('database invariants', () => {
     });
     const engineer = await prisma.user.create({
       data: {
-        fullName: 'Повторный инженер',
+        ...personNameWriteFields('Повторный инженер'),
         email: `reassign-eng-${randomUUID()}@example.sgr.local`,
         role: 'RESPONSIBLE_ENGINEER',
       },

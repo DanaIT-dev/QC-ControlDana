@@ -13,6 +13,7 @@ enum ActFormCode {
 
 enum ActStatus {
   NEW
+  IMPORTED_UNSPECIFIED
   IN_PROGRESS
   COMPLETED
   CANCELLED
@@ -61,6 +62,20 @@ enum AuditSource {
   SYSTEM
 }
 
+enum ImportBatchStatus {
+  STARTED
+  COMPLETED
+  FAILED
+  ROLLED_BACK
+}
+
+enum ImportedEngineerResolutionStatus {
+  UNMATCHED
+  MATCHED
+  AMBIGUOUS
+  RESOLVED
+}
+
 enum AttachmentStatus {
   UPLOADING
   PENDING_SCAN
@@ -83,6 +98,9 @@ enum AttachmentCategory {
 
 model User {
   id                  String     @id @default(uuid()) @db.Uuid
+  lastName            String
+  firstName           String
+  middleName          String?
   fullName            String
   email               String     @unique
   phone               String?
@@ -111,9 +129,12 @@ model User {
   notificationRecipients NotificationRecipient[]
   actChatMessages       ActChatMessage[]
   actChatMentions       ActChatMention[]
+  importedEngineerMatches ImportedEngineerReference[] @relation("ImportedEngineerMatchedUser")
+  importedEngineerResolutions ImportedEngineerReference[] @relation("ImportedEngineerMatchedBy")
 
   @@index([role, status])
   @@index([status, createdAt])
+  @@index([lastName, firstName, middleName])
   @@map("users")
 }
 
@@ -258,7 +279,7 @@ model DefectType {
 
 model Act {
   id                     String      @id @default(uuid()) @db.Uuid
-  officialNumber         String      @unique
+  officialNumber         String?
   formCode               ActFormCode
   year                   Int
   sequence               Int
@@ -275,20 +296,34 @@ model Act {
   cancelledAt            DateTime?   @db.Timestamptz(3)
   cancellationReason     String?
   cancelledByUserId      String?     @db.Uuid
+  sourceSystem           String?
+  sourceFileName         String?
+  sourceFileSha256       String?
+  sourceSheet            String?
+  sourceRows             Int[]       @default([])
+  sourceExternalUrl      String?
+  sourceActNumberRaw     String?
+  sourceStatusRaw        String?
+  sourceImportKey        String?
+  importedAt             DateTime?   @db.Timestamptz(3)
+  importBatchId          String?     @db.Uuid
 
   propertyObject PropertyObject @relation(fields: [objectId], references: [id], onDelete: Restrict)
   customer       Organization   @relation("ActCustomer", fields: [customerOrganizationId], references: [id], onDelete: Restrict)
   startedBy      User?          @relation("ActStartedBy", fields: [startedById], references: [id], onDelete: Restrict)
   cancelledBy    User?          @relation("ActCancelledBy", fields: [cancelledByUserId], references: [id], onDelete: Restrict)
+  importBatch    ImportBatch?   @relation(fields: [importBatchId], references: [id], onDelete: Restrict)
   defectItems    DefectItem[]
   attachments    Attachment[]
   notificationEvents NotificationEvent[]
   chatMessages   ActChatMessage[]
 
   @@unique([formCode, year, sequence])
+  @@unique([sourceSystem, sourceImportKey], map: "acts_source_import_key_unique")
   @@index([objectId])
   @@index([customerOrganizationId])
   @@index([status])
+  @@index([importBatchId])
   @@map("acts")
 }
 
@@ -331,14 +366,44 @@ model ActNumberSequence {
   @@map("act_number_sequences")
 }
 
+model ImportBatch {
+  id                     String            @id @default(uuid()) @db.Uuid
+  sourceSystem           String
+  sourceFileName         String
+  sourceFileSha256       String
+  sourceSheet            String
+  environment            String
+  databaseName           String
+  status                 ImportBatchStatus
+  startedAt              DateTime          @db.Timestamptz(3)
+  completedAt            DateTime?         @db.Timestamptz(3)
+  createdActs            Int               @default(0)
+  createdDefects         Int               @default(0)
+  unchangedActs          Int               @default(0)
+  unchangedDefects       Int               @default(0)
+  createdOrganizations   Int               @default(0)
+  createdDefectTypes     Int               @default(0)
+  stats                  Json?
+  createdAt              DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime          @updatedAt @db.Timestamptz(3)
+
+  acts        Act[]
+  defectItems DefectItem[]
+  importedEngineerReferences ImportedEngineerReference[]
+
+  @@index([sourceFileSha256])
+  @@index([sourceSystem, startedAt])
+  @@map("import_batches")
+}
+
 model DefectItem {
   id                 String           @id @default(uuid()) @db.Uuid
   actId              String           @db.Uuid
-  location           String
+  location           String?
   defectTypeId       String           @db.Uuid
   workTypeId         String?          @db.Uuid
   status             DefectItemStatus @default(IN_PROGRESS)
-  claimDetails       String
+  claimDetails       String?
   plannedDeadline    DateTime?        @db.Timestamptz(3)
   claimDeadline      DateTime?        @db.Timestamptz(3)
   readyAt            DateTime?        @db.Timestamptz(3)
@@ -348,16 +413,27 @@ model DefectItem {
   updatedAt          DateTime         @updatedAt @db.Timestamptz(3)
   version            Int              @default(1)
   effectiveDeadline  DateTime?        @default(dbgenerated()) @db.Timestamptz(3)
+  sourceSystem       String?
+  sourceFileName     String?
+  sourceFileSha256   String?
+  sourceSheet        String?
+  sourceRows         Int[]            @default([])
+  sourceDeadlineRaw  String?
+  sourceImportKey    String?
+  importedAt         DateTime?        @db.Timestamptz(3)
+  importBatchId      String?          @db.Uuid
 
   act                  Act                            @relation(fields: [actId], references: [id], onDelete: Restrict)
   defectType           DefectType                     @relation(fields: [defectTypeId], references: [id], onDelete: Restrict)
   workType             WorkType?                      @relation(fields: [workTypeId], references: [id], onDelete: Restrict)
+  importBatch          ImportBatch?                   @relation(fields: [importBatchId], references: [id], onDelete: Restrict)
   responsibleEngineers DefectItemEngineer[]
   liableOrganizations  DefectItemLiableOrganization[]
   proposals            Proposal[]
   attachments          Attachment[]
   slaClocks            SlaClock[]
   notificationEvents   NotificationEvent[]
+  importedEngineerReferences ImportedEngineerReference[]
 
   @@index([actId])
   @@index([status])
@@ -366,6 +442,8 @@ model DefectItem {
   @@index([claimDeadline])
   @@index([readyAt])
   @@index([effectiveDeadline])
+  @@index([importBatchId])
+  @@unique([sourceSystem, sourceImportKey], map: "defect_items_source_import_key_unique")
   @@map("defect_items")
 }
 
@@ -379,6 +457,34 @@ model DefectItemEngineer {
   @@id([defectItemId, userId])
   @@index([userId])
   @@map("defect_item_engineers")
+}
+
+model ImportedEngineerReference {
+  id                 String                             @id @default(uuid()) @db.Uuid
+  defectItemId       String                             @db.Uuid
+  importBatchId      String                             @db.Uuid
+  sourceNameRaw      String
+  nameMatchKey       String
+  normalizedSurname  String
+  firstInitial       String
+  middleInitial      String?
+  resolutionStatus   ImportedEngineerResolutionStatus
+  matchedUserId      String?                            @db.Uuid
+  matchedAt          DateTime?                          @db.Timestamptz(3)
+  matchedByUserId    String?                            @db.Uuid
+  createdAt          DateTime                           @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime                           @updatedAt @db.Timestamptz(3)
+
+  defectItem    DefectItem  @relation(fields: [defectItemId], references: [id], onDelete: Restrict)
+  importBatch   ImportBatch @relation(fields: [importBatchId], references: [id], onDelete: Restrict)
+  matchedUser   User?       @relation("ImportedEngineerMatchedUser", fields: [matchedUserId], references: [id], onDelete: SetNull)
+  matchedByUser User?       @relation("ImportedEngineerMatchedBy", fields: [matchedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([defectItemId, nameMatchKey], map: "imported_engineer_refs_defect_key_unique")
+  @@index([importBatchId])
+  @@index([resolutionStatus])
+  @@index([matchedUserId])
+  @@map("imported_engineer_references")
 }
 
 model DefectItemLiableOrganization {

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Pool } from 'pg';
+import { personNameWriteFields } from '@sgr-registry/domain';
 import {
   createOwnerPrismaClient,
   createPrismaClient,
@@ -49,7 +50,7 @@ describe('MANAGER role and protected profile SQL', () => {
   beforeAll(async () => {
     const admin = await owner.user.create({
       data: {
-        fullName: `${MARKER} admin`,
+        ...personNameWriteFields(`${MARKER} admin`),
         email: `${MARKER}.admin@example.sgr.local`,
         role: 'ADMIN',
         sessionVersion: 1,
@@ -57,7 +58,7 @@ describe('MANAGER role and protected profile SQL', () => {
     });
     const manager = await owner.user.create({
       data: {
-        fullName: `${MARKER} manager`,
+        ...personNameWriteFields(`${MARKER} manager`),
         email: `${MARKER}.manager@example.sgr.local`,
         role: 'MANAGER',
         sessionVersion: 1,
@@ -65,7 +66,7 @@ describe('MANAGER role and protected profile SQL', () => {
     });
     const engineer = await owner.user.create({
       data: {
-        fullName: `${MARKER} engineer`,
+        ...personNameWriteFields(`${MARKER} engineer`),
         email: `${MARKER}.engineer@example.sgr.local`,
         role: 'RESPONSIBLE_ENGINEER',
         sessionVersion: 1,

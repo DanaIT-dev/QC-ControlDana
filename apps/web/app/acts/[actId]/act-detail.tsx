@@ -1,18 +1,25 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   canViewProposalGroupBC,
   canViewHistory,
   canViewActChat,
   canUploadCategory,
+  canStartAct,
   hasCapability,
+  importedDescriptionLabel,
+  isLegacyActDocumentHref,
+  isStartableActStatus,
+  canResolveImportedEngineer,
+  formatPersonShort,
 } from '@sgr-registry/domain';
 import type { SafeUserProfile } from '@sgr-registry/contracts';
 import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { toast } from 'sonner';
 import { DeadlineBadge, StatusBadge } from '@/components/status-badge';
 import { ErrorState } from '@/components/states';
 import { Badge } from '@/components/ui/badge';
@@ -29,7 +36,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { UserAvatar } from '@/components/user-avatar';
+import { PersonName } from '@/components/person-name';
 import { fetchActDetail } from '../../../lib/registry-api';
+import { commandFetch } from '../../../lib/command-api';
 import { formatCalendarDate, formatTimestamp, isSafeDocumentHref } from '../../../lib/registry-url';
 import { queryKeys } from '../../../lib/query-keys';
 import { ActHistory, ActOperations } from './act-operations';
@@ -37,7 +46,6 @@ import { ActDiscussion } from './act-discussion';
 import { AttachmentsPanel } from '@/components/attachments-panel';
 import { ProposalValue, proposalSlotOf } from '@/components/proposal-value';
 import { cn } from '@/lib/utils';
-import type { ReactNode } from 'react';
 
 export function ActDetailView({ actId, user }: { actId: string; user: SafeUserProfile }) {
   const params = useSearchParams();
@@ -122,10 +130,14 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
           <p className="mt-1 text-sm text-muted-foreground">
             {act.objectName} · {act.customerName}
           </p>
-          {act.status === 'NEW' ? (
+          {isStartableActStatus(act.status) ? (
             <p className="mt-2 text-sm text-muted-foreground">
-              Работа по акту ещё не начата. Нажмите «Взять в работу», чтобы перевести акт в статус
-              «В работе».
+              {act.status === 'IMPORTED_UNSPECIFIED'
+                ? 'Статус в исходном реестре не указан.'
+                : 'Работа по акту ещё не начата.'}
+              {canStartAct(user.role)
+                ? ' Нажмите «Взять в работу», чтобы перевести акт в статус «В работе».'
+                : ''}
             </p>
           ) : null}
         </div>
@@ -145,7 +157,21 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
           {act.startedAt ? (
             <Meta
               label="Взят в работу"
-              value={`${act.startedBy?.fullName ?? '—'} · ${formatTimestamp(act.startedAt)}`}
+              value={
+                <span className="inline-flex min-w-0 max-w-full flex-wrap items-baseline gap-x-1">
+                  {act.startedBy ? (
+                    <PersonName
+                      lastName={act.startedBy.lastName}
+                      firstName={act.startedBy.firstName}
+                      middleName={act.startedBy.middleName}
+                      fullName={act.startedBy.fullName}
+                    />
+                  ) : (
+                    '—'
+                  )}
+                  <span className="shrink-0">· {formatTimestamp(act.startedAt)}</span>
+                </span>
+              }
             />
           ) : null}
           {act.cancelledAt ? (
@@ -161,7 +187,7 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
                 className="text-brand hover:underline"
                 href={act.signedDocumentRef}
                 target="_blank"
-                rel="noreferrer"
+                rel="noopener noreferrer"
               >
                 Документ
               </a>
@@ -169,6 +195,38 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
           ) : null}
         </CardContent>
       </Card>
+      {act.legacyImport ? (
+        <Card className="shadow-none" data-slot="legacy-import-source">
+          <CardHeader>
+            <CardTitle className="text-lg">Источник: импортированный реестр</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <Meta label="Исходный номер акта" value={act.legacyImport.sourceActNumberRaw ?? '—'} />
+            <Meta label="Исходный статус" value={act.legacyImport.sourceStatusRaw ?? '—'} />
+            <Meta
+              label="Исходный срок"
+              value={act.legacyImport.sourceDeadlineRaws.join('; ') || '—'}
+            />
+            <Meta label="Строки Excel" value={act.legacyImport.sourceRows.join(', ') || '—'} />
+            <Meta label="Дата импорта" value={formatTimestamp(act.legacyImport.importedAt)} />
+            {isLegacyActDocumentHref(act.legacyImport.sourceExternalUrl) ? (
+              <div className="grid min-w-0 gap-1">
+                <span className="text-[13px] text-muted-foreground">Ссылка на документ</span>
+                <a
+                  className="break-all text-brand hover:underline"
+                  href={act.legacyImport.sourceExternalUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {act.legacyImport.sourceExternalUrl}
+                </a>
+              </div>
+            ) : (
+              <Meta label="Ссылка на документ" value="—" />
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
       <AttachmentsPanel
         title="Вложения акта"
         listPath={`/api/acts/${act.id}/attachments`}
@@ -197,7 +255,7 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
             >
               <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
                 <div className="grid gap-1">
-                  <CardTitle className="text-base">{item.location}</CardTitle>
+                  <CardTitle className="text-base">{item.location ?? '—'}</CardTitle>
                   <p className="text-sm text-muted-foreground">{item.defectTypeName}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -208,6 +266,9 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
               <CardContent className="grid gap-4">
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   <Meta label="Плановый срок" value={formatCalendarDate(item.plannedDeadline)} />
+                  {item.sourceDeadlineRaw ? (
+                    <Meta label="Исходный срок" value={item.sourceDeadlineRaw} />
+                  ) : null}
                   <Meta label="Срок по претензии" value={formatCalendarDate(item.claimDeadline)} />
                   <Meta
                     label="Эффективный срок"
@@ -246,6 +307,9 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
                   ) : null}
                 </div>
                 {item.notes ? <p className="text-sm">Примечания: {item.notes}</p> : null}
+                {!item.claimDetails && act.legacyImport ? (
+                  <p className="text-sm text-muted-foreground">{importedDescriptionLabel(null)}</p>
+                ) : null}
                 <AttachmentsPanel
                   title="Файлы и фотографии"
                   listPath={`/api/defects/${item.id}/attachments`}
@@ -290,13 +354,53 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
                       ) : null,
                     )
                   : null}
-                <div className="flex flex-wrap gap-2">
-                  {item.responsibleEngineers.map((entry) => (
-                    <Badge key={entry.id} variant="secondary" className="gap-1.5 pr-2">
-                      <UserAvatar name={entry.fullName} size="sm" />
-                      {entry.fullName}
-                    </Badge>
-                  ))}
+                <div className="flex flex-wrap items-center gap-2">
+                  {item.responsibleEngineers.map((entry, index) => {
+                    const key = `${entry.id ?? entry.referenceId ?? entry.fullName}-${index}`;
+                    const name = (
+                      <PersonName
+                        lastName={entry.lastName}
+                        firstName={entry.firstName}
+                        middleName={entry.middleName}
+                        fullName={entry.fullName}
+                        unmatched={entry.unmatched}
+                        sourceNameRaw={entry.sourceNameRaw}
+                        className="min-w-0"
+                      />
+                    );
+                    const resolveButton =
+                      entry.unmatched &&
+                      entry.referenceId &&
+                      canResolveImportedEngineer(user.role) ? (
+                        <ResolveImportedEngineerButton
+                          referenceId={entry.referenceId}
+                          sourceNameRaw={entry.sourceNameRaw ?? entry.fullName}
+                          csrfToken={user.csrfToken}
+                          actId={act.id}
+                        />
+                      ) : null;
+                    if (entry.unmatched) {
+                      return (
+                        <div
+                          key={key}
+                          className="flex min-h-11 min-w-0 max-w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-border bg-background px-3 py-2"
+                        >
+                          {name}
+                          {resolveButton}
+                        </div>
+                      );
+                    }
+                    return (
+                      <Badge
+                        key={key}
+                        variant="secondary"
+                        className="h-auto min-h-6 max-w-full items-center gap-1.5 overflow-hidden py-0.5 pr-2"
+                      >
+                        <UserAvatar name={entry.fullName} size="sm" />
+                        {name}
+                      </Badge>
+                    );
+                  })}
                   {item.liableOrganizations.map((entry) => (
                     <Badge key={entry.id} variant="outline">
                       {entry.name}
@@ -338,5 +442,119 @@ function Meta({ label, value }: { label: string; value: ReactNode }) {
       <span className="text-[13px] text-muted-foreground">{label}</span>
       <span className="text-sm">{value ?? '—'}</span>
     </div>
+  );
+}
+
+function ResolveImportedEngineerButton({
+  referenceId,
+  sourceNameRaw,
+  csrfToken,
+  actId,
+}: {
+  referenceId: string;
+  sourceNameRaw: string;
+  csrfToken: string;
+  actId: string;
+}) {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [userId, setUserId] = useState('');
+  const [pending, setPending] = useState(false);
+  const lookups = useQuery({
+    queryKey: queryKeys.lookups,
+    queryFn: async () => {
+      const response = await fetch('/api/operations/lookups', { credentials: 'include' });
+      if (!response.ok) {
+        throw new Error('lookups');
+      }
+      return (await response.json()) as {
+        responsibleEngineers: Array<{
+          id: string;
+          lastName?: string;
+          firstName?: string;
+          middleName?: string | null;
+          fullName: string;
+        }>;
+      };
+    },
+    enabled: open,
+  });
+
+  async function submit() {
+    if (!userId || pending) {
+      return;
+    }
+    setPending(true);
+    try {
+      await commandFetch(`/api/registry/imported-engineer-references/${referenceId}/resolve`, {
+        method: 'POST',
+        csrfToken,
+        body: { userId },
+      });
+      toast.success('Инженер сопоставлен');
+      setOpen(false);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.act(actId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.registry.all }),
+      ]);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Не удалось сопоставить инженера');
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <>
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        className="h-8 shrink-0 px-2 whitespace-nowrap"
+        onClick={() => setOpen(true)}
+      >
+        Сопоставить инженера
+      </Button>
+      {open ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-lg border bg-card p-4 shadow-lg">
+            <h2 className="text-base font-semibold">Сопоставить инженера</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{sourceNameRaw}</p>
+            <label className="mt-3 grid gap-1.5 text-sm">
+              Учётная запись
+              <select
+                className="h-11 rounded-md border bg-background px-3"
+                value={userId}
+                onChange={(event) => setUserId(event.target.value)}
+                aria-label="Учётная запись инженера"
+              >
+                <option value="">Выберите</option>
+                {(lookups.data?.responsibleEngineers ?? []).map((engineer) => (
+                  <option key={engineer.id} value={engineer.id} title={engineer.fullName}>
+                    {formatPersonShort(
+                      engineer.lastName && engineer.firstName
+                        ? {
+                            lastName: engineer.lastName,
+                            firstName: engineer.firstName,
+                            middleName: engineer.middleName ?? null,
+                          }
+                        : engineer.fullName,
+                    )}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                Отмена
+              </Button>
+              <Button type="button" disabled={!userId || pending} onClick={() => void submit()}>
+                Сопоставить
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }

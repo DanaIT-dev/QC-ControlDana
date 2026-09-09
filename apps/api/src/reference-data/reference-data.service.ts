@@ -192,7 +192,18 @@ export class ReferenceDataService {
       include: {
         engineers: {
           where: { unassignedAt: null },
-          include: { user: { select: { id: true, fullName: true, status: true } } },
+          include: {
+            user: {
+              select: {
+                id: true,
+                lastName: true,
+                firstName: true,
+                middleName: true,
+                fullName: true,
+                status: true,
+              },
+            },
+          },
         },
       },
       orderBy: [{ name: 'asc' }, { id: 'asc' }],
@@ -215,6 +226,9 @@ export class ReferenceDataService {
         archivedAt: item.archivedAt?.toISOString() ?? null,
         responsibleEngineers: item.engineers.map((row) => ({
           id: row.user.id,
+          lastName: row.user.lastName,
+          firstName: row.user.firstName,
+          middleName: row.user.middleName,
           fullName: row.user.fullName,
         })),
       })),

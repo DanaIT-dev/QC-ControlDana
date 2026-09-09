@@ -269,6 +269,9 @@ export class AuthService {
 
     return {
       id: user.id,
+      lastName: user.lastName,
+      firstName: user.firstName,
+      middleName: user.middleName,
       fullName: user.fullName,
       email: user.email,
       role: user.role,
@@ -495,6 +498,9 @@ export class AuthService {
 export function toSafeProfile(
   user: {
     id: string;
+    lastName?: string;
+    firstName?: string;
+    middleName?: string | null;
     fullName: string;
     email: string;
     role: SafeUserProfile['role'];
@@ -504,6 +510,9 @@ export function toSafeProfile(
 ): SafeUserProfile {
   return {
     id: user.id,
+    lastName: user.lastName,
+    firstName: user.firstName,
+    middleName: user.middleName,
     fullName: user.fullName,
     email: user.email,
     role: user.role,

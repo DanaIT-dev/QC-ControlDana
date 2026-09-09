@@ -23,7 +23,8 @@ test.describe('operational workflow', () => {
     await expect(page).toHaveURL(/\/users$/);
     await page.getByRole('button', { name: 'Добавить пользователя' }).click();
     const stamp = Date.now();
-    await page.getByLabel('ФИО').fill(`Е2Е Пользователь ${stamp}`);
+    await page.getByLabel('Фамилия').fill('Тестов');
+    await page.getByLabel('Имя').fill('Пользователь');
     await page.getByLabel('Электронная почта').fill(`e2e.${stamp}@example.sgr.local`);
     await page.getByRole('button', { name: 'Создать', exact: true }).click();
     await expect(page.getByText('Временный пароль показывается один раз')).toBeVisible();

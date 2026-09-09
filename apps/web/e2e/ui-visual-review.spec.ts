@@ -92,7 +92,8 @@ async function loginAsPendingUser(page: Page) {
   await page.getByRole('button', { name: 'Добавить пользователя' }).click();
   const stamp = Date.now();
   const pendingEmail = `e2e.visual.pending.${stamp}@example.sgr.local`;
-  await page.getByLabel('ФИО').fill(`Е2Е Визуал ${stamp}`);
+  await page.getByLabel('Фамилия').fill('Визуалов');
+  await page.getByLabel('Имя').fill('Тест');
   await page.getByLabel('Электронная почта').fill(pendingEmail);
   await page.getByRole('button', { name: 'Создать', exact: true }).click();
   const pendingPassword = (await page.locator('.temp-password').innerText()).trim();

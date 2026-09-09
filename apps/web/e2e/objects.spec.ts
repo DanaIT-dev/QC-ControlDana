@@ -200,7 +200,9 @@ test.describe('objects directory', () => {
     await page.getByRole('button', { name: 'Добавить пользователя' }).click();
     const stamp = Date.now();
     const email = `e2e.unique.${stamp}@example.sgr.local`;
-    await page.getByLabel('ФИО').fill('Единственный Эдуард Эдуардович');
+    await page.getByLabel('Фамилия').fill('Единственный');
+    await page.getByLabel('Имя').fill('Эдуард');
+    await page.getByLabel('Отчество').fill('Эдуардович');
     await page.getByLabel('Электронная почта').fill(email);
     await page.locator('#new-user-role').click();
     await page.getByRole('option', { name: 'Ответственный инженер' }).click();
@@ -211,9 +213,7 @@ test.describe('objects directory', () => {
 
     await clickPrimaryNavItem(page, 'Объекты');
     await page.getByLabel('Поиск по объектам').fill('уникальная привязка');
-    await expect(
-      page.getByText('Единственный Эдуард Эдуардович').filter({ visible: true }),
-    ).toBeVisible();
+    await expect(page.getByText('Единственный Э.Э.').filter({ visible: true })).toBeVisible();
     await expect(
       page.getByText('Не связан с учетной записью').filter({ visible: true }),
     ).toHaveCount(0);
@@ -226,8 +226,10 @@ test.describe('objects directory', () => {
     await page.getByLabel('Пароль', { exact: true }).fill(tempPassword);
     await page.getByRole('button', { name: 'Войти' }).click();
     await expect(page).toHaveURL(/\/change-password/);
+    await expect(page.getByText('Смена временного пароля')).toBeVisible();
     await page.getByLabel('Текущий пароль').fill(tempPassword);
     await page.getByLabel('Новый пароль').fill(DEMO_PASSWORD);
+    await page.getByLabel('Текущий пароль').fill(tempPassword);
     await page.getByRole('button', { name: 'Сменить пароль' }).click();
     await expect(page).toHaveURL(/\/registry/);
     await page.goto('/objects');
@@ -283,6 +285,53 @@ test.describe('objects directory', () => {
     await page.getByLabel('Поиск по объектам').fill(name);
     await expect(page.getByText(name).filter({ visible: true })).toBeVisible();
     await expect(page.getByText('Василевич М.В.').filter({ visible: true })).toBeVisible();
+    const desktopName = page
+      .locator('[data-slot="person-name"]')
+      .filter({ hasText: 'Василевич' })
+      .filter({ visible: true })
+      .first();
+    await expect(desktopName).toBeVisible();
+    const desktopDelta = await desktopName.evaluate((el) => {
+      const parts = [...el.querySelectorAll(':scope > span')];
+      if (parts.length < 2) {
+        return 99;
+      }
+      return Math.abs(
+        parts[0]!.getBoundingClientRect().bottom - parts[1]!.getBoundingClientRect().bottom,
+      );
+    });
+    expect(desktopDelta).toBeLessThanOrEqual(1);
+    const desktopLine = page
+      .locator('p')
+      .filter({ has: page.locator('[data-slot="person-name"]', { hasText: 'Василевич' }) })
+      .first();
+    const labelDelta = await desktopLine.evaluate((el) => {
+      const label = el.querySelector('span.shrink-0');
+      const name = el.querySelector('[data-slot="person-name"] > span');
+      if (!label || !name) {
+        return 99;
+      }
+      return Math.abs(label.getBoundingClientRect().bottom - name.getBoundingClientRect().bottom);
+    });
+    expect(labelDelta).toBeLessThanOrEqual(1);
+    await page.setViewportSize({ width: 390, height: 844 });
+    const mobileName = page
+      .locator('[data-slot="person-name"]')
+      .filter({ hasText: 'Василевич' })
+      .filter({ visible: true })
+      .first();
+    await expect(mobileName).toBeVisible();
+    const mobileDelta = await mobileName.evaluate((el) => {
+      const parts = [...el.querySelectorAll(':scope > span')];
+      if (parts.length < 2) {
+        return 99;
+      }
+      return Math.abs(
+        parts[0]!.getBoundingClientRect().bottom - parts[1]!.getBoundingClientRect().bottom,
+      );
+    });
+    expect(mobileDelta).toBeLessThanOrEqual(1);
+    await page.setViewportSize({ width: 1440, height: 900 });
     await expect(
       page.getByText('Не связан с учетной записью').filter({ visible: true }),
     ).toHaveCount(1);
@@ -312,8 +361,11 @@ test.describe('objects directory', () => {
       'Двойник Дмитрий Дмитриевич',
       'Двойник Данила Данилович',
     ].entries()) {
+      const [lastName, firstName, middleName] = fullName.split(' ');
       await page.getByRole('button', { name: 'Добавить пользователя' }).click();
-      await page.getByLabel('ФИО').fill(fullName);
+      await page.getByLabel('Фамилия').fill(lastName!);
+      await page.getByLabel('Имя').fill(firstName!);
+      await page.getByLabel('Отчество').fill(middleName!);
       await page
         .getByLabel('Электронная почта')
         .fill(`e2e.twin.${stamp}.${index}@example.sgr.local`);
@@ -339,7 +391,11 @@ test.describe('objects directory', () => {
     await page.getByRole('option', { name: 'Двойник Дмитрий Дмитриевич' }).click();
     await page.getByRole('button', { name: 'Сохранить' }).click();
     await expect(
-      page.getByText('Двойник Дмитрий Дмитриевич').filter({ visible: true }),
+      page
+        .locator('tr, li')
+        .filter({ hasText: 'E2E неоднозначная привязка' })
+        .getByText('Двойник Д.Д.')
+        .first(),
     ).toBeVisible();
     await expect(
       page.getByText('Требуется подтверждение администратора').filter({ visible: true }),

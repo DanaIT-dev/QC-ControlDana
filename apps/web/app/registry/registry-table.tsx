@@ -15,6 +15,7 @@ import { ProposalValue, proposalSlotOf } from '@/components/proposal-value';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { formatCalendarDate, formatTimestamp, isSafeDocumentHref } from '../../lib/registry-url';
+import { PersonName } from '@/components/person-name';
 import { cn } from '@/lib/utils';
 
 const BC_STORAGE_KEY = 'sgr.ui.expandProposalBC';
@@ -97,7 +98,23 @@ export function RegistryTable({
       {
         id: 'engineers',
         header: 'Ответственные инженеры',
-        cell: ({ row }) => names(row.original.responsibleEngineers.map((item) => item.fullName)),
+        cell: ({ row }) => (
+          <div className="flex min-w-0 flex-col items-start gap-1">
+            {row.original.responsibleEngineers.length
+              ? row.original.responsibleEngineers.map((item, index) => (
+                  <PersonName
+                    key={`${item.id ?? item.referenceId ?? item.fullName}-${index}`}
+                    lastName={item.lastName}
+                    firstName={item.firstName}
+                    middleName={item.middleName}
+                    fullName={item.fullName}
+                    unmatched={item.unmatched}
+                    sourceNameRaw={item.sourceNameRaw}
+                  />
+                ))
+              : '—'}
+          </div>
+        ),
         meta: { className: 'col-required' },
       },
       dateColumn(
@@ -222,7 +239,7 @@ export function RegistryTable({
   });
 
   return (
-    <div className="overflow-hidden rounded-[10px] border bg-card" data-slot="registry-table-wrap">
+    <div className="overflow-hidden rounded-md border bg-card" data-slot="registry-table-wrap">
       {canViewBC ? (
         <div className="flex items-center justify-end border-b px-3 py-2">
           <Button type="button" variant="outline" size="sm" onClick={onToggleBC}>
@@ -231,7 +248,7 @@ export function RegistryTable({
         </div>
       ) : null}
       <div className="overflow-x-auto">
-        <table className="registry-table w-full min-w-[760px] border-separate border-spacing-0 text-sm xl:min-w-[1100px]">
+        <table className="registry-table w-full min-w-190 border-separate border-spacing-0 text-sm xl:min-w-275">
           <thead>
             {table.getHeaderGroups().map((group) => (
               <tr key={group.id}>
@@ -239,7 +256,7 @@ export function RegistryTable({
                   <th
                     key={header.id}
                     className={cn(
-                      'sticky top-0 z-[2] h-11 bg-background px-3 text-left text-[12px] font-medium text-muted-foreground',
+                      'sticky top-0 z-2 h-11 bg-background px-3 text-left text-[12px] font-medium text-muted-foreground',
                       classNameOf(header.column.columnDef.meta),
                     )}
                   >
@@ -335,7 +352,7 @@ function names(values: string[]) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="block max-w-[220px] truncate">{text}</span>
+        <span className="block max-w-55 truncate">{text}</span>
       </TooltipTrigger>
       <TooltipContent>{text}</TooltipContent>
     </Tooltip>

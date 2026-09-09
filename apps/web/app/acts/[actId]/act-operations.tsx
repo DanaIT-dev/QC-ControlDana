@@ -10,6 +10,8 @@ import {
   canStartAct,
   canViewProposalGroupBC,
   hasCapability,
+  isStartableActStatus,
+  formatPersonShort,
 } from '@sgr-registry/domain';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
@@ -97,7 +99,7 @@ export function ActOperations({
   if (!item) {
     return (
       <div className="action-row flex flex-wrap gap-2">
-        {canStartAct(user.role) && act.status === 'NEW' ? (
+        {canStartAct(user.role) && isStartableActStatus(act.status) ? (
           <Button
             type="button"
             disabled={starting}
@@ -450,7 +452,7 @@ function AssignmentEditor({
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [engineerIds, setEngineerIds] = useState(
-    item.responsibleEngineers.map((entry) => entry.id),
+    item.responsibleEngineers.map((entry) => entry.id).filter((id): id is string => Boolean(id)),
   );
   const [liableIds, setLiableIds] = useState(item.liableOrganizations.map((entry) => entry.id));
   const [quickCreate, setQuickCreate] = useState<DirectoryQuickCreateRequest | null>(null);
@@ -460,7 +462,11 @@ function AssignmentEditor({
         type="button"
         variant="outline"
         onClick={() => {
-          setEngineerIds(item.responsibleEngineers.map((entry) => entry.id));
+          setEngineerIds(
+            item.responsibleEngineers
+              .map((entry) => entry.id)
+              .filter((id): id is string => Boolean(id)),
+          );
           setLiableIds(item.liableOrganizations.map((entry) => entry.id));
           setOpen(true);
         }}
@@ -901,7 +907,16 @@ export function ActHistory({ actId }: { actId: string }) {
           <strong>{AUDIT_ACTION_LABELS[item.action] ?? item.action}</strong>
           {item.action === 'ACT_STARTED' ? (
             <>
-              <p className="text-sm">Кто: {item.actorName ?? 'Система'}</p>
+              <p className="text-sm">
+                Кто:{' '}
+                {item.actorName && item.actorName !== 'SYSTEM' ? (
+                  <span title={item.actorName} aria-label={item.actorName}>
+                    {formatPersonShort(item.actorName)}
+                  </span>
+                ) : (
+                  'Система'
+                )}
+              </p>
               <p className="text-sm">
                 Дата и время: {new Date(item.occurredAt).toLocaleString('ru-BY')}
               </p>
@@ -909,7 +924,14 @@ export function ActHistory({ actId }: { actId: string }) {
           ) : (
             <>
               <p className="text-sm text-muted-foreground">
-                {item.actorName ?? 'Система'} · {new Date(item.occurredAt).toLocaleString('ru-BY')}
+                {item.actorName && item.actorName !== 'SYSTEM' ? (
+                  <span title={item.actorName} aria-label={item.actorName}>
+                    {formatPersonShort(item.actorName)}
+                  </span>
+                ) : (
+                  'Система'
+                )}{' '}
+                · {new Date(item.occurredAt).toLocaleString('ru-BY')}
               </p>
               {item.reason ? <p className="text-sm">Причина: {item.reason}</p> : null}
               <p className="text-sm">

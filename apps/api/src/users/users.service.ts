@@ -24,16 +24,20 @@ import {
   assertCanEditUserProfile,
   assertCanMutateManagedUser,
   composeOfficialFullName,
+  comparePersonNames,
   hasCapability,
   normalizeUserEmail,
-  normalizeUserFullName,
   parsePersonNameInput,
+  personMatchesSearch,
+  personNameWriteFields,
+  resolveOfficialFullName,
   roleLabel,
   scrubSensitiveValue,
   ValidationError,
 } from '@sgr-registry/domain';
 import {
   reconcileDirectoryEngineerLinks,
+  reconcileImportedEngineerReferences,
   revokeEngineerObjectAccess,
   updateUserProfileViaDefiner,
   upsertUserCredentialsViaDefiner,
@@ -57,6 +61,9 @@ import {
 
 const USER_SELECT = {
   id: true,
+  lastName: true,
+  firstName: true,
+  middleName: true,
   fullName: true,
   email: true,
   role: true,
@@ -99,22 +106,63 @@ export class UsersService {
     }
     if (query.search && query.search.trim().length >= 2) {
       const search = query.search.trim();
+      const candidates = await this.prisma.client.user.findMany({
+        where: filters.length > 0 ? { AND: filters } : {},
+        select: {
+          id: true,
+          lastName: true,
+          firstName: true,
+          middleName: true,
+          fullName: true,
+          email: true,
+        },
+      });
+      const matchingIds = candidates
+        .filter(
+          (item) =>
+            personMatchesSearch(item.fullName, search) ||
+            item.email.toLowerCase().includes(search.toLowerCase()),
+        )
+        .map((item) => item.id);
       filters.push({
-        OR: [
-          { fullName: { contains: search, mode: 'insensitive' } },
-          { email: { contains: search.toLowerCase(), mode: 'insensitive' } },
-        ],
+        id: {
+          in: matchingIds.length > 0 ? matchingIds : ['00000000-0000-4000-8000-000000000000'],
+        },
       });
     }
     const where: Prisma.UserWhereInput = filters.length > 0 ? { AND: filters } : {};
     const totalCount = await this.prisma.client.user.count({ where });
-    const items = await this.prisma.client.user.findMany({
+    const ranked = await this.prisma.client.user.findMany({
       where,
-      select: USER_SELECT,
-      orderBy: [{ fullName: 'asc' }, { id: 'asc' }],
-      skip: (page - 1) * pageSize,
-      take: pageSize,
+      select: { id: true, lastName: true, firstName: true, middleName: true },
     });
+    ranked.sort((left, right) => {
+      const byName = comparePersonNames(
+        {
+          lastName: left.lastName,
+          firstName: left.firstName,
+          middleName: left.middleName,
+        },
+        {
+          lastName: right.lastName,
+          firstName: right.firstName,
+          middleName: right.middleName,
+        },
+      );
+      return byName !== 0 ? byName : left.id.localeCompare(right.id);
+    });
+    const pageIds = ranked.slice((page - 1) * pageSize, page * pageSize).map((row) => row.id);
+    const itemsUnsorted =
+      pageIds.length === 0
+        ? []
+        : await this.prisma.client.user.findMany({
+            where: { id: { in: pageIds } },
+            select: USER_SELECT,
+          });
+    const itemsById = new Map(itemsUnsorted.map((item) => [item.id, item]));
+    const items = pageIds
+      .map((id) => itemsById.get(id))
+      .filter((item): item is NonNullable<typeof item> => Boolean(item));
     const credentialFlags = await this.authPrisma.userCredential.findMany({
       where: { userId: { in: items.map((item) => item.id) } },
       select: { userId: true, passwordChangedAt: true },
@@ -146,7 +194,22 @@ export class UsersService {
   async create(actor: AuthenticatedUser, body: unknown, request: FastifyRequest) {
     const input = parseCommandBody(createUserRequestSchema, body);
     assertCanAssignRole(actor.role, input.role);
-    const fullName = normalizeUserFullName(input.fullName);
+    const parts =
+      input.lastName != null || input.firstName != null
+        ? parsePersonNameInput({
+            lastName: input.lastName,
+            firstName: input.firstName,
+            middleName: input.middleName ?? null,
+          })
+        : personNameWriteFields(
+            resolveOfficialFullName({
+              fullName: input.fullName,
+              lastName: input.lastName,
+              firstName: input.firstName,
+              middleName: input.middleName ?? null,
+            }),
+          );
+    const fullName = composeOfficialFullName(parts);
     const email = normalizeUserEmail(input.email);
     const temporaryPassword = generateTemporaryPassword(16, { email, fullName });
     const passwordHash = await this.hasher.hash(temporaryPassword, { email, fullName });
@@ -155,6 +218,9 @@ export class UsersService {
       const user = await this.prisma.client.$transaction(async (tx) => {
         const created = await tx.user.create({
           data: {
+            lastName: parts.lastName,
+            firstName: parts.firstName,
+            middleName: parts.middleName,
             fullName,
             email,
             role: input.role,
@@ -693,11 +759,23 @@ async function syncDirectoryEngineerLinks(
         ]
       : [];
   await reconcileDirectoryEngineerLinks(tx, ctx, { extraCandidates });
+  if (input.nextRole === 'RESPONSIBLE_ENGINEER' && input.nextStatus === 'ACTIVE') {
+    await reconcileImportedEngineerReferences(tx, {
+      actorUserId: actor.id,
+      actorName: actor.fullName,
+      requestId,
+      source: 'WEB',
+      targetUserId: input.userId,
+    });
+  }
 }
 
 function toUserDto(
   user: {
     id: string;
+    lastName: string;
+    firstName: string;
+    middleName: string | null;
     fullName: string;
     email: string;
     role: AuthenticatedUser['role'];
@@ -717,6 +795,9 @@ function toUserDto(
 ) {
   return {
     id: user.id,
+    lastName: user.lastName,
+    firstName: user.firstName,
+    middleName: user.middleName,
     fullName: user.fullName,
     email: user.email,
     role: user.role,

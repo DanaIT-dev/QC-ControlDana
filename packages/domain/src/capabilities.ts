@@ -337,6 +337,10 @@ export function canManageSystemSettings(role: UserRole): boolean {
   return hasCapability(role, 'MANAGE_SYSTEM_SETTINGS');
 }
 
+export function canResolveImportedEngineer(role: UserRole): boolean {
+  return role === 'ADMIN' || role === 'MANAGER' || role === 'SGR_MANAGER';
+}
+
 export function postLoginPath(role: UserRole, mustChangePassword = false): string {
   if (mustChangePassword) {
     return '/change-password';

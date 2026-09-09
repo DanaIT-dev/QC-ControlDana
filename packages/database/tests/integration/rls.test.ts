@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Pool } from 'pg';
+import { personNameWriteFields } from '@sgr-registry/domain';
 import {
   createOwnerPrismaClient,
   createPrismaClient,
@@ -64,7 +65,7 @@ describe('PostgreSQL RLS', () => {
     expect(secret.length).toBeGreaterThanOrEqual(32);
     const admin = await owner.user.create({
       data: {
-        fullName: `${MARKER} admin`,
+        ...personNameWriteFields(`${MARKER} admin`),
         email: `${MARKER}.admin@example.sgr.local`,
         role: 'ADMIN',
         sessionVersion: 1,
@@ -72,7 +73,7 @@ describe('PostgreSQL RLS', () => {
     });
     const manager = await owner.user.create({
       data: {
-        fullName: `${MARKER} manager`,
+        ...personNameWriteFields(`${MARKER} manager`),
         email: `${MARKER}.manager@example.sgr.local`,
         role: 'SGR_MANAGER',
         sessionVersion: 1,
@@ -80,7 +81,7 @@ describe('PostgreSQL RLS', () => {
     });
     const responsible = await owner.user.create({
       data: {
-        fullName: `${MARKER} responsible`,
+        ...personNameWriteFields(`${MARKER} responsible`),
         email: `${MARKER}.responsible@example.sgr.local`,
         role: 'RESPONSIBLE_ENGINEER',
         sessionVersion: 1,
@@ -88,7 +89,7 @@ describe('PostgreSQL RLS', () => {
     });
     const otherResponsible = await owner.user.create({
       data: {
-        fullName: `${MARKER} other-responsible`,
+        ...personNameWriteFields(`${MARKER} other-responsible`),
         email: `${MARKER}.other@example.sgr.local`,
         role: 'RESPONSIBLE_ENGINEER',
         sessionVersion: 1,
@@ -96,7 +97,7 @@ describe('PostgreSQL RLS', () => {
     });
     const contractor = await owner.user.create({
       data: {
-        fullName: `${MARKER} contractor`,
+        ...personNameWriteFields(`${MARKER} contractor`),
         email: `${MARKER}.contractor@example.sgr.local`,
         role: 'CONTRACTOR_ENGINEER',
         sessionVersion: 1,
@@ -761,7 +762,7 @@ describe('PostgreSQL RLS', () => {
     });
     const superAdmin = await owner.user.create({
       data: {
-        fullName: `${MARKER} super-admin`,
+        ...personNameWriteFields(`${MARKER} super-admin`),
         email: `${MARKER}.super@example.sgr.local`,
         role: 'SUPER_ADMIN',
         sessionVersion: 1,
@@ -769,7 +770,7 @@ describe('PostgreSQL RLS', () => {
     });
     const pending = await owner.user.create({
       data: {
-        fullName: `${MARKER} pending`,
+        ...personNameWriteFields(`${MARKER} pending`),
         email: `${MARKER}.pending@example.sgr.local`,
         role: 'PENDING_ROLE',
         sessionVersion: 1,
@@ -1113,7 +1114,7 @@ describe('PostgreSQL RLS', () => {
 
       const superAdmin = await owner.user.create({
         data: {
-          fullName: `${sentinel} sa`,
+          ...personNameWriteFields(`${sentinel} sa`),
           email: `${sentinel}.sa@example.sgr.local`,
           role: 'SUPER_ADMIN',
           sessionVersion: 1,

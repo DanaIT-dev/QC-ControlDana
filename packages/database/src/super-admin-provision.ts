@@ -5,6 +5,7 @@ import {
   assertPasswordPolicy,
   normalizeUserEmail,
   normalizeUserFullName,
+  personNameWriteFields,
 } from '@sgr-registry/domain';
 import { insertAuditLogRow } from './rls-writes';
 import { SUPER_ADMIN_ADVISORY_LOCK_KEY1, SUPER_ADMIN_ADVISORY_LOCK_KEY2 } from './super-admin-lock';
@@ -111,7 +112,7 @@ export async function provisionSuperAdmin(input: {
         ? await tx.user.update({
             where: { id: existing.id },
             data: {
-              fullName,
+              ...personNameWriteFields(fullName),
               role: 'SUPER_ADMIN',
               status: 'ACTIVE',
               archivedAt: null,
@@ -122,7 +123,7 @@ export async function provisionSuperAdmin(input: {
           })
         : await tx.user.create({
             data: {
-              fullName,
+              ...personNameWriteFields(fullName),
               email,
               role: 'SUPER_ADMIN',
               status: 'ACTIVE',

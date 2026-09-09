@@ -44,7 +44,17 @@ const DIRECTORY_ENGINEER_SELECT = {
   unassignedAt: true,
   directoryLinkMethod: true,
   assignedAt: true,
-  user: { select: { id: true, fullName: true, status: true, role: true } },
+  user: {
+    select: {
+      id: true,
+      lastName: true,
+      firstName: true,
+      middleName: true,
+      fullName: true,
+      status: true,
+      role: true,
+    },
+  },
 } as const;
 
 @Injectable()
@@ -145,7 +155,15 @@ export class ObjectsService {
       }),
       this.prisma.client.user.findMany({
         where: { role: 'RESPONSIBLE_ENGINEER', status: 'ACTIVE' },
-        select: { id: true, fullName: true, role: true, status: true },
+        select: {
+          id: true,
+          lastName: true,
+          firstName: true,
+          middleName: true,
+          fullName: true,
+          role: true,
+          status: true,
+        },
         orderBy: { fullName: 'asc' },
       }),
     ]);
@@ -206,7 +224,13 @@ export class ObjectsService {
       canCreate: canCreatePropertyObject(user.role),
       canEdit,
       createEngineerOptions: canCreatePropertyObject(user.role)
-        ? engineerAccounts.map((row) => ({ id: row.id, fullName: row.fullName }))
+        ? engineerAccounts.map((row) => ({
+            id: row.id,
+            lastName: row.lastName,
+            firstName: row.firstName,
+            middleName: row.middleName,
+            fullName: row.fullName,
+          }))
         : [],
     };
   }
@@ -364,7 +388,15 @@ function toResponsibleEngineer(
     sourceResponsibleEngineerName: string | null;
     engineers: Array<{
       unassignedAt: Date | null;
-      user: { id: string; fullName: string; status: 'ACTIVE' | 'ARCHIVED'; role: string };
+      user: {
+        id: string;
+        lastName: string;
+        firstName: string;
+        middleName: string | null;
+        fullName: string;
+        status: 'ACTIVE' | 'ARCHIVED';
+        role: string;
+      };
     }>;
   },
   candidates: Array<{ fullName: string; role: string; status: string }>,
@@ -378,6 +410,9 @@ function toResponsibleEngineer(
       stored.user.role === 'RESPONSIBLE_ENGINEER';
     return {
       id: stored.user.id,
+      lastName: stored.user.lastName,
+      firstName: stored.user.firstName,
+      middleName: stored.user.middleName,
       fullName: stored.user.fullName,
       status: stored.user.status,
       linked: true,

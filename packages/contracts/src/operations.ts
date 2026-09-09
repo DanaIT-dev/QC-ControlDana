@@ -14,7 +14,10 @@ export const expectedVersionSchema = z.number().int().positive();
 
 export const createUserRequestSchema = z
   .object({
-    fullName: z.string(),
+    fullName: z.string().optional(),
+    lastName: z.string().optional(),
+    firstName: z.string().optional(),
+    middleName: z.union([z.string(), z.null()]).optional(),
     email: z.string(),
     role: z.enum(OPERATIONAL_ASSIGNABLE_ROLES),
   })
@@ -138,6 +141,12 @@ export const patchActHeaderRequestSchema = z
 export const addDefectRequestSchema = createActDefectItemSchema.extend({
   expectedActVersion: expectedVersionSchema,
 });
+
+export const resolveImportedEngineerRequestSchema = z
+  .object({
+    userId: uuid,
+  })
+  .strict();
 
 export const replaceAssignmentsRequestSchema = z
   .object({

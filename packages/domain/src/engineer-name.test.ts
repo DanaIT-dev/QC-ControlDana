@@ -44,6 +44,17 @@ describe('engineer name matching', () => {
     expect(accountMatchesSource('Михаил Викторович Василевич', 'Василевич М.В.')).toBe(false);
   });
 
+  it('matches a user without patronymic to Excel Фамилия И. and rejects Фамилия И.О.', () => {
+    expect(accountMatchesSource('Иванов Пётр', 'Иванов П.')).toBe(true);
+    expect(accountMatchesSource('Иванов Пётр', 'Иванов П.С.')).toBe(false);
+    expect(
+      classifyEngineerMatch('Иванов П.', [
+        engineer('Иванов Пётр', { id: 'a' }),
+        engineer('Иванов Павел', { id: 'b' }),
+      ]).result,
+    ).toBe('AMBIGUOUS');
+  });
+
   it('does not match by surname alone', () => {
     expect(accountMatchesSource('Василевич Иван Александрович', 'Василевич М.В.')).toBe(false);
   });

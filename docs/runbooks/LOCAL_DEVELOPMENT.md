@@ -43,6 +43,12 @@ pnpm db:seed
 # SGR_SUPER_ADMIN_PROVISION_CONFIRM=<имя БД> pnpm super-admin:provision
 ```
 
+Исторический реестр дефектных актов импортируется отдельно, без seed/reset development-базы. Excel не коммитится. Dry-run по умолчанию; запись только с подтверждением имени БД. Контракт: [LEGACY_ACTS_IMPORT.md](../requirements/LEGACY_ACTS_IMPORT.md).
+
+```bash
+pnpm acts:import -- --file="/absolute/path/to.xlsx" --dry-run --expect-sha256=<sha256>
+```
+
 Не используйте bootstrap `sgr_registry` в `DATABASE_URL` / `AUTH_DATABASE_URL` / `WORKER_DATABASE_URL`. Seed и migrate — `MIGRATION_DATABASE_URL`. Development-базу не reset-ьте ради RLS.
 
 Внутренний чат акта не требует SMTP: Mailpit можно не открывать, чтобы проверить `@` упоминания. Worker по-прежнему нужен для остальных уведомлений и SLA.

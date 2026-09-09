@@ -8,6 +8,21 @@ export function foldKey(value: string): string {
   return normalizeUnicode(value).trim().toLocaleLowerCase('ru');
 }
 
+const MATCH_QUOTES = /[«»„“”"'`]/g;
+const MATCH_DASHES = /[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/g;
+
+export function foldMatchKey(value: string): string {
+  return value
+    .normalize('NFKC')
+    .replaceAll('\u0451', '\u0435')
+    .replaceAll('\u0401', '\u0415')
+    .replace(MATCH_QUOTES, '"')
+    .replace(MATCH_DASHES, '-')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLocaleLowerCase('ru');
+}
+
 export function normalizeRequiredText(
   value: unknown,
   field: string,

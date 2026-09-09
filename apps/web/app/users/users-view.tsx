@@ -7,7 +7,9 @@ import {
   canMutateManagedUser,
   isOversightRole,
   parsePersonNameForForm,
+  parsePersonNameInput,
   roleLabel,
+  ValidationError,
 } from '@sgr-registry/domain';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CopyIcon, ChevronLeft, ChevronRight, MoreHorizontal } from 'lucide-react';
@@ -17,6 +19,8 @@ import { ConflictDialog } from '@/components/conflict-dialog';
 import { PageHeader } from '@/components/page-header';
 import { EmptyState, ErrorState, TableSkeleton } from '@/components/states';
 import { UserAvatar } from '@/components/user-avatar';
+import { PersonName } from '@/components/person-name';
+import { PersonNameFields } from '@/components/person-name-fields';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -49,6 +53,9 @@ import { formatTimestamp } from '../../lib/registry-url';
 
 interface UserRow {
   id: string;
+  lastName?: string;
+  firstName?: string;
+  middleName?: string | null;
   fullName: string;
   email: string;
   role: UserRole;
@@ -224,7 +231,7 @@ export function UsersView({
         className={
           usersQuery.isLoading || items.length === 0
             ? 'hidden'
-            : 'hidden overflow-hidden rounded-[10px] border bg-card md:block'
+            : 'hidden overflow-hidden rounded-md border bg-card md:block'
         }
       >
         <table className="data-table w-full text-sm">
@@ -244,7 +251,13 @@ export function UsersView({
                 <td className="px-3 py-3">
                   <div className="flex items-center gap-2">
                     <UserAvatar name={item.fullName} />
-                    <span className="font-medium">{item.fullName}</span>
+                    <PersonName
+                      lastName={item.lastName}
+                      firstName={item.firstName}
+                      middleName={item.middleName}
+                      fullName={item.fullName}
+                      className="font-medium leading-5"
+                    />
                   </div>
                 </td>
                 <td className="px-3 py-3">{item.email}</td>
@@ -285,8 +298,15 @@ export function UsersView({
             <CardContent className="grid gap-2 p-4">
               <div className="flex items-center gap-2">
                 <UserAvatar name={item.fullName} />
-                <div>
-                  <h2 className="text-base font-semibold">{item.fullName}</h2>
+                <div className="min-w-0">
+                  <h2 className="text-base leading-6 font-semibold">
+                    <PersonName
+                      lastName={item.lastName}
+                      firstName={item.firstName}
+                      middleName={item.middleName}
+                      fullName={item.fullName}
+                    />
+                  </h2>
                   <p className="text-sm text-muted-foreground">{item.email}</p>
                 </div>
               </div>
@@ -501,7 +521,14 @@ function EditUserDialog({
   onSaved: (requireReauth: boolean) => Promise<void>;
   onConflict: () => void;
 }) {
-  const parsed = parsePersonNameForForm(user.fullName);
+  const parsed =
+    user.lastName && user.firstName
+      ? {
+          lastName: user.lastName,
+          firstName: user.firstName,
+          middleName: user.middleName ?? null,
+        }
+      : parsePersonNameForForm(user.fullName);
   const [lastName, setLastName] = useState(parsed.lastName);
   const [firstName, setFirstName] = useState(parsed.firstName);
   const [middleName, setMiddleName] = useState(parsed.middleName ?? '');
@@ -564,42 +591,17 @@ function EditUserDialog({
             <DialogTitle>Редактировать пользователя</DialogTitle>
             <DialogDescription>Имя, фамилия, отчество и электронная почта.</DialogDescription>
           </DialogHeader>
-          <div className="grid gap-1.5">
-            <Label htmlFor="edit-user-last-name">Фамилия</Label>
-            <Input
-              id="edit-user-last-name"
-              value={lastName}
-              onChange={(event) => setLastName(event.target.value)}
-              required
-              aria-invalid={Boolean(errors.lastName)}
-            />
-            {errors.lastName ? <p className="text-sm text-destructive">{errors.lastName}</p> : null}
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="edit-user-first-name">Имя</Label>
-            <Input
-              id="edit-user-first-name"
-              value={firstName}
-              onChange={(event) => setFirstName(event.target.value)}
-              required
-              aria-invalid={Boolean(errors.firstName)}
-            />
-            {errors.firstName ? (
-              <p className="text-sm text-destructive">{errors.firstName}</p>
-            ) : null}
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="edit-user-middle-name">Отчество</Label>
-            <Input
-              id="edit-user-middle-name"
-              value={middleName}
-              onChange={(event) => setMiddleName(event.target.value)}
-              aria-invalid={Boolean(errors.middleName)}
-            />
-            {errors.middleName ? (
-              <p className="text-sm text-destructive">{errors.middleName}</p>
-            ) : null}
-          </div>
+          <PersonNameFields
+            idPrefix="edit-user"
+            lastName={lastName}
+            firstName={firstName}
+            middleName={middleName}
+            onLastNameChange={setLastName}
+            onFirstNameChange={setFirstName}
+            onMiddleNameChange={setMiddleName}
+            errors={errors}
+            disabled={saving}
+          />
           <div className="grid gap-1.5">
             <Label htmlFor="edit-user-email">Электронная почта</Label>
             <Input
@@ -654,12 +656,41 @@ function CreateUserDialog({
   onClose: () => void;
   onCreate: (body: unknown) => Promise<void>;
 }) {
-  const [fullName, setFullName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [middleName, setMiddleName] = useState('');
   const [email, setEmail] = useState('');
   const defaultRole = assignableRoles.includes('RESPONSIBLE_ENGINEER')
     ? 'RESPONSIBLE_ENGINEER'
     : (assignableRoles[0] ?? 'RESPONSIBLE_ENGINEER');
   const [role, setRole] = useState<UserRole>(defaultRole);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  function submit() {
+    setErrors({});
+    try {
+      const parts = parsePersonNameInput({
+        lastName,
+        firstName,
+        middleName: middleName.trim() === '' ? null : middleName,
+      });
+      const body = {
+        lastName: parts.lastName,
+        firstName: parts.firstName,
+        middleName: parts.middleName,
+        email,
+        ...(unassigned ? {} : { role }),
+      };
+      void onCreate(body);
+    } catch (error) {
+      if (error instanceof ValidationError) {
+        setErrors({ [error.field]: error.message });
+        return;
+      }
+      toast.error(error instanceof Error ? error.message : 'Некорректное ФИО');
+    }
+  }
+
   return (
     <Dialog open onOpenChange={(open) => (!open ? onClose() : undefined)}>
       <DialogContent>
@@ -667,7 +698,7 @@ function CreateUserDialog({
           className="grid gap-3"
           onSubmit={(event) => {
             event.preventDefault();
-            void onCreate(unassigned ? { fullName, email } : { fullName, email, role });
+            submit();
           }}
         >
           <DialogHeader>
@@ -678,15 +709,16 @@ function CreateUserDialog({
               </DialogDescription>
             ) : null}
           </DialogHeader>
-          <div className="grid gap-1.5">
-            <Label htmlFor="new-user-name">ФИО</Label>
-            <Input
-              id="new-user-name"
-              value={fullName}
-              onChange={(event) => setFullName(event.target.value)}
-              required
-            />
-          </div>
+          <PersonNameFields
+            idPrefix="new-user"
+            lastName={lastName}
+            firstName={firstName}
+            middleName={middleName}
+            onLastNameChange={setLastName}
+            onFirstNameChange={setFirstName}
+            onMiddleNameChange={setMiddleName}
+            errors={errors}
+          />
           <div className="grid gap-1.5">
             <Label htmlFor="new-user-email">Электронная почта</Label>
             <Input

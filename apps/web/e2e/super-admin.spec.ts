@@ -154,7 +154,8 @@ test.describe('read-only SUPER_ADMIN oversight', () => {
     await expect(page.getByRole('dialog').locator('#new-user-role')).toHaveCount(0);
     const stamp = Date.now();
     const pendingEmail = `e2e.pending.${stamp}@example.sgr.local`;
-    await page.getByLabel('ФИО').fill(`Е2Е Без роли ${stamp}`);
+    await page.getByLabel('Фамилия').fill('Безролев');
+    await page.getByLabel('Имя').fill('Тест');
     await page.getByLabel('Электронная почта').fill(pendingEmail);
     await page.getByRole('button', { name: 'Создать', exact: true }).click();
     await expect(page.getByText('Временный пароль показывается один раз')).toBeVisible();

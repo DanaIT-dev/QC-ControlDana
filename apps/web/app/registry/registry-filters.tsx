@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { buildRegistryFilterChips, type RegistryFilterOptions } from '@/lib/filter-chips';
 
@@ -205,6 +206,26 @@ export function RegistryFilters({
                     onChange({ ...query, page: 1, responsibleEngineerIds })
                   }
                 />
+                <label className="flex min-h-11 items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={query.unmatchedEngineers}
+                    onCheckedChange={(checked) =>
+                      onChange({ ...query, page: 1, unmatchedEngineers: checked === true })
+                    }
+                    aria-label="Инженеры не сопоставлены"
+                  />
+                  Инженеры не сопоставлены
+                </label>
+                <label className="flex min-h-11 items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={query.importedOnly}
+                    onCheckedChange={(checked) =>
+                      onChange({ ...query, page: 1, importedOnly: checked === true })
+                    }
+                    aria-label="Импортированные"
+                  />
+                  Импортированные
+                </label>
               </section>
               <section className="grid gap-3">
                 <h3 className="text-sm font-semibold">Сроки</h3>

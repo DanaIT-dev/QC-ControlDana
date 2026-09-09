@@ -109,6 +109,20 @@ export function buildRegistryFilterChips(
       options?.responsibleEngineers ?? [],
       { responsibleEngineerIds: [] },
     ),
+    query.unmatchedEngineers
+      ? {
+          id: 'unmatchedEngineers',
+          label: 'Инженеры не сопоставлены',
+          onRemoveQuery: { unmatchedEngineers: false },
+        }
+      : null,
+    query.importedOnly
+      ? {
+          id: 'importedOnly',
+          label: 'Импортированные',
+          onRemoveQuery: { importedOnly: false },
+        }
+      : null,
     chipForRange(
       'plannedDeadline',
       'Плановый срок',

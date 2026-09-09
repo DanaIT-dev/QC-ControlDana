@@ -1,6 +1,6 @@
 'use client';
 
-import { canAccessReferenceKind } from '@sgr-registry/domain';
+import { canAccessReferenceKind, formatPersonShort } from '@sgr-registry/domain';
 import type { UserRole } from '@sgr-registry/contracts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
@@ -8,6 +8,7 @@ import { useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { ConflictDialog } from '@/components/conflict-dialog';
 import { DirectoryCombobox } from '@/components/directory-combobox';
+import { personOption } from '@/lib/lookups';
 import { EditPropertyObjectDialog } from '@/components/edit-property-object-dialog';
 import { PageHeader } from '@/components/page-header';
 import { EmptyState, ErrorState, TableSkeleton } from '@/components/states';
@@ -139,14 +140,13 @@ export function ReferenceDataView({
         throw new Error('lookups');
       }
       return (await response.json()) as {
-        responsibleEngineers: Array<{ id: string; fullName: string; email?: string }>;
+        responsibleEngineers: Array<{ id: string; fullName: string }>;
       };
     },
   });
-  const engineerOptions = (lookups.data?.responsibleEngineers ?? []).map((engineer) => ({
-    id: engineer.id,
-    label: engineer.fullName,
-  }));
+  const engineerOptions = (lookups.data?.responsibleEngineers ?? []).map((engineer) =>
+    personOption(engineer),
+  );
   const items = listQuery.data?.items ?? [];
   const showAddress = tab === 'property-objects' || tab === 'organizations';
   const openedFromQuery = useRef<string | null>(null);
@@ -785,7 +785,25 @@ function engineerNames(item: Record<string, unknown>): string {
     return '—';
   }
   const names = rows
-    .map((row) => (row && typeof row === 'object' && 'fullName' in row ? String(row.fullName) : ''))
+    .map((row) =>
+      row && typeof row === 'object' && 'fullName' in row
+        ? formatPersonShort(
+            typeof row.lastName === 'string' &&
+              typeof row.firstName === 'string' &&
+              row.lastName &&
+              row.firstName
+              ? {
+                  lastName: row.lastName,
+                  firstName: row.firstName,
+                  middleName:
+                    typeof row.middleName === 'string' && row.middleName.trim()
+                      ? row.middleName
+                      : null,
+                }
+              : String(row.fullName),
+          )
+        : '',
+    )
     .filter(Boolean);
   return names.length > 0 ? names.join(', ') : '—';
 }

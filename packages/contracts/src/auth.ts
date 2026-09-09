@@ -12,6 +12,9 @@ export type LoginRequest = z.infer<typeof loginRequestSchema>;
 
 export interface SafeUserProfile {
   id: string;
+  lastName?: string;
+  firstName?: string;
+  middleName?: string | null;
   fullName: string;
   email: string;
   role: UserRole;

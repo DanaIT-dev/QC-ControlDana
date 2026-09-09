@@ -55,6 +55,9 @@ export type ObjectsResponsibleAccountStatus = 'EMPTY' | 'LINKED' | 'UNRESOLVED' 
 export type ObjectsResponsibleEngineer =
   | {
       id: string;
+      lastName?: string;
+      firstName?: string;
+      middleName?: string | null;
       fullName: string;
       status: 'ACTIVE' | 'ARCHIVED';
       linked: true;
@@ -86,5 +89,11 @@ export interface ObjectsDirectoryResponse {
   responsibleEngineerOptions: string[];
   canCreate: boolean;
   canEdit: boolean;
-  createEngineerOptions: Array<{ id: string; fullName: string }>;
+  createEngineerOptions: Array<{
+    id: string;
+    lastName?: string;
+    firstName?: string;
+    middleName?: string | null;
+    fullName: string;
+  }>;
 }

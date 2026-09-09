@@ -2,7 +2,7 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ActChatMentionCandidateDto, ActChatMessageDto } from '@sgr-registry/contracts';
-import { splitChatBody } from '@sgr-registry/domain';
+import { formatPersonShort, splitChatBody } from '@sgr-registry/domain';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError } from '@/lib/command-api';
 import { fetchActChat, fetchActChatMentionCandidates, postActChatMessage } from '@/lib/chat-api';
@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
+import { PersonName } from '@/components/person-name';
 import { cn } from '@/lib/utils';
 
 const POLL_MS = 8_000;
@@ -279,7 +280,13 @@ export function ActDiscussion({
           {messages.map((message) => (
             <li key={message.id} className="grid min-w-0 max-w-full gap-1 overflow-hidden">
               <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm">
-                <span className="min-w-0 font-medium break-words">{message.author.fullName}</span>
+                <PersonName
+                  lastName={message.author.lastName}
+                  firstName={message.author.firstName}
+                  middleName={message.author.middleName}
+                  fullName={message.author.fullName}
+                  className="min-w-0 font-medium"
+                />
                 <span className="text-xs text-muted-foreground">{message.author.roleLabel}</span>
                 <time className="text-xs text-muted-foreground" dateTime={message.createdAt}>
                   {formatTimestamp(message.createdAt)}
@@ -374,6 +381,7 @@ export function ActDiscussion({
                     <button
                       type="button"
                       role="option"
+                      aria-label={candidate.fullName}
                       aria-selected={index === highlight}
                       className={cn(
                         'flex min-h-11 w-full min-w-0 items-center justify-between gap-2 px-3 py-2 text-left text-sm',
@@ -382,7 +390,17 @@ export function ActDiscussion({
                       onMouseDown={(event) => event.preventDefault()}
                       onClick={() => insertMention(candidate)}
                     >
-                      <span className="min-w-0 break-words">{candidate.fullName}</span>
+                      <span className="min-w-0 break-words" title={candidate.fullName}>
+                        {formatPersonShort(
+                          candidate.lastName && candidate.firstName
+                            ? {
+                                lastName: candidate.lastName,
+                                firstName: candidate.firstName,
+                                middleName: candidate.middleName ?? null,
+                              }
+                            : candidate.fullName,
+                        )}
+                      </span>
                       <span className="shrink-0 text-xs text-muted-foreground">
                         {candidate.roleLabel}
                       </span>

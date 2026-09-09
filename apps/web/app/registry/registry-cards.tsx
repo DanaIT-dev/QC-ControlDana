@@ -7,6 +7,7 @@ import { ProposalValue, proposalSlotOf } from '@/components/proposal-value';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { formatCalendarDate } from '../../lib/registry-url';
+import { PersonName } from '@/components/person-name';
 import { cn } from '@/lib/utils';
 
 export function RegistryCards({
@@ -33,7 +34,7 @@ export function RegistryCards({
                 {row.formLabel} · {row.actNumber}
               </p>
               <h3 className="text-base font-semibold">{row.objectName}</h3>
-              <p className="text-sm">{row.location}</p>
+              <p className="text-sm">{row.location ?? '—'}</p>
               <p className="text-sm">{row.defectTypeName}</p>
               <StatusBadge
                 status={displayedRegistryStatus(row).status}
@@ -43,9 +44,22 @@ export function RegistryCards({
                 Эффективный срок: {formatCalendarDate(row.effectiveDeadline)}
               </p>
               <DeadlineBadge state={row.deadlineState} label={row.deadlineStateLabel} />
-              <p className="text-sm text-muted-foreground">
-                Инженеры: {row.responsibleEngineers.map((item) => item.fullName).join(', ') || '—'}
-              </p>
+              <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 text-sm text-muted-foreground">
+                <span className="shrink-0">Инженеры:</span>
+                {row.responsibleEngineers.length
+                  ? row.responsibleEngineers.map((item, index) => (
+                      <PersonName
+                        key={`${item.id ?? item.referenceId ?? item.fullName}-${index}`}
+                        lastName={item.lastName}
+                        firstName={item.firstName}
+                        middleName={item.middleName}
+                        fullName={item.fullName}
+                        unmatched={item.unmatched}
+                        sourceNameRaw={item.sourceNameRaw}
+                      />
+                    ))
+                  : '—'}
+              </div>
               <p className="text-sm text-muted-foreground">
                 Виновные: {row.liableOrganizations.map((item) => item.name).join(', ') || '—'}
               </p>

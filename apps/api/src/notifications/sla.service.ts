@@ -12,6 +12,7 @@ import {
   parseSlaListQuery,
   reachedEscalationThresholds,
   slaStateOf,
+  formatPersonShort,
 } from '@sgr-registry/domain';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { PrismaService } from '../auth/prisma.tokens';
@@ -85,7 +86,17 @@ export class SlaQueryService {
                 },
               },
               defectType: { select: { name: true } },
-              responsibleEngineers: { select: { user: { select: { fullName: true } } } },
+              responsibleEngineers: {
+                select: {
+                  user: {
+                    select: { lastName: true, firstName: true, middleName: true, fullName: true },
+                  },
+                },
+              },
+              importedEngineerReferences: {
+                where: { resolutionStatus: 'UNMATCHED' },
+                select: { sourceNameRaw: true },
+              },
             },
           },
         },
@@ -107,12 +118,21 @@ export class SlaQueryService {
         return {
           defectItemId: row.defectItem.id,
           actId: row.defectItem.actId,
-          officialNumber: row.defectItem.act.officialNumber,
+          officialNumber: row.defectItem.act.officialNumber ?? 'Без номера',
           formCode: row.defectItem.act.formCode,
           objectName: row.defectItem.act.propertyObject.name,
-          location: row.defectItem.location,
+          location: row.defectItem.location ?? '—',
           defectTypeName: row.defectItem.defectType.name,
-          responsibleNames: row.defectItem.responsibleEngineers.map((item) => item.user.fullName),
+          responsibleNames: [
+            ...row.defectItem.responsibleEngineers.map((item) =>
+              formatPersonShort({
+                lastName: item.user.lastName,
+                firstName: item.user.firstName,
+                middleName: item.user.middleName,
+              }),
+            ),
+            ...row.defectItem.importedEngineerReferences.map((item) => item.sourceNameRaw),
+          ],
           kind: row.kind,
           deadline: row.deadline ? row.deadline.toISOString() : null,
           daysOffset: daysUntilDeadline({ deadline: row.deadline }),

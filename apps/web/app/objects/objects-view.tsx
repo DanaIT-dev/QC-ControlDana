@@ -7,6 +7,8 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { PersonName } from '@/components/person-name';
+import { personOption } from '@/lib/lookups';
 import { DirectoryCombobox } from '@/components/directory-combobox';
 import {
   DirectoryCreateDialogs,
@@ -115,7 +117,15 @@ export function ObjectsView({
       if (!response.ok) {
         throw new Error('users');
       }
-      return (await response.json()) as { items: Array<{ id: string; fullName: string }> };
+      return (await response.json()) as {
+        items: Array<{
+          id: string;
+          lastName?: string;
+          firstName?: string;
+          middleName?: string | null;
+          fullName: string;
+        }>;
+      };
     },
   });
   const [linkTarget, setLinkTarget] = useState<ObjectsDirectoryResponse['items'][number] | null>(
@@ -267,7 +277,7 @@ export function ObjectsView({
           </div>
         </>
       ) : null}
-      <div className="flex flex-col gap-3 rounded-[10px] border bg-card px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 rounded-md border bg-card px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-muted-foreground">
           {from}–{to} из {totalCount}
         </p>
@@ -280,7 +290,7 @@ export function ObjectsView({
                 navigate({ ...query, page: 1, pageSize: Number(value) as 20 | 50 })
               }
             >
-              <SelectTrigger aria-label="Строк на странице" className="w-[88px] min-h-11">
+              <SelectTrigger aria-label="Строк на странице" className="w-22 min-h-11">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -377,8 +387,8 @@ function ObjectsTable({
   onEdit: (item: ObjectsDirectoryResponse['items'][number]) => void;
 }) {
   return (
-    <div className="min-w-0 overflow-x-auto rounded-[10px] border bg-card">
-      <table className="w-full min-w-[720px] text-sm">
+    <div className="min-w-0 overflow-x-auto rounded-md border bg-card">
+      <table className="w-full min-w-180 text-sm">
         <thead className="sticky top-0 z-10 border-b bg-card text-left text-[12px] font-medium text-muted-foreground">
           <tr>
             <th className="px-3 py-3">Объект</th>
@@ -392,13 +402,13 @@ function ObjectsTable({
         <tbody>
           {data.items.map((item) => (
             <tr key={item.id} className="border-b align-top">
-              <td className="max-w-[22rem] px-3 py-3 font-medium break-words">
+              <td className="max-w-88 px-3 py-3 font-medium wrap-break-word">
                 <span className="inline-flex flex-wrap items-center gap-2">
                   {item.name}
                   {item.active === false ? <Badge variant="outline">Неактивен</Badge> : null}
                 </span>
               </td>
-              <td className="max-w-[16rem] px-3 py-3 break-words text-muted-foreground">
+              <td className="max-w-[16rem] px-3 py-3 wrap-break-word text-muted-foreground">
                 {emptyDash(item.address)}
               </td>
               <td className="px-3 py-3 whitespace-nowrap">
@@ -448,7 +458,7 @@ function ObjectsCards({
         <li key={item.id}>
           <Card className="shadow-none">
             <CardContent className="grid gap-2 p-4">
-              <h2 className="text-base font-semibold break-words">
+              <h2 className="text-base font-semibold wrap-break-word">
                 {item.name}
                 {item.active === false ? (
                   <Badge variant="outline" className="ml-2 align-middle">
@@ -456,7 +466,7 @@ function ObjectsCards({
                   </Badge>
                 ) : null}
               </h2>
-              <p className="text-sm break-words">{emptyDash(item.address)}</p>
+              <p className="text-sm wrap-break-word">{emptyDash(item.address)}</p>
               <p className="text-sm">
                 Принят в эксплуатацию: {formatCalendarDate(item.commissionedAt)}
               </p>
@@ -503,7 +513,15 @@ function ResponsibleCell({
   const notice = responsibleEngineerNotice(engineer);
   return (
     <div className="grid min-w-0 gap-0.5">
-      <p className="break-words">Ответственный: {engineer.fullName}</p>
+      <p className="flex min-w-0 items-baseline gap-x-1">
+        <span className="shrink-0">Ответственный:</span>
+        <PersonName
+          lastName={engineer.linked ? engineer.lastName : undefined}
+          firstName={engineer.linked ? engineer.firstName : undefined}
+          middleName={engineer.linked ? engineer.middleName : undefined}
+          fullName={engineer.fullName}
+        />
+      </p>
       {notice ? <p className="text-[12px] text-muted-foreground">{notice}</p> : null}
       {canManageLinks ? (
         <Button type="button" variant="outline" size="sm" className="mt-1 w-fit" onClick={onManage}>
@@ -522,7 +540,13 @@ function LinkEngineerDialog({
   onSaved,
 }: {
   object: ObjectsDirectoryResponse['items'][number];
-  engineers: Array<{ id: string; fullName: string }>;
+  engineers: Array<{
+    id: string;
+    lastName?: string;
+    firstName?: string;
+    middleName?: string | null;
+    fullName: string;
+  }>;
   csrfToken: string;
   onClose: () => void;
   onSaved: () => Promise<void>;
@@ -537,7 +561,7 @@ function LinkEngineerDialog({
         </DialogHeader>
         <DirectoryCombobox
           label="Учётная запись инженера"
-          options={engineers.map((item) => ({ id: item.id, label: item.fullName }))}
+          options={engineers.map((item) => personOption(item))}
           value={userId}
           onChange={setUserId}
           emptyText="Нет активных ответственных инженеров"
@@ -596,7 +620,13 @@ function CreateObjectDialog({
   onSaved,
 }: {
   csrfToken: string;
-  engineers: Array<{ id: string; fullName: string }>;
+  engineers: Array<{
+    id: string;
+    lastName?: string;
+    firstName?: string;
+    middleName?: string | null;
+    fullName: string;
+  }>;
   canRegisterEngineer: boolean;
   onClose: () => void;
   onSaved: () => Promise<void>;
@@ -689,7 +719,7 @@ function CreateObjectDialog({
             </div>
             <DirectoryCombobox
               label="Ответственный инженер"
-              options={engineerOptions.map((item) => ({ id: item.id, label: item.fullName }))}
+              options={engineerOptions.map((item) => personOption(item))}
               value={engineerId || 'none'}
               onChange={setEngineerId}
               noneOption={{ id: 'none', label: 'Не выбран' }}

@@ -78,6 +78,19 @@ export { startActViaDefiner } from './start-act';
 export type { StartedActRow } from './start-act';
 export { insertAuditLogRow, insertOutboxEventRow, upsertSlaClockRow } from './rls-writes';
 export { readObjectsWorkbook, assertLocalObjectsWorkbookPath } from './objects-xlsx';
+export { readLegacyActsWorkbook, assertLocalActsWorkbookPath } from './acts-xlsx';
+export {
+  importLegacyActs,
+  captureDataPreservationSnapshot,
+  rollbackLegacyActsImportBatch,
+} from './acts-import';
+export type {
+  ActsImportReport,
+  DataPreservationSnapshot,
+  ActsImportRollbackReport,
+} from './acts-import';
+export { assertActsImportDatabaseTarget, ActsImportTargetError } from './acts-import-target';
+export { createDevelopmentActsImportBackup } from './acts-import-backup';
 export { importPropertyObjects } from './objects-import';
 export type { ObjectsImportReport } from './objects-import';
 export { readDirectoriesWorkbook } from './directories-xlsx';
@@ -99,6 +112,10 @@ export {
   revokeEngineerObjectAccess,
 } from './directory-engineer-link';
 export { reconcileDirectoryEngineerLinks } from './reconcile-object-engineers';
+export {
+  reconcileImportedEngineerReferences,
+  resolveImportedEngineerReference,
+} from './reconcile-imported-engineers';
 export type { ReconcileDirectoryEngineerLinksResult } from './reconcile-object-engineers';
 export {
   assertObjectsImportDatabaseTarget,

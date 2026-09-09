@@ -9,7 +9,7 @@ import {
   upsertUserCredentials,
   type PrismaClient,
 } from '@sgr-registry/database';
-import { CSRF_HEADER_NAME, SESSION_COOKIE_NAME } from '@sgr-registry/domain';
+import { CSRF_HEADER_NAME, SESSION_COOKIE_NAME, personNameWriteFields } from '@sgr-registry/domain';
 import Redis from 'ioredis';
 import { AppModule } from '../../src/app.module';
 import { configureHttpApp } from '../../src/configure-http';
@@ -60,7 +60,7 @@ async function createUser(
   const passwordHash = await hashArgon2id(DEMO_PASSWORD, { memoryCost: 4096, timeCost: 1 });
   const user = await prisma.user.create({
     data: {
-      fullName: `Операции ${role}`,
+      ...personNameWriteFields(`Операции ${role}`),
       email,
       role,
       status: extras.status ?? 'ACTIVE',
@@ -71,6 +71,24 @@ async function createUser(
   await upsertUserCredentials(prisma, { userId: user.id, passwordHash });
   createdUserIds.push(user.id);
   return user;
+}
+
+async function ensureActiveSuperAdmin() {
+  const existing = await prisma.user.findFirst({
+    where: { role: 'SUPER_ADMIN', status: 'ACTIVE' },
+  });
+  if (!existing) {
+    return createUser('SUPER_ADMIN');
+  }
+  await prisma.user.update({
+    where: { id: existing.id },
+    data: { mustChangePassword: false },
+  });
+  await upsertUserCredentials(prisma, {
+    userId: existing.id,
+    passwordHash: await hashArgon2id(DEMO_PASSWORD, { memoryCost: 4096, timeCost: 1 }),
+  });
+  return existing;
 }
 
 async function login(email: string, password = DEMO_PASSWORD) {
@@ -1474,7 +1492,7 @@ describe('operations integration', () => {
     const responsible = await createUser('RESPONSIBLE_ENGINEER');
     const foreign = await createUser('RESPONSIBLE_ENGINEER');
     const contractor = await createUser('CONTRACTOR_ENGINEER');
-    const superAdmin = await createUser('SUPER_ADMIN');
+    const superAdmin = await ensureActiveSuperAdmin();
     const adminSession = await login(admin.email);
     const managerSession = await login(manager.email);
     const responsibleSession = await login(responsible.email);

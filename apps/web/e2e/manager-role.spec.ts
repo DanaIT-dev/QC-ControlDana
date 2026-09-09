@@ -125,7 +125,8 @@ test.describe('MANAGER role and profile editing', () => {
 
     await page.getByRole('button', { name: 'Добавить пользователя' }).click();
     const stamp = Date.now();
-    await page.getByLabel('ФИО').fill(`Е2Е Инженер ${stamp}`);
+    await page.getByLabel('Фамилия').fill('Тестов');
+    await page.getByLabel('Имя').fill('Инженер');
     await page.getByLabel('Электронная почта').fill(`e2e.manager.${stamp}@example.sgr.local`);
     await page.getByRole('combobox', { name: 'Роль' }).click();
     await expect(page.getByRole('option', { name: 'Руководитель', exact: true })).toHaveCount(0);
@@ -136,7 +137,7 @@ test.describe('MANAGER role and profile editing', () => {
     await page.getByRole('button', { name: 'Закрыть' }).click();
 
     await page.getByLabel('Поиск пользователей').fill(`e2e.manager.${stamp}@example.sgr.local`);
-    const row = page.getByRole('row', { name: new RegExp(`Е2Е Инженер ${stamp}`) });
+    const row = page.getByRole('row', { name: /Тестов Инженер/ });
     await expect(row).toBeVisible();
     await row.getByRole('button', { name: 'Действия' }).click();
     await page.getByRole('menuitem', { name: 'Редактировать' }).click();
@@ -145,7 +146,7 @@ test.describe('MANAGER role and profile editing', () => {
     await page.getByLabel('Отчество').fill('Иванович');
     await page.getByRole('button', { name: 'Сохранить' }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
-    await expect(page.getByRole('table').getByText('Сидоров Пётр Иванович')).toBeVisible();
+    await expect(page.getByRole('table').getByText('Сидоров П.И.')).toBeVisible();
 
     const updatedRow = page.getByRole('row', { name: /Сидоров Пётр Иванович/ });
     await updatedRow.getByRole('button', { name: 'Действия' }).click();
@@ -178,7 +179,7 @@ test.describe('MANAGER role and profile editing', () => {
       await login(page, ORG_MANAGER);
       await openUsers(page);
       await page.getByRole('button', { name: 'Добавить пользователя' }).click();
-      await expect(page.getByLabel('ФИО')).toBeVisible();
+      await expect(page.getByLabel('Фамилия')).toBeVisible();
       const overflow = await page.evaluate(
         () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
       );

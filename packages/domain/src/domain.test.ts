@@ -147,6 +147,23 @@ describe('Act status computation', () => {
       'NEW',
     );
   });
+
+  it('keeps IMPORTED_UNSPECIFIED until work is started', () => {
+    expect(
+      computeActStatus(
+        [{ status: 'IN_PROGRESS', active: true }],
+        { startedAt: null },
+        {
+          currentStatus: 'IMPORTED_UNSPECIFIED',
+        },
+      ),
+    ).toBe('IMPORTED_UNSPECIFIED');
+    expect(
+      computeActStatus([{ status: 'IN_PROGRESS', active: true }], started, {
+        currentStatus: 'IMPORTED_UNSPECIFIED',
+      }),
+    ).toBe('IN_PROGRESS');
+  });
 });
 
 describe('Proposal slots', () => {
@@ -493,6 +510,8 @@ describe('registry query parsing', () => {
     expect(parsed.pageSize).toBe(50);
     expect(parsed.sortBy).toBe('effectiveDeadline');
     expect(parsed.search).toBeNull();
+    expect(parsed.unmatchedEngineers).toBe(false);
+    expect(parsed.importedOnly).toBe(false);
     expect(() => parseRegistryListQuery({ pageSize: '30' })).toThrow(RegistryQueryError);
   });
 
@@ -519,6 +538,7 @@ describe('registry query parsing', () => {
     expect(roundTrip.pageSize).toBe(25);
     expect(roundTrip.search).toBe('Северный');
     expect(roundTrip.statuses).toEqual(['IN_PROGRESS']);
+    expect(parseRegistryListQuery({ importedOnly: 'true' }).importedOnly).toBe(true);
     expect(parseRegistryListQuery({ statuses: 'NEW' }).statuses).toEqual(['NEW']);
     expect(() => parseRegistryListQuery({ statuses: 'CANCELLED' })).toThrow(RegistryQueryError);
     expect(() => parseRegistryListQuery({ pageSize: '50abc' })).toThrow(RegistryQueryError);

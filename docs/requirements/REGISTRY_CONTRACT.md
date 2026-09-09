@@ -21,7 +21,9 @@
 
 - `ADMIN`, `SGR_MANAGER`, `CONTRACTOR_ENGINEER` видят все активные неаннулированные `DefectItem`.
 - `RESPONSIBLE_ENGINEER` видит все строки актов, чей объект закреплён за ним через `PropertyObjectEngineer` (`unassignedAt IS NULL`). Назначение на `DefectItem` не ограничивает видимость.
-- Summary, `totalCount` и filter-options считаются только в этом scope.
+- Несопоставленная ссылка импорта (`ImportedEngineerReference`) не является назначением и не расширяет RLS-scope.
+- Summary, `totalCount`, `actCount` и filter-options считаются только в этом scope.
+- Фильтр `importedOnly` ограничивает строки актами с `importedAt IS NOT NULL`. Фильтр `unmatchedEngineers` — строками с `ImportedEngineerReference` в статусе `UNMATCHED`.
 - Прямой запрос чужого `Act`/`DefectItem` даёт такой же безопасный 404, как отсутствие записи.
 - Назначение объекта проверяется только по `User.id`, не по ФИО и не по email.
 

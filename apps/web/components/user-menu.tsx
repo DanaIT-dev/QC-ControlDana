@@ -1,6 +1,7 @@
 'use client';
 
 import type { SafeUserProfile } from '@sgr-registry/contracts';
+import { formatPersonShort } from '@sgr-registry/domain';
 import { LogOutIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -22,19 +23,28 @@ export function UserMenu({ user }: { user: SafeUserProfile }) {
         <Button
           type="button"
           variant="ghost"
-          className="h-9 min-h-9 max-w-[min(18rem,42vw)] shrink-0 gap-2 overflow-hidden px-2 whitespace-nowrap 2xl:max-w-[22rem]"
+          className="h-9 min-h-9 max-w-[min(18rem,42vw)] shrink-0 gap-2 overflow-hidden px-2 whitespace-nowrap 2xl:max-w-88"
           aria-label="Меню пользователя"
         >
           <UserAvatar name={user.fullName} />
-          <span className="flex min-w-0 items-center gap-2">
+          <span className="flex min-w-0 items-baseline gap-2">
             <span
-              className="min-w-0 max-w-[7.5rem] truncate text-sm font-medium 2xl:max-w-[12rem]"
+              className="min-w-0 max-w-30 truncate text-sm leading-5 font-medium 2xl:max-w-48"
               title={user.fullName}
+              aria-label={user.fullName}
             >
-              {user.fullName}
+              {formatPersonShort(
+                user.lastName && user.firstName
+                  ? {
+                      lastName: user.lastName,
+                      firstName: user.firstName,
+                      middleName: user.middleName ?? null,
+                    }
+                  : user.fullName,
+              )}
             </span>
             <span
-              className="min-w-0 max-w-[7rem] truncate text-[12px] leading-none font-normal text-muted-foreground 2xl:max-w-[11rem]"
+              className="min-w-0 max-w-28 truncate text-[12px] leading-5 font-normal text-muted-foreground 2xl:max-w-44"
               title={user.roleLabel}
             >
               {user.roleLabel}
@@ -45,7 +55,7 @@ export function UserMenu({ user }: { user: SafeUserProfile }) {
       <DropdownMenuContent align="end" className="min-w-56">
         <DropdownMenuLabel className="font-normal">
           <div className="grid gap-0.5">
-            <span className="text-sm font-medium break-words">{user.fullName}</span>
+            <span className="text-sm font-medium wrap-break-word">{user.fullName}</span>
             <span className="text-xs break-all text-muted-foreground">{user.email}</span>
             <span className="text-xs whitespace-nowrap text-muted-foreground">
               {user.roleLabel}
@@ -69,8 +79,20 @@ export function MobileUserBlock({ user }: { user: SafeUserProfile }) {
       <div className="mb-3 flex items-center gap-3">
         <UserAvatar name={user.fullName} />
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium" title={user.fullName}>
-            {user.fullName}
+          <p
+            className="truncate text-sm font-medium"
+            title={user.fullName}
+            aria-label={user.fullName}
+          >
+            {formatPersonShort(
+              user.lastName && user.firstName
+                ? {
+                    lastName: user.lastName,
+                    firstName: user.firstName,
+                    middleName: user.middleName ?? null,
+                  }
+                : user.fullName,
+            )}
           </p>
           <p className="truncate text-xs text-muted-foreground" title={user.roleLabel}>
             {user.roleLabel}

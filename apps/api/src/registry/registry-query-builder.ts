@@ -3,19 +3,59 @@ import type { DeadlineState, RegistryStatusFilter } from '@sgr-registry/contract
 import {
   addCalendarDays,
   calendarDateToUtcNoon,
+  foldPersonSearchKey,
   startOfZonedDayUtc,
   type RegistryListQuery,
   type RegistrySortField,
 } from '@sgr-registry/domain';
 import type { RegistryAccessScope } from './registry-access-scope';
 
-export function searchWhere(search: string | null): Prisma.DefectItemWhereInput | undefined {
+function likeNeedle(search: string): string {
+  return `%${foldPersonSearchKey(search).replace(/[\\%_]/g, '\\$&')}%`;
+}
+
+export async function personSearchDefectItemIds(
+  prisma: { $queryRaw: Prisma.TransactionClient['$queryRaw'] },
+  search: string,
+): Promise<string[]> {
+  const needle = likeNeedle(search);
+  if (needle === '%%') {
+    return [];
+  }
+  const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+    SELECT d.id
+    FROM public.defect_items d
+    WHERE EXISTS (
+      SELECT 1
+      FROM public.defect_item_engineers e
+      JOIN public.users u ON u.id = e."userId"
+      WHERE e."defectItemId" = d.id
+        AND public.sgr_person_search_blob(u."fullName") LIKE ${needle} ESCAPE '\\'
+    )
+    OR EXISTS (
+      SELECT 1
+      FROM public.imported_engineer_references r
+      WHERE r."defectItemId" = d.id
+        AND public.sgr_person_search_blob(r."sourceNameRaw") LIKE ${needle} ESCAPE '\\'
+    )
+    LIMIT 5000
+  `;
+  return rows.map((row) => row.id);
+}
+
+export function searchWhere(
+  search: string | null,
+  personDefectIds: string[] = [],
+): Prisma.DefectItemWhereInput | undefined {
   if (!search) {
     return undefined;
   }
+  const personIds =
+    personDefectIds.length > 0 ? personDefectIds : ['00000000-0000-4000-8000-000000000000'];
   return {
     OR: [
       { act: { officialNumber: { contains: search, mode: 'insensitive' } } },
+      { act: { sourceActNumberRaw: { contains: search, mode: 'insensitive' } } },
       { location: { contains: search, mode: 'insensitive' } },
       { act: { propertyObject: { name: { contains: search, mode: 'insensitive' } } } },
       { act: { propertyObject: { address: { contains: search, mode: 'insensitive' } } } },
@@ -25,6 +65,17 @@ export function searchWhere(search: string | null): Prisma.DefectItemWhereInput 
           some: { organization: { officialName: { contains: search, mode: 'insensitive' } } },
         },
       },
+      {
+        responsibleEngineers: {
+          some: { user: { fullName: { contains: search, mode: 'insensitive' } } },
+        },
+      },
+      {
+        importedEngineerReferences: {
+          some: { sourceNameRaw: { contains: search, mode: 'insensitive' } },
+        },
+      },
+      { id: { in: personIds } },
     ],
   };
 }
@@ -82,9 +133,10 @@ export function registryListWhere(
   query: RegistryListQuery,
   todayIso: string,
   warningDays: number,
+  personSearchDefectIds: string[] = [],
 ): Prisma.DefectItemWhereInput {
   const parts: Prisma.DefectItemWhereInput[] = [scope.defectItemWhere()];
-  const search = searchWhere(query.search);
+  const search = searchWhere(query.search, personSearchDefectIds);
   if (search) {
     parts.push(search);
   }
@@ -115,6 +167,14 @@ export function registryListWhere(
       responsibleEngineers: { some: { userId: { in: query.responsibleEngineerIds } } },
     });
   }
+  if (query.unmatchedEngineers) {
+    parts.push({
+      importedEngineerReferences: { some: { resolutionStatus: 'UNMATCHED' } },
+    });
+  }
+  if (query.importedOnly) {
+    parts.push({ act: { importedAt: { not: null } } });
+  }
   const planned = dateRange(query.plannedDeadlineFrom, query.plannedDeadlineTo);
   if (planned) {
     parts.push({ plannedDeadline: planned });
@@ -140,6 +200,9 @@ export function registryStatusFilterWhere(
 ): Prisma.DefectItemWhereInput {
   if (status === 'NEW') {
     return { act: { status: 'NEW' } };
+  }
+  if (status === 'IMPORTED_UNSPECIFIED') {
+    return { act: { status: 'IMPORTED_UNSPECIFIED' } };
   }
   if (status === 'IN_PROGRESS') {
     return { status: 'IN_PROGRESS', act: { status: 'IN_PROGRESS' } };

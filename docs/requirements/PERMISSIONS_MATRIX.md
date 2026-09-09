@@ -53,6 +53,8 @@
 
 `SUPER_ADMIN` не имеет `START_ACT`: кнопка «Взять в работу» скрыта, `POST /api/acts/:actId/start` → `403`. Скрытие кнопки не является единственной защитой: capability, `sgr_start_act` и RLS запрещают мутацию.
 
+Ручное сопоставление импортированного инженера (`POST /api/registry/imported-engineer-references/:id/resolve`) доступно `ADMIN`, `MANAGER` и `SGR_MANAGER`. `SUPER_ADMIN` видит несопоставленные ФИО, но остаётся read-only. Несопоставленная ссылка не выдаёт доступ к акту.
+
 Capability без доступа к строке недостаточна: RESPONSIBLE с COMPLETE_DEFECT получает безопасный `404` на акт/дефект чужого объекта. Отсутствие capability → `403`. Завершённый дефект не редактирует RESPONSIBLE; ADMIN и SGR_MANAGER — только с подтверждением и причиной. Исполнить дефект, пока акт в статусе `NEW`, нельзя (`409`).
 
 PostgreSQL RLS дублирует эту матрицу как второй уровень (объектный scope, слот A vs B/C, запрет истории подрядчику, неизменяемый AuditLog, SELECT-only SUPER_ADMIN). Хеш пароля не входит в user directory и недоступен `ADMIN`/`SUPER_ADMIN`. Подробности: [RLS_POLICY_MATRIX.md](../security/RLS_POLICY_MATRIX.md).

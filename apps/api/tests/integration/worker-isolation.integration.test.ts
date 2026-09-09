@@ -23,6 +23,7 @@ import {
   resolveWorkerHeartbeatKey,
   serializeWorkerHeartbeat,
   WORKER_HEARTBEAT_TTL_SECONDS,
+  personNameWriteFields,
 } from '@sgr-registry/domain';
 import { NOTIFICATION_QUEUE } from '@sgr-registry/jobs';
 import Redis from 'ioredis';
@@ -72,7 +73,7 @@ async function createUser(role: UserRole) {
   const passwordHash = await hashArgon2id(DEMO_PASSWORD, { memoryCost: 4096, timeCost: 1 });
   const user = await prisma.user.create({
     data: {
-      fullName: `Worker ${role}`,
+      ...personNameWriteFields(`Worker ${role}`),
       email,
       role,
       status: 'ACTIVE',

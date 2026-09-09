@@ -2,7 +2,7 @@ import type { Prisma } from '@prisma/client';
 
 export type StartedActRow = {
   id: string;
-  status: 'NEW' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+  status: 'NEW' | 'IMPORTED_UNSPECIFIED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
   startedAt: Date | null;
   startedById: string | null;
   startedByName: string | null;

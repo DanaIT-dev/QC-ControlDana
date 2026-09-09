@@ -1,3 +1,5 @@
+import { formatPersonShort } from '@sgr-registry/domain';
+
 export interface OperationLookups {
   propertyObjects: Array<{
     id: string;
@@ -9,7 +11,13 @@ export interface OperationLookups {
   customers: Array<{ id: string; officialName: string }>;
   defectTypes: Array<{ id: string; name: string }>;
   workTypes: Array<{ id: string; name: string }>;
-  responsibleEngineers: Array<{ id: string; fullName: string }>;
+  responsibleEngineers: Array<{
+    id: string;
+    fullName: string;
+    lastName?: string;
+    firstName?: string;
+    middleName?: string | null;
+  }>;
   liableOrganizations: Array<{ id: string; officialName: string }>;
   alternativeContractors?: Array<{ id: string; officialName: string }>;
   canCreate?: {
@@ -18,6 +26,28 @@ export interface OperationLookups {
     workType: boolean;
     defectType: boolean;
     responsibleEngineer: boolean;
+  };
+}
+
+export function personOption(person: {
+  id: string;
+  fullName: string;
+  lastName?: string;
+  firstName?: string;
+  middleName?: string | null;
+}) {
+  return {
+    id: person.id,
+    label: formatPersonShort(
+      person.lastName && person.firstName
+        ? {
+            lastName: person.lastName,
+            firstName: person.firstName,
+            middleName: person.middleName ?? null,
+          }
+        : person.fullName,
+    ),
+    title: person.fullName,
   };
 }
 
@@ -30,5 +60,5 @@ export function engineersForObject(lookups: OperationLookups | undefined, object
   );
   return lookups.responsibleEngineers
     .filter((engineer) => allowed.has(engineer.id))
-    .map((engineer) => ({ id: engineer.id, label: engineer.fullName }));
+    .map((engineer) => personOption(engineer));
 }

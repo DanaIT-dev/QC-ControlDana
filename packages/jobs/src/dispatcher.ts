@@ -421,7 +421,10 @@ export class NotificationDispatcher {
         const items = await this.prisma.defectItem.findMany({
           where: {
             status: 'IN_PROGRESS',
-            act: { status: { not: 'CANCELLED' } },
+            act: {
+              status: { notIn: ['CANCELLED', 'IMPORTED_UNSPECIFIED'] },
+              startedAt: { not: null },
+            },
             ...(cursor ? { id: { gt: cursor } } : {}),
           },
           orderBy: { id: 'asc' },

@@ -34,6 +34,9 @@ export type ActChatMentionCandidatesQuery = z.infer<typeof actChatMentionCandida
 
 export interface ActChatAuthorDto {
   id: string;
+  lastName?: string;
+  firstName?: string;
+  middleName?: string | null;
   fullName: string;
   role: (typeof USER_ROLES)[number];
   roleLabel: string;
@@ -64,6 +67,9 @@ export interface ActChatListResponse {
 
 export interface ActChatMentionCandidateDto {
   id: string;
+  lastName?: string;
+  firstName?: string;
+  middleName?: string | null;
   fullName: string;
   role: (typeof USER_ROLES)[number];
   roleLabel: string;

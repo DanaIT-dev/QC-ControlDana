@@ -25,6 +25,7 @@
     "roles:provision": "tsx scripts/provision-roles.ts",
     "super-admin:provision": "tsx scripts/provision-super-admin.ts",
     "objects:import": "tsx scripts/import-property-objects.ts",
+    "acts:import": "tsx scripts/import-legacy-acts.ts",
     "directories:import": "tsx scripts/import-directories.ts",
     "objects:reconcile-engineers": "tsx scripts/reconcile-object-engineers.ts",
     "isolation:verify": "tsx scripts/verify-isolation-hardening.ts",

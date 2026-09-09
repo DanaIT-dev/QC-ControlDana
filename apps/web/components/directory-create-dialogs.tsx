@@ -3,6 +3,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { PersonNameFields } from '@/components/person-name-fields';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -18,7 +19,11 @@ import { ApiError, commandFetch } from '@/lib/command-api';
 import { createPropertyObject } from '@/lib/objects-api';
 import { queryKeys } from '@/lib/query-keys';
 import type { OrganizationRole } from '@sgr-registry/contracts';
-import { organizationCreateToast } from '@sgr-registry/domain';
+import {
+  organizationCreateToast,
+  parsePersonNameForForm,
+  parsePersonNameInput,
+} from '@sgr-registry/domain';
 
 export type DirectoryKind =
   'property-objects' | 'organizations' | 'work-types' | 'defect-types' | 'responsible-engineer';
@@ -499,7 +504,10 @@ function RegisterEngineerDialog({
   onCreated: (created: { id: string; label: string }) => void;
 }) {
   const queryClient = useQueryClient();
-  const [fullName, setFullName] = useState(initialName);
+  const parsed = parsePersonNameForForm(initialName);
+  const [lastName, setLastName] = useState(parsed.lastName);
+  const [firstName, setFirstName] = useState(parsed.firstName);
+  const [middleName, setMiddleName] = useState(parsed.middleName ?? '');
   const [email, setEmail] = useState('');
   const [pending, setPending] = useState(false);
   const [temporaryPassword, setTemporaryPassword] = useState<string | null>(null);
@@ -511,6 +519,11 @@ function RegisterEngineerDialog({
     }
     setPending(true);
     try {
+      const parts = parsePersonNameInput({
+        lastName,
+        firstName,
+        middleName: middleName.trim() === '' ? null : middleName,
+      });
       const response = await commandFetch<{
         user: { id: string; fullName: string };
         temporaryPassword: string;
@@ -518,7 +531,9 @@ function RegisterEngineerDialog({
         method: 'POST',
         csrfToken,
         body: {
-          fullName,
+          lastName: parts.lastName,
+          firstName: parts.firstName,
+          middleName: parts.middleName,
           email,
           role: 'RESPONSIBLE_ENGINEER',
         },
@@ -587,16 +602,16 @@ function RegisterEngineerDialog({
           <DialogHeader>
             <DialogTitle>Зарегистрировать ответственного инженера</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-1.5">
-            <Label htmlFor="quick-engineer-name">ФИО</Label>
-            <Input
-              id="quick-engineer-name"
-              value={fullName}
-              onChange={(event) => setFullName(event.target.value)}
-              required
-              className="min-h-11"
-            />
-          </div>
+          <PersonNameFields
+            idPrefix="quick-engineer"
+            lastName={lastName}
+            firstName={firstName}
+            middleName={middleName}
+            onLastNameChange={setLastName}
+            onFirstNameChange={setFirstName}
+            onMiddleNameChange={setMiddleName}
+            disabled={pending}
+          />
           <div className="grid gap-1.5">
             <Label htmlFor="quick-engineer-email">Электронная почта</Label>
             <Input
@@ -612,7 +627,10 @@ function RegisterEngineerDialog({
             <Button type="button" variant="outline" onClick={onClose} disabled={pending}>
               Отмена
             </Button>
-            <Button type="submit" disabled={pending || !fullName.trim() || !email.trim()}>
+            <Button
+              type="submit"
+              disabled={pending || !lastName.trim() || !firstName.trim() || !email.trim()}
+            >
               {pending ? 'Создание…' : 'Создать'}
             </Button>
           </DialogFooter>

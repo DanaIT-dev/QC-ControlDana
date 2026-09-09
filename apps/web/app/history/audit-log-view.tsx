@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { PageHeader } from '@/components/page-header';
+import { PersonName } from '@/components/person-name';
 import { EmptyState, ErrorState, TableSkeleton } from '@/components/states';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -158,10 +159,10 @@ export function AuditLogView() {
         className={
           list.isLoading || items.length === 0
             ? 'hidden'
-            : 'hidden min-w-0 overflow-x-auto rounded-[10px] border bg-card md:block'
+            : 'hidden min-w-0 overflow-x-auto rounded-md border bg-card md:block'
         }
       >
-        <table className="data-table w-full min-w-[720px] text-sm">
+        <table className="data-table w-full min-w-180 text-sm">
           <thead>
             <tr className="border-b bg-background text-left text-[12px] font-medium text-muted-foreground">
               <th className="px-3 py-3">Время</th>
@@ -185,7 +186,9 @@ export function AuditLogView() {
                     {formatTimestamp(item.occurredAt)}
                   </td>
                   <td className="px-3 py-3">{AUDIT_ACTION_LABELS[item.action] ?? item.action}</td>
-                  <td className="px-3 py-3">{item.actorName ?? '—'}</td>
+                  <td className="px-3 py-3">
+                    {item.actorName ? <PersonName fullName={item.actorName} /> : '—'}
+                  </td>
                   <td className="px-3 py-3">
                     <Badge variant="secondary">{item.entityType}</Badge>
                   </td>
@@ -219,7 +222,9 @@ export function AuditLogView() {
                   {AUDIT_ACTION_LABELS[item.action] ?? item.action}
                 </p>
                 <p className="text-sm text-muted-foreground">{formatTimestamp(item.occurredAt)}</p>
-                <p className="text-sm">{item.actorName ?? '—'}</p>
+                <p className="text-sm">
+                  {item.actorName ? <PersonName fullName={item.actorName} /> : '—'}
+                </p>
                 <Badge variant="secondary" className="w-fit">
                   {item.entityType}
                 </Badge>

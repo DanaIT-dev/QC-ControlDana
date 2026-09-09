@@ -1,3 +1,5 @@
+import { formatPersonShort } from './person-name';
+
 export const ENGINEER_MATCH_RESULTS = ['MATCHED', 'UNMATCHED', 'AMBIGUOUS', 'INVALID'] as const;
 export type EngineerMatchResult = (typeof ENGINEER_MATCH_RESULTS)[number];
 
@@ -32,16 +34,39 @@ export function foldEngineerKey(value: string): string {
 }
 
 export function formatAccountAsInitials(fullName: string): string | null {
-  const parsed = parseAccountPerson(fullName);
-  if (!parsed?.givenName) {
+  const short = formatPersonShort(fullName);
+  return short.length > 0 ? short : null;
+}
+
+export function parseSourceSurnameInitials(
+  value: string,
+): { surname: string; firstInitial: string; patronymicInitial: string | null } | null {
+  const folded = foldEngineerKey(value);
+  const separator = folded.indexOf(' ');
+  if (separator <= 0) {
     return null;
   }
-  const first = parsed.givenName.charAt(0).toLocaleUpperCase('ru');
-  if (!parsed.patronymic) {
-    return `${parsed.surnameDisplay} ${first}.`;
+  const surname = folded.slice(0, separator);
+  const tail = folded
+    .slice(separator + 1)
+    .replaceAll('.', '')
+    .replaceAll(' ', '');
+  if (!INITIALS_LETTERS.test(tail)) {
+    return null;
   }
-  const patronymic = parsed.patronymic.charAt(0).toLocaleUpperCase('ru');
-  return `${parsed.surnameDisplay} ${first}.${patronymic}.`;
+  return {
+    surname,
+    firstInitial: tail.charAt(0),
+    patronymicInitial: tail.charAt(1) || null,
+  };
+}
+
+export function importedEngineerMatchKey(sourceName: string): string {
+  const parsed = parseSourceSurnameInitials(sourceName);
+  if (parsed) {
+    return `${parsed.surname}|${parsed.firstInitial}|${parsed.patronymicInitial ?? ''}`;
+  }
+  return foldEngineerKey(sourceName);
 }
 
 export function accountMatchesSource(accountFullName: string, sourceName: string): boolean {
@@ -59,8 +84,13 @@ export function accountMatchesSource(accountFullName: string, sourceName: string
   if (source.firstInitial !== account.firstInitial) {
     return false;
   }
-  if (source.patronymicInitial && source.patronymicInitial !== account.patronymicInitial) {
-    return false;
+  if (source.patronymicInitial) {
+    if (!account.patronymicInitial) {
+      return false;
+    }
+    if (source.patronymicInitial !== account.patronymicInitial) {
+      return false;
+    }
   }
   return true;
 }
@@ -90,29 +120,6 @@ export function classifyEngineerMatch<T extends EngineerMatchCandidate>(
 
 export function isPlausibleSourceName(sourceName: string): boolean {
   return parseSourceSurnameInitials(sourceName) !== null || parseAccountPerson(sourceName) !== null;
-}
-
-function parseSourceSurnameInitials(
-  value: string,
-): { surname: string; firstInitial: string; patronymicInitial: string | null } | null {
-  const folded = foldEngineerKey(value);
-  const separator = folded.indexOf(' ');
-  if (separator <= 0) {
-    return null;
-  }
-  const surname = folded.slice(0, separator);
-  const tail = folded
-    .slice(separator + 1)
-    .replaceAll('.', '')
-    .replaceAll(' ', '');
-  if (!INITIALS_LETTERS.test(tail)) {
-    return null;
-  }
-  return {
-    surname,
-    firstInitial: tail.charAt(0),
-    patronymicInitial: tail.charAt(1) || null,
-  };
 }
 
 function parseAccountPerson(value: string): {

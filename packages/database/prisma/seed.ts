@@ -12,6 +12,7 @@ import {
   normalizeUnp,
   assertPasswordPolicy,
   APPROVED_DEFECT_TYPES_V1,
+  personNameWriteFields,
 } from '@sgr-registry/domain';
 import argon2 from 'argon2';
 import {
@@ -216,7 +217,7 @@ async function seed(): Promise<void> {
           update: { status: 'ARCHIVED', archivedAt: new Date('2026-01-15T12:00:00.000Z') },
           create: {
             id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-            fullName: 'Архивный Пользователь',
+            ...personNameWriteFields('Архивный Пользователь'),
             email: 'archived.user@example.sgr.local',
             role: 'RESPONSIBLE_ENGINEER',
             status: 'ARCHIVED',
@@ -875,7 +876,7 @@ async function ensureNumberedAct(
     cancellationReason?: string;
   },
 ) {
-  const existing = await tx.act.findUnique({ where: { officialNumber: input.officialNumber } });
+  const existing = await tx.act.findFirst({ where: { officialNumber: input.officialNumber } });
   if (existing) {
     return tx.act.update({
       where: { id: existing.id },
@@ -1251,7 +1252,7 @@ async function upsertDemoUser(
     where: { email },
     update: { mustChangePassword: false },
     create: {
-      fullName: input.fullName,
+      ...personNameWriteFields(input.fullName),
       email,
       phone: input.phone,
       role: input.role,

@@ -11,7 +11,7 @@ import {
   DuplicateValueError,
   LastAdminRevokeError,
   normalizeUserEmail,
-  normalizeUserFullName,
+  resolveOfficialFullName,
   roleLabel,
   StaleWriteError,
 } from '@sgr-registry/domain';
@@ -133,7 +133,12 @@ export class SuperAdminService {
 
   async createPendingUser(actor: AuthenticatedUser, body: unknown, request: FastifyRequest) {
     const input = parseCommandBody(createUnassignedUserRequestSchema, body);
-    const fullName = normalizeUserFullName(input.fullName);
+    const fullName = resolveOfficialFullName({
+      fullName: input.fullName,
+      lastName: input.lastName,
+      firstName: input.firstName,
+      middleName: input.middleName ?? null,
+    });
     const email = normalizeUserEmail(input.email);
     const temporaryPassword = generateTemporaryPassword(16, { email, fullName });
     const passwordHash = await this.hasher.hash(temporaryPassword, { email, fullName });

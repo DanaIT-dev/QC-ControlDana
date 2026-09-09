@@ -153,7 +153,7 @@ export class OperationsService {
             role: ASSIGNABLE_ENGINEER_ROLE,
             ...(includeInactive ? {} : { status: 'ACTIVE' }),
           },
-          select: { id: true, fullName: true },
+          select: { id: true, lastName: true, firstName: true, middleName: true, fullName: true },
           orderBy: { fullName: 'asc' },
         }),
       ]);
@@ -390,6 +390,7 @@ export class OperationsService {
           status: computeActStatus(
             items.map((row) => ({ status: row.status, active: true })),
             { startedAt: act.startedAt, cancelledAt: act.cancelledAt },
+            { currentStatus: act.status },
           ),
           version: { increment: 1 },
         },
@@ -1479,6 +1480,7 @@ export class OperationsService {
         status: computeActStatus(
           items.map((item) => ({ status: item.status, active: true })),
           { startedAt: act.startedAt, cancelledAt: act.cancelledAt },
+          { currentStatus: act.status },
         ),
       },
     });

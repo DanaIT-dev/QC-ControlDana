@@ -16,7 +16,10 @@ export const adminGrantRequestSchema = z
 
 export const createUnassignedUserRequestSchema = z
   .object({
-    fullName: z.string(),
+    fullName: z.string().optional(),
+    lastName: z.string().optional(),
+    firstName: z.string().optional(),
+    middleName: z.union([z.string(), z.null()]).optional(),
     email: z.string(),
   })
   .strict();

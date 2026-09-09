@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import argon2 from 'argon2';
 import type { PrismaClient } from '@prisma/client';
-import { assertPasswordPolicy } from '@sgr-registry/domain';
+import { assertPasswordPolicy, personNameWriteFields } from '@sgr-registry/domain';
 import { assertE2eDatabaseTarget } from './e2e-target';
 import { SUPER_ADMIN_ADVISORY_LOCK_KEY1, SUPER_ADMIN_ADVISORY_LOCK_KEY2 } from './super-admin-lock';
 import { upsertUserCredentials } from './user-credentials';
@@ -39,7 +39,7 @@ export async function ensureTestSuperAdmin(options: {
       const updated = await tx.user.update({
         where: { id: existing.id },
         data: {
-          fullName,
+          ...personNameWriteFields(fullName),
           role: 'SUPER_ADMIN',
           status: 'ACTIVE',
           archivedAt: null,
@@ -57,7 +57,7 @@ export async function ensureTestSuperAdmin(options: {
     const created = await tx.user.create({
       data: {
         id: randomUUID(),
-        fullName,
+        ...personNameWriteFields(fullName),
         email,
         role: 'SUPER_ADMIN',
         status: 'ACTIVE',

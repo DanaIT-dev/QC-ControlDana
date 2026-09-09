@@ -6,15 +6,13 @@ import {
   postLoginPath,
 } from '@sgr-registry/domain';
 import { EyeIcon, EyeOffIcon } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { type SyntheticEvent, useId, useState } from 'react';
+import { type FormEvent, useEffect, useId, useState } from 'react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
 export function LoginForm() {
-  const router = useRouter();
   const emailId = useId();
   const passwordId = useId();
   const errorId = useId();
@@ -23,12 +21,21 @@ export function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [ready, setReady] = useState(false);
 
-  async function onSubmit(event: SyntheticEvent<HTMLFormElement>) {
+  useEffect(() => {
+    setReady(true);
+  }, []);
+
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (pending) {
       return;
     }
+    void submitLogin();
+  }
+
+  async function submitLogin() {
     setPending(true);
     setError(null);
     try {
@@ -41,33 +48,32 @@ export function LoginForm() {
       if (response.status === 429) {
         setPassword('');
         setError(AUTH_RATE_LIMITED_MESSAGE);
+        setPending(false);
         return;
       }
       if (!response.ok) {
         setPassword('');
         setError(AUTH_LOGIN_FAILED_MESSAGE);
+        setPending(false);
         return;
       }
       const profile = (await response.json()) as {
         mustChangePassword?: boolean;
         role?: Parameters<typeof postLoginPath>[0];
       };
-      if (!profile.role) {
-        router.replace('/');
-        return;
-      }
-      router.replace(postLoginPath(profile.role, Boolean(profile.mustChangePassword)));
-      router.refresh();
+      const nextPath = profile.role
+        ? postLoginPath(profile.role, Boolean(profile.mustChangePassword))
+        : '/';
+      window.location.assign(nextPath);
     } catch {
       setPassword('');
       setError(AUTH_LOGIN_FAILED_MESSAGE);
-    } finally {
       setPending(false);
     }
   }
 
   return (
-    <form className="grid gap-4" onSubmit={onSubmit} noValidate>
+    <form className="grid gap-4" onSubmit={onSubmit} noValidate method="post">
       <div className="grid gap-1.5">
         <Label htmlFor={emailId}>Электронная почта</Label>
         <Input
@@ -84,7 +90,7 @@ export function LoginForm() {
       </div>
       <div className="grid gap-1.5">
         <Label htmlFor={passwordId}>Пароль</Label>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           <Input
             id={passwordId}
             name="password"
@@ -96,10 +102,12 @@ export function LoginForm() {
             disabled={pending}
             aria-invalid={Boolean(error)}
             aria-describedby={error ? errorId : undefined}
+            className="min-w-0 flex-1"
           />
           <Button
             type="button"
             variant="outline"
+            size="icon"
             onClick={() => setShowPassword((value) => !value)}
             disabled={pending}
             aria-label={showPassword ? 'Скрыть ввод' : 'Показать ввод'}
@@ -113,7 +121,7 @@ export function LoginForm() {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : null}
-      <Button type="submit" disabled={pending} className="w-full">
+      <Button type="submit" disabled={pending || !ready} className="w-full">
         {pending ? 'Вход…' : 'Войти'}
       </Button>
     </form>

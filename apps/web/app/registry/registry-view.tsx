@@ -161,7 +161,11 @@ export function RegistryView({ user }: { user: SafeUserProfile }) {
     <div className="registry-page grid gap-4">
       <PageHeader
         title="Реестр дефектных актов"
-        description="Контроль сроков, статусов и назначений по дефектным актам СГР."
+        description={
+          listQuery.isSuccess
+            ? `Всего: ${totalCount} · актов: ${listQuery.data.actCount}`
+            : 'Контроль сроков, статусов и назначений по дефектным актам СГР.'
+        }
         actions={
           canCreateAct(user.role) ? (
             <Button asChild>

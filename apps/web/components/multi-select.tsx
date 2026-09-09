@@ -19,6 +19,7 @@ import { cn } from '@/lib/utils';
 export interface MultiSelectOption {
   id: string;
   label: string;
+  title?: string;
 }
 
 export function MultiSelect({
@@ -54,7 +55,9 @@ export function MultiSelect({
     selected.length === 0 ? (
       <span className="truncate text-muted-foreground">{placeholder}</span>
     ) : selected.length === 1 ? (
-      <span className="truncate">{selected[0]?.label}</span>
+      <span className="truncate whitespace-nowrap" title={selected[0]?.title ?? selected[0]?.label}>
+        {selected[0]?.label}
+      </span>
     ) : (
       <span className="flex min-w-0 items-center gap-1">
         <span className="truncate">{selected[0]?.label}</span>
@@ -95,10 +98,12 @@ export function MultiSelect({
                   return (
                     <CommandItem
                       key={option.id}
-                      value={`${option.label} ${option.id}`}
+                      value={`${option.label} ${option.title ?? ''} ${option.id}`}
                       data-checked={checked}
                       role="option"
                       aria-selected={checked}
+                      aria-label={option.title ?? option.label}
+                      title={option.title ?? option.label}
                       className="flex h-9 min-h-9 flex-row items-center justify-start gap-2 px-2 [&>svg:last-child]:hidden"
                       onSelect={() => toggle(option.id)}
                     >
@@ -113,7 +118,9 @@ export function MultiSelect({
                       >
                         {checked ? <CheckIcon className="size-3.5" /> : null}
                       </span>
-                      <span className="min-w-0 flex-1 text-left">{option.label}</span>
+                      <span className="min-w-0 flex-1 truncate whitespace-nowrap text-left">
+                        {option.label}
+                      </span>
                     </CommandItem>
                   );
                 })}

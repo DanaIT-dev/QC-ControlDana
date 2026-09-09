@@ -30,12 +30,31 @@ test.describe('authentication browser flows', () => {
     await expect(page.getByRole('heading', { name: 'Реестр дефектных актов' })).toBeVisible();
   });
 
+  test('first login attempt reaches the app without reloading the login page', async ({ page }) => {
+    let loginDocumentLoads = 0;
+    page.on('framenavigated', (frame) => {
+      if (frame === page.mainFrame() && /\/login(?:\?|$)/.test(new URL(frame.url()).pathname)) {
+        loginDocumentLoads += 1;
+      }
+    });
+    await page.goto('/login');
+    await expect(page.getByRole('button', { name: 'Войти' })).toBeVisible();
+    expect(loginDocumentLoads).toBeGreaterThanOrEqual(1);
+    await page.getByLabel('Электронная почта').fill(ACCOUNTS.admin.email);
+    await page.getByLabel('Пароль', { exact: true }).fill(DEMO_PASSWORD);
+    await page.getByRole('button', { name: 'Войти' }).click();
+    await expect(page).toHaveURL(/\/registry$/);
+  });
+
   test('ADMIN can sign in and open system status', async ({ page, context }) => {
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
     await login(page, ACCOUNTS.admin.email, DEMO_PASSWORD);
     await expect(page).toHaveURL(/\/registry$/);
-    await expect(page.getByText(ACCOUNTS.admin.name)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Меню пользователя' })).toContainText(
+      'Алексей В.',
+    );
+    await expect(page.getByTitle(ACCOUNTS.admin.name).first()).toBeVisible();
     await expect(page.getByText(ACCOUNTS.admin.role)).toBeVisible();
     await expect(page.getByRole('button', { name: 'Администрирование' })).toBeVisible();
     await clickAdminNavItem(page, 'Состояние системы');

@@ -28,6 +28,7 @@ export * from './role-hierarchy';
 export * from './person-name';
 export * from './reference';
 export * from './objects-import';
+export * from './legacy-acts-import';
 export * from './approved-defect-types';
 export * from './directories-import';
 export * from './manual-object';

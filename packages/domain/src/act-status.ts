@@ -14,11 +14,18 @@ export interface ActWorkflowState {
 export function computeActStatus(
   items: readonly ActDefectItemRef[],
   workflow: ActWorkflowState,
+  options?: { currentStatus?: ActStatus },
 ): ActStatus {
   if (workflow.cancelledAt) {
     return 'CANCELLED';
   }
   if (workflow.startedAt == null) {
+    if (options?.currentStatus === 'IMPORTED_UNSPECIFIED') {
+      return 'IMPORTED_UNSPECIFIED';
+    }
+    if (options?.currentStatus === 'IN_PROGRESS') {
+      return 'IN_PROGRESS';
+    }
     return 'NEW';
   }
   const activeItems = items.filter((item) => item.active);

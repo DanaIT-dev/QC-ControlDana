@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Pool } from 'pg';
+import { personNameWriteFields } from '@sgr-registry/domain';
 import {
   createOwnerPrismaClient,
   createPrismaClient,
@@ -58,7 +59,7 @@ describe('directory engineer linking', () => {
   beforeAll(async () => {
     const admin = await owner.user.create({
       data: {
-        fullName: `${MARKER} admin`,
+        ...personNameWriteFields(`${MARKER} admin`),
         email: `${MARKER}.admin@example.sgr.local`,
         role: 'ADMIN',
         sessionVersion: 1,
@@ -66,7 +67,7 @@ describe('directory engineer linking', () => {
     });
     const engineer = await owner.user.create({
       data: {
-        fullName: ACCOUNT_NAME,
+        ...personNameWriteFields(ACCOUNT_NAME),
         email: `${MARKER}.vasilevich@example.sgr.local`,
         role: 'RESPONSIBLE_ENGINEER',
         sessionVersion: 1,
@@ -74,7 +75,7 @@ describe('directory engineer linking', () => {
     });
     const similar = await owner.user.create({
       data: {
-        fullName: SIMILAR_NAME,
+        ...personNameWriteFields(SIMILAR_NAME),
         email: `${MARKER}.similar@example.sgr.local`,
         role: 'RESPONSIBLE_ENGINEER',
         sessionVersion: 1,
@@ -82,7 +83,7 @@ describe('directory engineer linking', () => {
     });
     const contractor = await owner.user.create({
       data: {
-        fullName: ACCOUNT_NAME,
+        ...personNameWriteFields(ACCOUNT_NAME),
         email: `${MARKER}.contractor@example.sgr.local`,
         role: 'CONTRACTOR_ENGINEER',
         sessionVersion: 1,
@@ -196,7 +197,7 @@ describe('directory engineer linking', () => {
   it('does not auto-link when two active engineers match the same source name', async () => {
     const twin = await owner.user.create({
       data: {
-        fullName: TWIN_NAME,
+        ...personNameWriteFields(TWIN_NAME),
         email: `${MARKER}.twin@example.sgr.local`,
         role: 'RESPONSIBLE_ENGINEER',
         sessionVersion: 1,

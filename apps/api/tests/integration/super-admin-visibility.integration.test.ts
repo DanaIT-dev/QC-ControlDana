@@ -13,6 +13,7 @@ import {
   CSRF_HEADER_NAME,
   SESSION_COOKIE_NAME,
   findSensitiveApiResponseLeaks,
+  personNameWriteFields,
 } from '@sgr-registry/domain';
 import Redis from 'ioredis';
 import { AppModule } from '../../src/app.module';
@@ -65,7 +66,7 @@ async function createUser(
   const passwordHash = await hashArgon2id(DEMO_PASSWORD, { memoryCost: 4096, timeCost: 1 });
   const user = await prisma.user.create({
     data: {
-      fullName: extras.fullName ?? `Visibility ${role}`,
+      ...personNameWriteFields(extras.fullName ?? `Visibility ${role}`),
       email,
       role,
       status: extras.status ?? 'ACTIVE',

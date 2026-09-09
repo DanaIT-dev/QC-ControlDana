@@ -15,10 +15,15 @@ export function StatusBadge({
       ? 'success'
       : status === 'CANCELLED'
         ? 'error'
-        : status === 'NEW'
+        : status === 'NEW' || status === 'IMPORTED_UNSPECIFIED'
           ? 'info'
           : 'warning';
-  const Icon = status === 'COMPLETED' ? CheckCircle2 : status === 'NEW' ? Sparkles : Circle;
+  const Icon =
+    status === 'COMPLETED'
+      ? CheckCircle2
+      : status === 'NEW' || status === 'IMPORTED_UNSPECIFIED'
+        ? Sparkles
+        : Circle;
   return (
     <Badge variant={variant} className="gap-1">
       <Icon className="size-3" aria-hidden />

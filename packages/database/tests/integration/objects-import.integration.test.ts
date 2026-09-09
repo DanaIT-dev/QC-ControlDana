@@ -4,7 +4,11 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import ExcelJS from 'exceljs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { OBJECTS_SHEET_NAME, OBJECTS_SOURCE_SYSTEM } from '@sgr-registry/domain';
+import {
+  OBJECTS_SHEET_NAME,
+  OBJECTS_SOURCE_SYSTEM,
+  personNameWriteFields,
+} from '@sgr-registry/domain';
 import { createOwnerPrismaClient } from '../../src/client';
 import { importPropertyObjects } from '../../src/objects-import';
 import { readObjectsWorkbook } from '../../src/objects-xlsx';
@@ -88,7 +92,7 @@ describe('property objects importer', () => {
 
     const engineer = await prisma.user.create({
       data: {
-        fullName: 'Василевич М.В.',
+        ...personNameWriteFields('Василевич М.В.'),
         email: `${MARKER}.vasilevich@example.sgr.local`,
         role: 'RESPONSIBLE_ENGINEER',
       },

@@ -52,6 +52,8 @@ export interface RegistryListQuery {
   customerOrganizationIds: string[];
   liableOrganizationIds: string[];
   responsibleEngineerIds: string[];
+  unmatchedEngineers: boolean;
+  importedOnly: boolean;
   plannedDeadlineFrom: string | null;
   plannedDeadlineTo: string | null;
   claimDeadlineFrom: string | null;
@@ -90,6 +92,21 @@ function optionalCalendarDate(value: string | undefined, field: string): string 
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function parseBooleanFlag(value: string | string[] | undefined, field: string): boolean {
+  if (value === undefined) {
+    return false;
+  }
+  const raw = Array.isArray(value) ? value[0] : value;
+  const trimmed = raw?.trim().toLowerCase() ?? '';
+  if (trimmed.length === 0 || trimmed === '0' || trimmed === 'false') {
+    return false;
+  }
+  if (trimmed === '1' || trimmed === 'true') {
+    return true;
+  }
+  throw new RegistryQueryError(`Invalid ${field}`);
+}
 
 function parsePositiveInt(value: string | undefined, field: string, fallback: number): number {
   if (value === undefined || value.trim().length === 0) {
@@ -188,6 +205,8 @@ export function parseRegistryListQuery(input: RegistryQueryInput): RegistryListQ
     customerOrganizationIds: parseIdList(input.customerOrganizationIds, 'customerOrganizationIds'),
     liableOrganizationIds: parseIdList(input.liableOrganizationIds, 'liableOrganizationIds'),
     responsibleEngineerIds: parseIdList(input.responsibleEngineerIds, 'responsibleEngineerIds'),
+    unmatchedEngineers: parseBooleanFlag(input.unmatchedEngineers, 'unmatchedEngineers'),
+    importedOnly: parseBooleanFlag(input.importedOnly, 'importedOnly'),
     plannedDeadlineFrom: optionalCalendarDate(
       Array.isArray(input.plannedDeadlineFrom)
         ? input.plannedDeadlineFrom[0]
@@ -246,6 +265,12 @@ export function serializeRegistryQuery(query: RegistryListQuery): Record<string,
       params[key] = values.join(',');
     }
   }
+  if (query.unmatchedEngineers) {
+    params.unmatchedEngineers = 'true';
+  }
+  if (query.importedOnly) {
+    params.importedOnly = 'true';
+  }
   const dates: Array<[string, string | null]> = [
     ['plannedDeadlineFrom', query.plannedDeadlineFrom],
     ['plannedDeadlineTo', query.plannedDeadlineTo],
@@ -278,6 +303,8 @@ export function countActiveRegistryFilters(query: RegistryListQuery): number {
   if (query.customerOrganizationIds.length) count += 1;
   if (query.liableOrganizationIds.length) count += 1;
   if (query.responsibleEngineerIds.length) count += 1;
+  if (query.unmatchedEngineers) count += 1;
+  if (query.importedOnly) count += 1;
   if (query.plannedDeadlineFrom || query.plannedDeadlineTo) count += 1;
   if (query.claimDeadlineFrom || query.claimDeadlineTo) count += 1;
   if (query.readyAtFrom || query.readyAtTo) count += 1;

@@ -52,6 +52,23 @@ export const AUDIT_ACTIONS = [
   'USER_ROLE_CHANGED',
   'MANAGER_ROLE_GRANTED',
   'MANAGER_ROLE_REVOKED',
+  'LEGACY_ACT_IMPORT_BATCH_STARTED',
+  'LEGACY_ACT_IMPORTED',
+  'LEGACY_DEFECT_IMPORTED',
+  'LEGACY_ACT_IMPORT_BATCH_COMPLETED',
+  'LEGACY_IMPORT_CONFLICT',
+  'IMPORTED_ENGINEER_UNMATCHED',
+  'IMPORTED_ENGINEER_MATCHED',
+  'IMPORTED_ENGINEER_RESOLVED',
+  'IMPORTED_ENGINEER_MANUALLY_RESOLVED',
+  'LEGACY_ACT_IMPORT_BATCH_ROLLED_BACK',
+  'LOGIN_SUCCEEDED',
+  'LOGIN_FAILED',
+  'LOGIN_RATE_LIMITED',
+  'LOGOUT',
+  'LOGOUT_ALL',
+  'SESSION_REJECTED_ARCHIVED_USER',
+  'SESSION_REJECTED_VERSION_MISMATCH',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
@@ -106,6 +123,16 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction | string, string> = {
   USER_ROLE_CHANGED: 'Изменена роль пользователя',
   MANAGER_ROLE_GRANTED: 'Назначена роль руководителя',
   MANAGER_ROLE_REVOKED: 'Снята роль руководителя',
+  LEGACY_ACT_IMPORT_BATCH_STARTED: 'Начат импорт исторических актов',
+  LEGACY_ACT_IMPORTED: 'Импортирован исторический акт',
+  LEGACY_DEFECT_IMPORTED: 'Импортирован исторический дефект',
+  LEGACY_ACT_IMPORT_BATCH_COMPLETED: 'Завершён импорт исторических актов',
+  LEGACY_IMPORT_CONFLICT: 'Конфликт импорта исторических актов',
+  IMPORTED_ENGINEER_UNMATCHED: 'Инженер из импорта не сопоставлен',
+  IMPORTED_ENGINEER_MATCHED: 'Инженер из импорта сопоставлен',
+  IMPORTED_ENGINEER_RESOLVED: 'Инженер из импорта связан автоматически',
+  IMPORTED_ENGINEER_MANUALLY_RESOLVED: 'Инженер из импорта связан вручную',
+  LEGACY_ACT_IMPORT_BATCH_ROLLED_BACK: 'Откат тестового импорта актов',
   LOGIN_SUCCEEDED: 'Вход выполнен',
   LOGIN_FAILED: 'Неудачная попытка входа',
   LOGIN_RATE_LIMITED: 'Превышен лимит попыток входа',
@@ -115,7 +142,12 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction | string, string> = {
   SESSION_REJECTED_VERSION_MISMATCH: 'Сессия отклонена: версия сессии устарела',
 };
 
-const HEADER_ACTIONS = new Set(['ACT_CREATED', 'ACT_STARTED', 'ACT_HEADER_UPDATED']);
+const HEADER_ACTIONS = new Set([
+  'ACT_CREATED',
+  'ACT_STARTED',
+  'ACT_HEADER_UPDATED',
+  'LEGACY_ACT_IMPORTED',
+]);
 const PROPOSAL_ACTIONS = new Set(['PROPOSAL_UPSERTED', 'PROPOSAL_ARCHIVED', 'PROPOSAL_RESTORED']);
 const ATTACHMENT_ACTIONS = new Set([
   'ATTACHMENT_UPLOADED',

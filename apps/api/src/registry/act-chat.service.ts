@@ -19,6 +19,7 @@ import {
   chatMentionOccurrenceKey,
   chatMessageSnippet,
   decodeChatCursor,
+  displayActNumber,
   dedupeMentionUserIds,
   encodeChatCursor,
   hasCapability,
@@ -40,9 +41,23 @@ import { RegistryAccessScope } from './registry-access-scope';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const MESSAGE_INCLUDE = {
-  author: { select: { id: true, fullName: true, role: true, status: true } },
+  author: {
+    select: {
+      id: true,
+      lastName: true,
+      firstName: true,
+      middleName: true,
+      fullName: true,
+      role: true,
+      status: true,
+    },
+  },
   mentions: {
-    include: { user: { select: { id: true, fullName: true } } },
+    include: {
+      user: {
+        select: { id: true, lastName: true, firstName: true, middleName: true, fullName: true },
+      },
+    },
   },
 } as const;
 
@@ -125,13 +140,23 @@ export class ActChatService {
           },
         ],
       },
-      select: { id: true, fullName: true, role: true },
+      select: {
+        id: true,
+        lastName: true,
+        firstName: true,
+        middleName: true,
+        fullName: true,
+        role: true,
+      },
       orderBy: { fullName: 'asc' },
       take: ACT_CHAT_MENTION_CANDIDATE_LIMIT,
     });
     return {
       items: rows.map((row) => ({
         id: row.id,
+        lastName: row.lastName,
+        firstName: row.firstName,
+        middleName: row.middleName,
         fullName: row.fullName,
         role: row.role,
         roleLabel: roleLabel(row.role),
@@ -219,14 +244,18 @@ export class ActChatService {
       }
 
       const snippet = chatMessageSnippet(text);
-      const mentionBody = `${user.fullName} упомянул вас в обсуждении акта ${act.officialNumber}: ${snippet}`;
+      const displayNumber = displayActNumber({
+        officialNumber: act.officialNumber,
+        sourceActNumberRaw: act.sourceActNumberRaw,
+      });
+      const mentionBody = `${user.fullName} упомянул вас в обсуждении акта ${displayNumber}: ${snippet}`;
       for (const recipientId of notifyIds) {
         const payload = {
           type: 'ACT_CHAT_MENTION' as const,
           title: notificationTitle('ACT_CHAT_MENTION'),
           body: mentionBody,
           authorName: user.fullName,
-          actNumber: act.officialNumber,
+          actNumber: displayNumber,
           snippet,
           messageId,
         };
@@ -284,7 +313,14 @@ export class ActChatService {
           },
         ],
       },
-      select: { id: true, fullName: true, role: true },
+      select: {
+        id: true,
+        lastName: true,
+        firstName: true,
+        middleName: true,
+        fullName: true,
+        role: true,
+      },
     });
     const allowed = new Map(
       rows.filter((row) => isChatMentionableRole(row.role)).map((row) => [row.id, row]),
@@ -301,7 +337,7 @@ export class ActChatService {
     }
     const act = await this.prisma.client.act.findFirst({
       where: new RegistryAccessScope(user).actVisibleWhere(actId),
-      select: { id: true, objectId: true, officialNumber: true },
+      select: { id: true, objectId: true, officialNumber: true, sourceActNumberRaw: true },
     });
     if (!act) {
       throw new NotFoundException('Запись не найдена');
@@ -343,6 +379,9 @@ function shapeMessage(row: MessageRecord): ActChatMessageDto {
     clientMessageId: row.clientMessageId,
     author: {
       id: row.author.id,
+      lastName: row.author.lastName,
+      firstName: row.author.firstName,
+      middleName: row.author.middleName,
       fullName: row.author.fullName,
       role: row.author.role,
       roleLabel: roleLabel(row.author.role),

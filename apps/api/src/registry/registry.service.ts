@@ -1,4 +1,10 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { loadConfig } from '@sgr-registry/config';
 import type {
   ActDetailDefectItem,
@@ -7,28 +13,40 @@ import type {
   RegistryListResponse,
   RegistrySummaryResponse,
 } from '@sgr-registry/contracts';
+import { resolveImportedEngineerRequestSchema } from '@sgr-registry/contracts';
 import {
   BUSINESS_TIME_ZONE,
   REGISTRY_STATUS_FILTER_OPTIONS,
   calendarDateInTimeZone,
+  canResolveImportedEngineer,
   canViewProposalASum,
   deadlineStateLabel,
   deadlineStateOf,
   defectItemStatusLabel,
   effectiveDeadlineOf,
   formLabel,
+  formatPersonShort,
   isOversightRole,
   normalizeQueryInput,
   parseRegistryListQuery,
   RegistryQueryError,
   shapeProposals,
   shapeSummary,
+  ValidationError,
   visibleProposalSlots,
 } from '@sgr-registry/domain';
+import { resolveImportedEngineerReference } from '@sgr-registry/database';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { PrismaService } from '../auth/prisma.tokens';
+import { actorContext } from '../common/request-context';
+import { parseCommandBody } from '../common/command-body';
 import { RegistryAccessScope } from './registry-access-scope';
-import { deadlineStateWhere, registryListWhere, registryOrderBy } from './registry-query-builder';
+import {
+  deadlineStateWhere,
+  personSearchDefectItemIds,
+  registryListWhere,
+  registryOrderBy,
+} from './registry-query-builder';
 import {
   calendarField,
   registryListSelect,
@@ -47,12 +65,13 @@ export class RegistryService {
     user: AuthenticatedUser,
     rawQuery: Record<string, unknown>,
   ): Promise<RegistryListResponse> {
-    const { query, scope, todayIso, warningDays, now, timeZone } = await this.prepare(
-      user,
-      rawQuery,
-    );
-    const where = registryListWhere(scope, query, todayIso, warningDays);
-    const totalCount = await this.prisma.client.defectItem.count({ where });
+    const { query, scope, todayIso, warningDays, now, timeZone, personSearchDefectIds } =
+      await this.prepare(user, rawQuery);
+    const where = registryListWhere(scope, query, todayIso, warningDays, personSearchDefectIds);
+    const [totalCount, actCount] = await Promise.all([
+      this.prisma.client.defectItem.count({ where }),
+      this.prisma.client.act.count({ where: { defectItems: { some: where } } }),
+    ]);
     const totalPages = totalCount === 0 ? 0 : Math.ceil(totalCount / query.pageSize);
     const page = totalCount === 0 ? 1 : Math.min(query.page, Math.max(totalPages, 1));
     const items = await this.prisma.client.defectItem.findMany({
@@ -73,6 +92,7 @@ export class RegistryService {
       page,
       pageSize: query.pageSize,
       totalCount,
+      actCount,
       totalPages,
       appliedSort: { sortBy: query.sortBy, sortDirection: query.sortDirection },
     };
@@ -82,39 +102,53 @@ export class RegistryService {
     user: AuthenticatedUser,
     rawQuery: Record<string, unknown>,
   ): Promise<RegistrySummaryResponse> {
-    const { query, scope, todayIso, warningDays } = await this.prepare(user, rawQuery);
-    const where = registryListWhere(scope, query, todayIso, warningDays);
-    const [total, newCount, inProgress, completed, warning, overdue, noDeadline, proposalSum] =
-      await Promise.all([
-        this.prisma.client.defectItem.count({ where }),
-        this.prisma.client.defectItem.count({
-          where: { AND: [where, { act: { status: 'NEW' } }] },
-        }),
-        this.prisma.client.defectItem.count({
-          where: {
-            AND: [where, { status: 'IN_PROGRESS', act: { status: 'IN_PROGRESS' } }],
-          },
-        }),
-        this.prisma.client.defectItem.count({ where: { AND: [where, { status: 'COMPLETED' }] } }),
-        this.prisma.client.defectItem.count({
-          where: { AND: [where, deadlineStateWhere('WARNING', todayIso, warningDays)] },
-        }),
-        this.prisma.client.defectItem.count({
-          where: { AND: [where, deadlineStateWhere('OVERDUE', todayIso, warningDays)] },
-        }),
-        this.prisma.client.defectItem.count({
-          where: { AND: [where, deadlineStateWhere('NO_DEADLINE', todayIso, warningDays)] },
-        }),
-        canViewProposalASum(user.role)
-          ? this.prisma.client.proposal.aggregate({
-              _sum: { amount: true },
-              where: { slot: 'A', status: 'ACTIVE', defectItem: where },
-            })
-          : Promise.resolve(null),
-      ]);
+    const { query, scope, todayIso, warningDays, personSearchDefectIds } = await this.prepare(
+      user,
+      rawQuery,
+    );
+    const where = registryListWhere(scope, query, todayIso, warningDays, personSearchDefectIds);
+    const [
+      total,
+      actCount,
+      newCount,
+      inProgress,
+      completed,
+      warning,
+      overdue,
+      noDeadline,
+      proposalSum,
+    ] = await Promise.all([
+      this.prisma.client.defectItem.count({ where }),
+      this.prisma.client.act.count({ where: { defectItems: { some: where } } }),
+      this.prisma.client.defectItem.count({
+        where: { AND: [where, { act: { status: 'NEW' } }] },
+      }),
+      this.prisma.client.defectItem.count({
+        where: {
+          AND: [where, { status: 'IN_PROGRESS', act: { status: 'IN_PROGRESS' } }],
+        },
+      }),
+      this.prisma.client.defectItem.count({ where: { AND: [where, { status: 'COMPLETED' }] } }),
+      this.prisma.client.defectItem.count({
+        where: { AND: [where, deadlineStateWhere('WARNING', todayIso, warningDays)] },
+      }),
+      this.prisma.client.defectItem.count({
+        where: { AND: [where, deadlineStateWhere('OVERDUE', todayIso, warningDays)] },
+      }),
+      this.prisma.client.defectItem.count({
+        where: { AND: [where, deadlineStateWhere('NO_DEADLINE', todayIso, warningDays)] },
+      }),
+      canViewProposalASum(user.role)
+        ? this.prisma.client.proposal.aggregate({
+            _sum: { amount: true },
+            where: { slot: 'A', status: 'ACTIVE', defectItem: where },
+          })
+        : Promise.resolve(null),
+    ]);
     return shapeSummary(
       {
         total,
+        actCount,
         newCount,
         inProgress,
         completed,
@@ -158,7 +192,7 @@ export class RegistryService {
         }),
         this.prisma.client.user.findMany({
           where: { defectItemAssignments: { some: { defectItem: itemWhere } } },
-          select: { id: true, fullName: true },
+          select: { id: true, lastName: true, firstName: true, middleName: true, fullName: true },
         }),
       ]);
 
@@ -169,7 +203,17 @@ export class RegistryService {
       defectTypes: sortOptions(defectTypeRows.map((row) => [row.id, row.name])),
       customers: sortOptions(customerRows.map((row) => [row.id, row.officialName])),
       liableOrganizations: sortOptions(liableRows.map((row) => [row.id, row.officialName])),
-      responsibleEngineers: sortOptions(engineerRows.map((row) => [row.id, row.fullName])),
+      responsibleEngineers: engineerRows
+        .map((row) => ({
+          id: row.id,
+          label: formatPersonShort({
+            lastName: row.lastName,
+            firstName: row.firstName,
+            middleName: row.middleName,
+          }),
+          title: row.fullName,
+        }))
+        .sort((left, right) => COLLATOR.compare(left.label, right.label)),
     };
   }
 
@@ -184,6 +228,11 @@ export class RegistryService {
         id: true,
         formCode: true,
         officialNumber: true,
+        sourceActNumberRaw: true,
+        sourceStatusRaw: true,
+        sourceExternalUrl: true,
+        sourceRows: true,
+        importedAt: true,
         status: true,
         version: true,
         objectId: true,
@@ -191,7 +240,9 @@ export class RegistryService {
         issuedOn: true,
         createdAt: true,
         startedAt: true,
-        startedBy: { select: { id: true, fullName: true } },
+        startedBy: {
+          select: { id: true, lastName: true, firstName: true, middleName: true, fullName: true },
+        },
         cancelledAt: true,
         cancellationReason: true,
         signedDocumentRef: true,
@@ -213,6 +264,7 @@ export class RegistryService {
             status: true,
             version: true,
             claimDetails: true,
+            sourceDeadlineRaw: true,
             plannedDeadline: true,
             claimDeadline: true,
             readyAt: true,
@@ -220,8 +272,23 @@ export class RegistryService {
             notes: true,
             defectType: { select: { id: true, name: true } },
             responsibleEngineers: {
-              select: { user: { select: { id: true, fullName: true } } },
-              orderBy: { user: { fullName: 'asc' } },
+              select: {
+                user: {
+                  select: {
+                    id: true,
+                    lastName: true,
+                    firstName: true,
+                    middleName: true,
+                    fullName: true,
+                  },
+                },
+              },
+              orderBy: { user: { lastName: 'asc' } },
+            },
+            importedEngineerReferences: {
+              where: { resolutionStatus: 'UNMATCHED' },
+              select: { id: true, sourceNameRaw: true },
+              orderBy: { sourceNameRaw: 'asc' },
             },
             liableOrganizations: {
               select: { organization: { select: { id: true, officialName: true } } },
@@ -281,10 +348,24 @@ export class RegistryService {
         statusLabel: defectItemStatusLabel(item.status),
         version: item.version,
         claimDetails: item.claimDetails,
-        responsibleEngineers: item.responsibleEngineers.map((entry) => ({
-          id: entry.user.id,
-          fullName: entry.user.fullName,
-        })),
+        sourceDeadlineRaw: item.sourceDeadlineRaw,
+        responsibleEngineers: [
+          ...item.responsibleEngineers.map((entry) => ({
+            id: entry.user.id,
+            lastName: entry.user.lastName,
+            firstName: entry.user.firstName,
+            middleName: entry.user.middleName,
+            fullName: entry.user.fullName,
+            unmatched: false,
+          })),
+          ...item.importedEngineerReferences.map((entry) => ({
+            id: null,
+            fullName: entry.sourceNameRaw,
+            unmatched: true,
+            sourceNameRaw: entry.sourceNameRaw,
+            referenceId: entry.id,
+          })),
+        ],
         liableOrganizations: item.liableOrganizations.map((entry) => ({
           id: entry.organization.id,
           name: entry.organization.officialName,
@@ -307,9 +388,66 @@ export class RegistryService {
       };
     });
     return {
-      ...toActHeader(act),
+      ...toActHeader({
+        ...act,
+        sourceDeadlineRaws: [
+          ...new Set(
+            act.defectItems
+              .map((item) => item.sourceDeadlineRaw)
+              .filter((value): value is string => Boolean(value)),
+          ),
+        ],
+      }),
       defectItems,
     };
+  }
+
+  async resolveImportedEngineer(
+    user: AuthenticatedUser,
+    referenceId: string,
+    body: unknown,
+    request: import('fastify').FastifyRequest,
+  ) {
+    if (!canResolveImportedEngineer(user.role)) {
+      throw new ForbiddenException('Недостаточно прав');
+    }
+    const input = parseCommandBody(resolveImportedEngineerRequestSchema, body);
+    const ctx = actorContext(user, request);
+    try {
+      return await this.prisma.client.$transaction(async (tx) => {
+        const reference = await tx.importedEngineerReference.findUnique({
+          where: { id: referenceId },
+          select: { id: true, defectItemId: true },
+        });
+        if (!reference) {
+          throw new NotFoundException('Запись не найдена');
+        }
+        const visible = await tx.defectItem.findFirst({
+          where: {
+            id: reference.defectItemId,
+            ...new RegistryAccessScope(user).defectItemWhere(),
+          },
+          select: { id: true },
+        });
+        if (!visible) {
+          throw new NotFoundException('Запись не найдена');
+        }
+        return resolveImportedEngineerReference(tx, {
+          referenceId,
+          matchedUserId: input.userId,
+          actorUserId: user.id,
+          actorName: user.fullName,
+          requestId: ctx.requestId,
+          source: 'WEB',
+          manual: true,
+        });
+      });
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof ForbiddenException) {
+        throw error;
+      }
+      throw new ValidationError('userId', error instanceof Error ? error.message : 'Ошибка');
+    }
   }
 
   private async prepare(user: AuthenticatedUser, rawQuery: Record<string, unknown>) {
@@ -325,6 +463,9 @@ export class RegistryService {
     const warningDays = await this.warningDays();
     const timeZone = loadConfig().BUSINESS_TIME_ZONE || BUSINESS_TIME_ZONE;
     const now = new Date();
+    const personSearchDefectIds = query.search
+      ? await personSearchDefectItemIds(this.prisma.client, query.search)
+      : [];
     return {
       query,
       scope: new RegistryAccessScope(user),
@@ -332,6 +473,7 @@ export class RegistryService {
       timeZone,
       now,
       todayIso: calendarDateInTimeZone(now, timeZone),
+      personSearchDefectIds,
     };
   }
 

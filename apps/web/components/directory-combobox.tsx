@@ -20,6 +20,7 @@ export interface DirectoryOption {
   id: string;
   label: string;
   secondary?: string;
+  title?: string;
 }
 
 export function DirectoryCombobox({
@@ -75,7 +76,8 @@ export function DirectoryCombobox({
       return base;
     }
     return base.filter((option) => {
-      const haystack = `${option.label} ${option.secondary ?? ''}`.toLocaleLowerCase('ru');
+      const haystack =
+        `${option.label} ${option.title ?? ''} ${option.secondary ?? ''}`.toLocaleLowerCase('ru');
       return haystack.includes(needle);
     });
   }, [noneOption, options, query]);
@@ -154,7 +156,7 @@ export function DirectoryCombobox({
           onEscapeKeyDown={(event) => event.stopPropagation()}
           onWheel={(event) => event.stopPropagation()}
           onTouchMove={(event) => event.stopPropagation()}
-          className="flex w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-2rem)] max-h-[min(24rem,var(--radix-popover-content-available-height,70vh))] flex-col overflow-hidden p-0"
+          className="flex w-(--radix-popover-trigger-width) max-w-[calc(100vw-2rem)] max-h-[min(24rem,var(--radix-popover-content-available-height,70vh))] flex-col overflow-hidden p-0"
         >
           <Command
             shouldFilter={false}
@@ -166,7 +168,7 @@ export function DirectoryCombobox({
               placeholder={searchPlaceholder}
               aria-label={`Поиск: ${label}`}
             />
-            <CommandList className="min-h-0 max-h-[min(16rem,calc(var(--radix-popover-content-available-height,70vh)-8rem))] overflow-y-auto overscroll-contain [overflow-y:auto] [max-block-size:min(16rem,calc(var(--radix-popover-content-available-height,70vh)-8rem))]">
+            <CommandList className="min-h-0 max-h-[min(16rem,calc(var(--radix-popover-content-available-height,70vh)-8rem))] max-block-[min(16rem,calc(var(--radix-popover-content-available-height,70vh)-8rem))] overflow-y-auto overscroll-contain">
               {loading ? (
                 <p className="px-3 py-6 text-center text-sm text-muted-foreground">Загрузка…</p>
               ) : errorText ? (
@@ -201,6 +203,11 @@ export function DirectoryCombobox({
                             value={option.id}
                             role="option"
                             aria-selected={checked}
+                            aria-label={
+                              option.title ??
+                              [option.label, option.secondary].filter(Boolean).join(' ')
+                            }
+                            title={option.title ?? option.label}
                             data-checked={checked}
                             className={cn(
                               'flex min-h-9 flex-row items-start justify-start gap-2 px-2 [&>svg:last-child]:hidden',
@@ -219,7 +226,9 @@ export function DirectoryCombobox({
                               {checked ? <CheckIcon className="size-3.5" /> : null}
                             </span>
                             <span className="flex min-w-0 flex-1 flex-col items-start text-left">
-                              <span className="w-full truncate">{option.label}</span>
+                              <span className="w-full truncate whitespace-nowrap">
+                                {option.label}
+                              </span>
                               {option.secondary ? (
                                 <span className="w-full truncate text-xs text-muted-foreground">
                                   {option.secondary}
