@@ -116,14 +116,14 @@ describe('atomic SUPER_ADMIN provisioning', () => {
     const previous = await provisionSuperAdmin({
       owner,
       email: previousEmail,
-      fullName: 'Прежний',
+      fullName: 'Тест Прежний',
       password: PASSWORD,
     });
     await expect(
       provisionSuperAdmin({
         owner,
         email: nextEmail,
-        fullName: 'Новый',
+        fullName: 'Тест Новый',
         password: PASSWORD,
         replace: true,
         replaceConfirmEmail: previousEmail,
@@ -144,13 +144,13 @@ describe('atomic SUPER_ADMIN provisioning', () => {
     const previous = await provisionSuperAdmin({
       owner,
       email: previousEmail,
-      fullName: 'Старый',
+      fullName: 'Тест Старый',
       password: PASSWORD,
     });
     const replaced = await provisionSuperAdmin({
       owner,
       email: nextEmail,
-      fullName: 'Новый',
+      fullName: 'Тест Новый',
       password: PASSWORD,
       replace: true,
       replaceConfirmEmail: previousEmail,
@@ -168,14 +168,14 @@ describe('atomic SUPER_ADMIN provisioning', () => {
     await provisionSuperAdmin({
       owner,
       email: previousEmail,
-      fullName: 'Ожидаемый',
+      fullName: 'Тест Ожидаемый',
       password: PASSWORD,
     });
     await expect(
       provisionSuperAdmin({
         owner,
         email: `${MARKER}.other@example.sgr.local`,
-        fullName: 'Другой',
+        fullName: 'Тест Другой',
         password: PASSWORD,
         replace: true,
         replaceConfirmEmail: `${MARKER}.wrong@example.sgr.local`,
@@ -194,13 +194,13 @@ describe('atomic SUPER_ADMIN provisioning', () => {
         provisionSuperAdmin({
           owner,
           email: first,
-          fullName: 'Первый',
+          fullName: 'Тест Первый',
           password: PASSWORD,
         }),
         provisionSuperAdmin({
           owner: secondOwner,
           email: second,
-          fullName: 'Второй',
+          fullName: 'Тест Второй',
           password: PASSWORD,
         }),
       ]);
@@ -221,7 +221,7 @@ describe('atomic SUPER_ADMIN provisioning', () => {
     const previous = await provisionSuperAdmin({
       owner,
       email: previousEmail,
-      fullName: 'Сессия',
+      fullName: 'Тест Сессия',
       password: PASSWORD,
     });
     const prefix = 'sgr-test';
@@ -274,7 +274,7 @@ describe('RLS-safe SUPER_ADMIN catalog', () => {
     await provisionSuperAdmin({
       owner,
       email,
-      fullName: 'Каталог',
+      fullName: 'Тест Каталог',
       password: PASSWORD,
     });
 

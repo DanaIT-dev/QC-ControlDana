@@ -11,13 +11,13 @@ import {
   canViewProposalGroupBC,
   hasCapability,
   isStartableActStatus,
-  formatPersonShort,
 } from '@sgr-registry/domain';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { ConflictDialog } from '@/components/conflict-dialog';
 import { EmptyState, ErrorState } from '@/components/states';
+import { PersonName } from '@/components/person-name';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -876,6 +876,9 @@ export function ActHistory({ actId }: { actId: string }) {
           id: string;
           action: string;
           actorName: string | null;
+          actorLastName: string | null;
+          actorFirstName: string | null;
+          actorMiddleName: string | null;
           occurredAt: string;
           reason: string | null;
           oldValue: unknown;
@@ -910,9 +913,12 @@ export function ActHistory({ actId }: { actId: string }) {
               <p className="text-sm">
                 Кто:{' '}
                 {item.actorName && item.actorName !== 'SYSTEM' ? (
-                  <span title={item.actorName} aria-label={item.actorName}>
-                    {formatPersonShort(item.actorName)}
-                  </span>
+                  <PersonName
+                    lastName={item.actorLastName}
+                    firstName={item.actorFirstName}
+                    middleName={item.actorMiddleName}
+                    fullName={item.actorName}
+                  />
                 ) : (
                   'Система'
                 )}
@@ -925,9 +931,12 @@ export function ActHistory({ actId }: { actId: string }) {
             <>
               <p className="text-sm text-muted-foreground">
                 {item.actorName && item.actorName !== 'SYSTEM' ? (
-                  <span title={item.actorName} aria-label={item.actorName}>
-                    {formatPersonShort(item.actorName)}
-                  </span>
+                  <PersonName
+                    lastName={item.actorLastName}
+                    firstName={item.actorFirstName}
+                    middleName={item.actorMiddleName}
+                    fullName={item.actorName}
+                  />
                 ) : (
                   'Система'
                 )}{' '}

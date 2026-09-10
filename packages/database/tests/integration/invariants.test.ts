@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { allocateActNumber } from '../../src/act-number';
 import { createOwnerPrismaClient } from '../../src/client';
 import { assertSafeTestDatabaseUrl } from '../../src/test-database';
-import { personNameWriteFields } from '@sgr-registry/domain';
+import { CONFIRMED_LAST_FIRST_TOKEN_ORDER, personNameWriteFields } from '@sgr-registry/domain';
 
 const databaseUrl = process.env.MIGRATION_DATABASE_URL ?? process.env.DATABASE_URL ?? '';
 assertSafeTestDatabaseUrl(databaseUrl);
@@ -199,14 +199,14 @@ describe('database invariants', () => {
     });
     const engineerA = await prisma.user.create({
       data: {
-        ...personNameWriteFields('Инженер А'),
+        ...personNameWriteFields('Инженер А', CONFIRMED_LAST_FIRST_TOKEN_ORDER),
         email: `eng-a-${randomUUID()}@example.sgr.local`,
         role: 'RESPONSIBLE_ENGINEER',
       },
     });
     const engineerB = await prisma.user.create({
       data: {
-        ...personNameWriteFields('Инженер Б'),
+        ...personNameWriteFields('Инженер Б', CONFIRMED_LAST_FIRST_TOKEN_ORDER),
         email: `eng-b-${randomUUID()}@example.sgr.local`,
         role: 'RESPONSIBLE_ENGINEER',
       },
@@ -304,7 +304,7 @@ describe('database invariants', () => {
     });
     const actor = await prisma.user.create({
       data: {
-        ...personNameWriteFields('Аудитор Демо'),
+        ...personNameWriteFields('Аудитор Демо', CONFIRMED_LAST_FIRST_TOKEN_ORDER),
         email: `audit-${randomUUID()}@example.sgr.local`,
         role: 'ADMIN',
       },
@@ -358,7 +358,7 @@ describe('database invariants', () => {
     });
     const engineer = await prisma.user.create({
       data: {
-        ...personNameWriteFields('Уникальный инженер'),
+        ...personNameWriteFields('Уникальный инженер', CONFIRMED_LAST_FIRST_TOKEN_ORDER),
         email: `uniq-eng-${randomUUID()}@example.sgr.local`,
         role: 'RESPONSIBLE_ENGINEER',
       },
@@ -379,7 +379,7 @@ describe('database invariants', () => {
     });
     const engineer = await prisma.user.create({
       data: {
-        ...personNameWriteFields('Повторный инженер'),
+        ...personNameWriteFields('Повторный инженер', CONFIRMED_LAST_FIRST_TOKEN_ORDER),
         email: `reassign-eng-${randomUUID()}@example.sgr.local`,
         role: 'RESPONSIBLE_ENGINEER',
       },

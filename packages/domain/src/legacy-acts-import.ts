@@ -1,11 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { ActFormCode, ActStatus, OrganizationRole } from '@sgr-registry/contracts';
 import { ACTS_REGISTRY_SHEET_NAME } from './directories-import';
-import {
-  classifyEngineerMatch,
-  importedEngineerMatchKey,
-  type EngineerMatchCandidate,
-} from './engineer-name';
+import { classifyEngineerMatch, type EngineerMatchCandidate } from './engineer-name';
 import { ValidationError } from './errors';
 import { isoDateFromJsDate, parseImportedExcelDate } from './objects-import';
 import { foldMatchKey, normalizeUnicode } from './text';
@@ -1129,6 +1125,18 @@ export function planLegacyActsImport(
   };
 }
 
+export const SOURCE_OWNED_ACT_COMPARE_FIELDS = [
+  'formCode',
+  'issuedOn',
+  'sourceActNumberRaw',
+  'sourceStatusRaw',
+  'sourceExternalUrl',
+  'objectId',
+  'customerOrganizationId',
+] as const;
+
+export const OPERATIONAL_OWNED_ACT_FIELDS = ['status', 'startedAt', 'completedAt'] as const;
+
 function actDiffs(
   existing: ExistingLegacyActSnapshot,
   group: GroupedLegacyAct,
@@ -1138,7 +1146,6 @@ function actDiffs(
   const diffs: FieldDiff[] = [];
   pushDiff(diffs, 'formCode', existing.formCode, group.formCode);
   pushDiff(diffs, 'issuedOn', existing.issuedOn, group.issuedOn);
-  pushDiff(diffs, 'status', existing.status, group.status);
   pushDiff(diffs, 'sourceActNumberRaw', existing.sourceActNumberRaw, group.actNumberRaw);
   pushDiff(diffs, 'sourceStatusRaw', existing.sourceStatusRaw, group.statusRaw);
   pushDiff(diffs, 'sourceExternalUrl', existing.sourceExternalUrl, group.documentUrl);
@@ -1155,43 +1162,14 @@ function defectDiffs(
   existing: ExistingLegacyDefectSnapshot,
   defect: GroupedLegacyDefect,
   defectType: LegacyActsCatalogDefectType | undefined,
-  liableOrganizations: LegacyActsPlanDefect['liableOrganizations'],
-  engineers: LegacyActsPlanDefect['engineers'],
+  _liableOrganizations: LegacyActsPlanDefect['liableOrganizations'],
+  _engineers: LegacyActsPlanDefect['engineers'],
 ): FieldDiff[] {
   const diffs: FieldDiff[] = [];
   pushDiff(diffs, 'location', existing.location, defect.location);
   pushDiff(diffs, 'sourceDeadlineRaw', existing.sourceDeadlineRaw, defect.deadlineRaw);
-  pushDiff(diffs, 'plannedDeadline', existing.plannedDeadline, defect.plannedDeadline);
   if (defectType && existing.defectTypeName !== defectType.name) {
     pushDiff(diffs, 'defectTypeName', existing.defectTypeName, defectType.name);
-  }
-  const incomingLiable = liableOrganizations
-    .map((item) => (item.action === 'link' ? item.organization.id : foldMatchKey(item.name)))
-    .sort();
-  const existingLiable = [...existing.liableOrganizationIds].sort();
-  if (incomingLiable.join(',') !== existingLiable.join(',')) {
-    pushDiff(diffs, 'liableOrganizationIds', existingLiable.join(','), incomingLiable.join(','));
-  }
-  const incomingEngineers = engineers
-    .filter((item) => item.result === 'MATCHED')
-    .map((item) => item.userId)
-    .sort();
-  const existingEngineers = [...existing.engineerIds].sort();
-  if (incomingEngineers.join(',') !== existingEngineers.join(',')) {
-    pushDiff(diffs, 'engineerIds', existingEngineers.join(','), incomingEngineers.join(','));
-  }
-  const incomingUnresolved = engineers
-    .filter((item) => item.result === 'UNMATCHED')
-    .map((item) => importedEngineerMatchKey(item.name))
-    .sort();
-  const existingUnresolved = [...existing.unresolvedEngineerKeys].sort();
-  if (incomingUnresolved.join(',') !== existingUnresolved.join(',')) {
-    pushDiff(
-      diffs,
-      'unresolvedEngineerKeys',
-      existingUnresolved.join(','),
-      incomingUnresolved.join(','),
-    );
   }
   return diffs;
 }

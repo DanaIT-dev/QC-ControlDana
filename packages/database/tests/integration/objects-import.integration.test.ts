@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   OBJECTS_SHEET_NAME,
   OBJECTS_SOURCE_SYSTEM,
+  CONFIRMED_LAST_FIRST_TOKEN_ORDER,
   personNameWriteFields,
 } from '@sgr-registry/domain';
 import { createOwnerPrismaClient } from '../../src/client';
@@ -92,7 +93,7 @@ describe('property objects importer', () => {
 
     const engineer = await prisma.user.create({
       data: {
-        ...personNameWriteFields('Василевич М.В.'),
+        ...personNameWriteFields('Василевич М.В.', CONFIRMED_LAST_FIRST_TOKEN_ORDER),
         email: `${MARKER}.vasilevich@example.sgr.local`,
         role: 'RESPONSIBLE_ENGINEER',
       },

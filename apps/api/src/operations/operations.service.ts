@@ -17,6 +17,7 @@ import {
   type ProposalSlot,
 } from '@sgr-registry/contracts';
 import { allocateActNumber, Prisma, startActViaDefiner } from '@sgr-registry/database';
+import { loadActorNamePartsByUserId } from '../common/actor-name-parts';
 import {
   ASSIGNABLE_ENGINEER_ROLE,
   BUSINESS_TIME_ZONE,
@@ -1116,6 +1117,10 @@ export class OperationsService {
     ]);
     const overflow = rows.length > pageSize;
     const pageRows = overflow ? rows.slice(0, pageSize) : rows;
+    const actorParts = await loadActorNamePartsByUserId(
+      this.prisma.client,
+      pageRows.map((row) => row.actorUserId),
+    );
     const items = pageRows.map((row) => {
       const shaped = shapeHistoryForRole(
         {
@@ -1124,6 +1129,7 @@ export class OperationsService {
         },
         user.role,
       );
+      const parts = shaped.actorUserId ? actorParts.get(shaped.actorUserId) : undefined;
       return {
         id: shaped.id,
         action: shaped.action,
@@ -1136,6 +1142,9 @@ export class OperationsService {
         reason: shaped.reason,
         actorUserId: shaped.actorUserId,
         actorName: shaped.actorName,
+        actorLastName: parts?.lastName ?? null,
+        actorFirstName: parts?.firstName ?? null,
+        actorMiddleName: parts?.middleName ?? null,
         occurredAt: shaped.occurredAt.toISOString(),
       };
     });
@@ -1192,21 +1201,31 @@ export class OperationsService {
       )
       .filter((event) => (canViewAssignedHistory(user.role) ? !isProposalBcEvent(event) : true));
     const page = visible.slice(0, limit);
+    const actorParts = await loadActorNamePartsByUserId(
+      this.prisma.client,
+      page.map((row) => row.actorUserId),
+    );
     return {
-      items: page.map((row) => ({
-        id: row.id,
-        action: row.action,
-        entityType: row.entityType,
-        entityId: row.entityId,
-        parentEntityType: row.parentEntityType,
-        parentEntityId: row.parentEntityId,
-        oldValue: scrubSensitiveValue(row.oldValue),
-        newValue: scrubSensitiveValue(row.newValue),
-        reason: row.reason,
-        actorUserId: row.actorUserId,
-        actorName: row.actorName,
-        occurredAt: row.occurredAt.toISOString(),
-      })),
+      items: page.map((row) => {
+        const parts = row.actorUserId ? actorParts.get(row.actorUserId) : undefined;
+        return {
+          id: row.id,
+          action: row.action,
+          entityType: row.entityType,
+          entityId: row.entityId,
+          parentEntityType: row.parentEntityType,
+          parentEntityId: row.parentEntityId,
+          oldValue: scrubSensitiveValue(row.oldValue),
+          newValue: scrubSensitiveValue(row.newValue),
+          reason: row.reason,
+          actorUserId: row.actorUserId,
+          actorName: row.actorName,
+          actorLastName: parts?.lastName ?? null,
+          actorFirstName: parts?.firstName ?? null,
+          actorMiddleName: parts?.middleName ?? null,
+          occurredAt: row.occurredAt.toISOString(),
+        };
+      }),
       nextCursor: visible.length > limit ? encodeHistoryCursor(page[page.length - 1]!) : null,
       totalCount: visible.length,
     };

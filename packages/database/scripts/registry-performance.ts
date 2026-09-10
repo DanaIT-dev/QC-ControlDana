@@ -4,7 +4,7 @@ import { config as loadDotenv } from 'dotenv';
 import { applyTestDatabaseEnv } from '../src/test-env';
 import { createOwnerPrismaClient } from '../src/client';
 import { assertSafeTestDatabaseUrl } from '../src/test-database';
-import { personNameWriteFields } from '@sgr-registry/domain';
+import { CONFIRMED_LAST_FIRST_TOKEN_ORDER, personNameWriteFields } from '@sgr-registry/domain';
 
 const repoRoot = resolve(__dirname, '../../..');
 const envFile = existsSync(resolve(repoRoot, '.env'))
@@ -36,7 +36,7 @@ async function main(): Promise<void> {
     });
     const engineer = await prisma.user.create({
       data: {
-        ...personNameWriteFields(`${MARKER} инженер`),
+        ...personNameWriteFields(`${MARKER} инженер`, CONFIRMED_LAST_FIRST_TOKEN_ORDER),
         email: `perf.engineer.${Date.now()}@example.sgr.local`,
         role: 'RESPONSIBLE_ENGINEER',
       },

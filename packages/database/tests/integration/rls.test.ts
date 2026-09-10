@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Pool } from 'pg';
-import { personNameWriteFields } from '@sgr-registry/domain';
+import { CONFIRMED_LAST_FIRST_TOKEN_ORDER, personNameWriteFields } from '@sgr-registry/domain';
 import {
   createOwnerPrismaClient,
   createPrismaClient,
@@ -65,7 +65,7 @@ describe('PostgreSQL RLS', () => {
     expect(secret.length).toBeGreaterThanOrEqual(32);
     const admin = await owner.user.create({
       data: {
-        ...personNameWriteFields(`${MARKER} admin`),
+        ...personNameWriteFields(`${MARKER} admin`, CONFIRMED_LAST_FIRST_TOKEN_ORDER),
         email: `${MARKER}.admin@example.sgr.local`,
         role: 'ADMIN',
         sessionVersion: 1,
@@ -73,7 +73,7 @@ describe('PostgreSQL RLS', () => {
     });
     const manager = await owner.user.create({
       data: {
-        ...personNameWriteFields(`${MARKER} manager`),
+        ...personNameWriteFields(`${MARKER} manager`, CONFIRMED_LAST_FIRST_TOKEN_ORDER),
         email: `${MARKER}.manager@example.sgr.local`,
         role: 'SGR_MANAGER',
         sessionVersion: 1,
@@ -81,7 +81,7 @@ describe('PostgreSQL RLS', () => {
     });
     const responsible = await owner.user.create({
       data: {
-        ...personNameWriteFields(`${MARKER} responsible`),
+        ...personNameWriteFields(`${MARKER} responsible`, CONFIRMED_LAST_FIRST_TOKEN_ORDER),
         email: `${MARKER}.responsible@example.sgr.local`,
         role: 'RESPONSIBLE_ENGINEER',
         sessionVersion: 1,
@@ -89,7 +89,7 @@ describe('PostgreSQL RLS', () => {
     });
     const otherResponsible = await owner.user.create({
       data: {
-        ...personNameWriteFields(`${MARKER} other-responsible`),
+        ...personNameWriteFields(`${MARKER} other-responsible`, CONFIRMED_LAST_FIRST_TOKEN_ORDER),
         email: `${MARKER}.other@example.sgr.local`,
         role: 'RESPONSIBLE_ENGINEER',
         sessionVersion: 1,
@@ -97,7 +97,7 @@ describe('PostgreSQL RLS', () => {
     });
     const contractor = await owner.user.create({
       data: {
-        ...personNameWriteFields(`${MARKER} contractor`),
+        ...personNameWriteFields(`${MARKER} contractor`, CONFIRMED_LAST_FIRST_TOKEN_ORDER),
         email: `${MARKER}.contractor@example.sgr.local`,
         role: 'CONTRACTOR_ENGINEER',
         sessionVersion: 1,
@@ -762,7 +762,7 @@ describe('PostgreSQL RLS', () => {
     });
     const superAdmin = await owner.user.create({
       data: {
-        ...personNameWriteFields(`${MARKER} super-admin`),
+        ...personNameWriteFields(`${MARKER} super-admin`, CONFIRMED_LAST_FIRST_TOKEN_ORDER),
         email: `${MARKER}.super@example.sgr.local`,
         role: 'SUPER_ADMIN',
         sessionVersion: 1,
@@ -770,7 +770,7 @@ describe('PostgreSQL RLS', () => {
     });
     const pending = await owner.user.create({
       data: {
-        ...personNameWriteFields(`${MARKER} pending`),
+        ...personNameWriteFields(`${MARKER} pending`, CONFIRMED_LAST_FIRST_TOKEN_ORDER),
         email: `${MARKER}.pending@example.sgr.local`,
         role: 'PENDING_ROLE',
         sessionVersion: 1,
@@ -1114,7 +1114,7 @@ describe('PostgreSQL RLS', () => {
 
       const superAdmin = await owner.user.create({
         data: {
-          ...personNameWriteFields(`${sentinel} sa`),
+          ...personNameWriteFields(`${sentinel} sa`, CONFIRMED_LAST_FIRST_TOKEN_ORDER),
           email: `${sentinel}.sa@example.sgr.local`,
           role: 'SUPER_ADMIN',
           sessionVersion: 1,

@@ -5,6 +5,7 @@ import {
   assertPasswordPolicy,
   normalizeUserEmail,
   normalizeUserFullName,
+  CONFIRMED_LAST_FIRST_TOKEN_ORDER,
   personNameWriteFields,
 } from '@sgr-registry/domain';
 import { insertAuditLogRow } from './rls-writes';
@@ -112,7 +113,7 @@ export async function provisionSuperAdmin(input: {
         ? await tx.user.update({
             where: { id: existing.id },
             data: {
-              ...personNameWriteFields(fullName),
+              ...personNameWriteFields(fullName, CONFIRMED_LAST_FIRST_TOKEN_ORDER),
               role: 'SUPER_ADMIN',
               status: 'ACTIVE',
               archivedAt: null,
@@ -123,7 +124,7 @@ export async function provisionSuperAdmin(input: {
           })
         : await tx.user.create({
             data: {
-              ...personNameWriteFields(fullName),
+              ...personNameWriteFields(fullName, CONFIRMED_LAST_FIRST_TOKEN_ORDER),
               email,
               role: 'SUPER_ADMIN',
               status: 'ACTIVE',

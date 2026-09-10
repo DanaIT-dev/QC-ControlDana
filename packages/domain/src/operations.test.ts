@@ -154,26 +154,42 @@ describe('user lifecycle rules', () => {
     );
     expect(
       createUserRequestSchema.safeParse({
-        fullName: 'Иван Иванов',
+        lastName: 'Иванов',
+        firstName: 'Иван',
         email: 'ivan@example.sgr.local',
         role: 'ADMIN',
       }).success,
     ).toBe(false);
     expect(
       createUserRequestSchema.safeParse({
-        fullName: 'Иван Иванов',
+        lastName: 'Иванов',
+        firstName: 'Иван',
         email: 'ivan@example.sgr.local',
         role: 'SUPER_ADMIN',
       }).success,
     ).toBe(false);
     expect(
       createUserRequestSchema.safeParse({
-        fullName: 'Ольга Романова',
+        lastName: 'Романова',
+        firstName: 'Ольга',
         email: 'olga@example.sgr.local',
         role: 'MANAGER',
       }).success,
     ).toBe(true);
     expect(
+      createUnassignedUserRequestSchema.safeParse({
+        fullName: 'Мария Ковалева',
+        email: 'maria@example.sgr.local',
+      }).success,
+    ).toBe(false);
+    expect(
+      createUnassignedUserRequestSchema.safeParse({
+        lastName: 'Ковалева',
+        firstName: 'Мария',
+        email: 'maria@example.sgr.local',
+      }).success,
+    ).toBe(true);
+    expect(
       patchUserProfileRequestSchema.safeParse({
         expectedVersion: 1,
         firstName: 'Иван',
@@ -192,20 +208,23 @@ describe('user lifecycle rules', () => {
     ).toBe(true);
     expect(
       createUnassignedUserRequestSchema.safeParse({
-        fullName: 'Иван Иванов',
+        lastName: 'Иванов',
+        firstName: 'Иван',
         email: 'ivan@example.sgr.local',
       }).success,
     ).toBe(true);
     expect(
       createUnassignedUserRequestSchema.safeParse({
-        fullName: 'Иван Иванов',
+        lastName: 'Иванов',
+        firstName: 'Иван',
         email: 'ivan@example.sgr.local',
         role: 'ADMIN',
       }).success,
     ).toBe(false);
     expect(
       createUnassignedUserRequestSchema.safeParse({
-        fullName: 'Иван Иванов',
+        lastName: 'Иванов',
+        firstName: 'Иван',
         email: 'ivan@example.sgr.local',
         status: 'ACTIVE',
       }).success,

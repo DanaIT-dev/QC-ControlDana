@@ -144,7 +144,7 @@ test.describe('directory quick create and engineer select', () => {
     await page.getByRole('option', { name: /Северный парк/ }).click();
     await page.getByRole('combobox', { name: 'Ответственные инженеры' }).click();
     await expect(page.locator('[data-slot="command-list"]')).not.toContainText('@');
-    await expect(page.getByRole('option', { name: /Дмитрий Орлов/ })).toBeVisible();
+    await expect(page.getByRole('option', { name: /Орлов Дмитрий/ })).toBeVisible();
     await expect(page.getByRole('button', { name: '+ Добавить объект' })).toHaveCount(0);
     expect(applicationErrors(errors)).toEqual([]);
   });

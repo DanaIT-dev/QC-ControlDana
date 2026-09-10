@@ -29,8 +29,6 @@ import {
   normalizeUserEmail,
   parsePersonNameInput,
   personMatchesSearch,
-  personNameWriteFields,
-  resolveOfficialFullName,
   roleLabel,
   scrubSensitiveValue,
   ValidationError,
@@ -50,6 +48,7 @@ import { generateTemporaryPassword } from '../auth/crypto';
 import { Argon2PasswordHasher } from '../auth/password-hasher';
 import { AUTH_PRISMA_CLIENT, PrismaService } from '../auth/prisma.tokens';
 import { RedisSessionStore } from '../auth/redis-session.store';
+import { loadActorNamePartsByUserId } from '../common/actor-name-parts';
 import { toJsonValue, writeAuditLog } from '../common/audit-writer';
 import { isPrismaUniqueConflict, parseCommandBody } from '../common/command-body';
 import { actorContext } from '../common/request-context';
@@ -194,21 +193,11 @@ export class UsersService {
   async create(actor: AuthenticatedUser, body: unknown, request: FastifyRequest) {
     const input = parseCommandBody(createUserRequestSchema, body);
     assertCanAssignRole(actor.role, input.role);
-    const parts =
-      input.lastName != null || input.firstName != null
-        ? parsePersonNameInput({
-            lastName: input.lastName,
-            firstName: input.firstName,
-            middleName: input.middleName ?? null,
-          })
-        : personNameWriteFields(
-            resolveOfficialFullName({
-              fullName: input.fullName,
-              lastName: input.lastName,
-              firstName: input.firstName,
-              middleName: input.middleName ?? null,
-            }),
-          );
+    const parts = parsePersonNameInput({
+      lastName: input.lastName,
+      firstName: input.firstName,
+      middleName: input.middleName ?? null,
+    });
     const fullName = composeOfficialFullName(parts);
     const email = normalizeUserEmail(input.email);
     const temporaryPassword = generateTemporaryPassword(16, { email, fullName });
@@ -654,8 +643,14 @@ export class UsersService {
     });
     const hasMore = rows.length > limit;
     const page = hasMore ? rows.slice(0, limit) : rows;
+    const actorParts = await loadActorNamePartsByUserId(
+      this.prisma.client,
+      page.map((row) => row.actorUserId),
+    );
     return {
-      items: page.map(toHistoryDto),
+      items: page.map((row) =>
+        toHistoryDto(row, row.actorUserId ? actorParts.get(row.actorUserId) : undefined),
+      ),
       nextCursor: hasMore ? encodeHistoryCursor(page[page.length - 1]!) : null,
     };
   }
@@ -837,21 +832,24 @@ const historySelect = {
   requestId: true,
 } as const;
 
-function toHistoryDto(row: {
-  id: string;
-  action: string;
-  entityType: string;
-  entityId: string;
-  parentEntityType: string | null;
-  parentEntityId: string | null;
-  oldValue: unknown;
-  newValue: unknown;
-  reason: string | null;
-  actorUserId: string | null;
-  actorName: string | null;
-  occurredAt: Date;
-  requestId: string | null;
-}) {
+function toHistoryDto(
+  row: {
+    id: string;
+    action: string;
+    entityType: string;
+    entityId: string;
+    parentEntityType: string | null;
+    parentEntityId: string | null;
+    oldValue: unknown;
+    newValue: unknown;
+    reason: string | null;
+    actorUserId: string | null;
+    actorName: string | null;
+    occurredAt: Date;
+    requestId: string | null;
+  },
+  parts?: { lastName: string; firstName: string; middleName: string | null },
+) {
   return {
     id: row.id,
     action: row.action,
@@ -864,6 +862,9 @@ function toHistoryDto(row: {
     reason: row.reason,
     actorUserId: row.actorUserId,
     actorName: row.actorName,
+    actorLastName: parts?.lastName ?? null,
+    actorFirstName: parts?.firstName ?? null,
+    actorMiddleName: parts?.middleName ?? null,
     occurredAt: row.occurredAt.toISOString(),
     requestId: row.requestId,
   };

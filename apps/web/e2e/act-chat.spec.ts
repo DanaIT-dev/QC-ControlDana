@@ -101,9 +101,9 @@ test.describe('act discussion chat', () => {
     await page.getByRole('tab', { name: 'Обсуждение' }).click();
     const draft = page.getByLabel('Сообщение');
     await draft.fill('@Дми');
-    await expect(page.getByRole('option', { name: /Дмитрий Орлов/ })).toBeVisible();
+    await expect(page.getByRole('option', { name: /Орлов Дмитрий/ })).toBeVisible();
     await draft.press('Enter');
-    await expect(draft).toHaveValue(/@Дмитрий Орлов/);
+    await expect(draft).toHaveValue(/@Орлов Дмитрий/);
     await draft.press('End');
     await draft.fill(`${await draft.inputValue()} смотрите ${token}`);
     await draft.press('Enter');
@@ -112,7 +112,7 @@ test.describe('act discussion chat', () => {
       chatThread(page)
         .locator('li')
         .filter({ hasText: `смотрите ${token}` })
-        .getByText('@Дмитрий Орлов', { exact: true })
+        .getByText('@Орлов Дмитрий', { exact: true })
         .first(),
     ).toBeVisible();
 
@@ -191,7 +191,7 @@ test.describe('act discussion chat', () => {
       expect((sendBox?.height ?? 0) >= 40).toBe(true);
       await draft.fill(`@Дм`);
       const listbox = page.getByRole('listbox', { name: 'Сотрудники' });
-      const option = page.getByRole('option', { name: /Дмитрий Орлов/ });
+      const option = page.getByRole('option', { name: /Орлов Дмитрий/ });
       await expect(option).toBeVisible();
       await expect
         .poll(async () => {

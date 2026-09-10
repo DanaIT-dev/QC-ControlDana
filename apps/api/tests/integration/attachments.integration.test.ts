@@ -12,7 +12,12 @@ import {
   upsertUserCredentials,
   type PrismaClient,
 } from '@sgr-registry/database';
-import { CSRF_HEADER_NAME, SESSION_COOKIE_NAME, personNameWriteFields } from '@sgr-registry/domain';
+import {
+  CSRF_HEADER_NAME,
+  SESSION_COOKIE_NAME,
+  CONFIRMED_LAST_FIRST_TOKEN_ORDER,
+  personNameWriteFields,
+} from '@sgr-registry/domain';
 import FormData from 'form-data';
 import { Readable } from 'node:stream';
 import Redis from 'ioredis';
@@ -65,7 +70,12 @@ async function createUser(role: UserRole) {
   const email = `att.${role.toLowerCase()}.${Date.now()}.${Math.random().toString(16).slice(2)}@example.sgr.local`;
   const passwordHash = await hashArgon2id(DEMO_PASSWORD, { memoryCost: 4096, timeCost: 1 });
   const user = await prisma.user.create({
-    data: { ...personNameWriteFields(`Вложения ${role}`), email, role, status: 'ACTIVE' },
+    data: {
+      ...personNameWriteFields(`Вложения ${role}`, CONFIRMED_LAST_FIRST_TOKEN_ORDER),
+      email,
+      role,
+      status: 'ACTIVE',
+    },
   });
   await upsertUserCredentials(prisma, { userId: user.id, passwordHash });
   createdUserIds.push(user.id);

@@ -187,7 +187,16 @@ export function AuditLogView() {
                   </td>
                   <td className="px-3 py-3">{AUDIT_ACTION_LABELS[item.action] ?? item.action}</td>
                   <td className="px-3 py-3">
-                    {item.actorName ? <PersonName fullName={item.actorName} /> : '—'}
+                    {item.actorName ? (
+                      <PersonName
+                        lastName={item.actorLastName}
+                        firstName={item.actorFirstName}
+                        middleName={item.actorMiddleName}
+                        fullName={item.actorName}
+                      />
+                    ) : (
+                      '—'
+                    )}
                   </td>
                   <td className="px-3 py-3">
                     <Badge variant="secondary">{item.entityType}</Badge>
@@ -223,7 +232,16 @@ export function AuditLogView() {
                 </p>
                 <p className="text-sm text-muted-foreground">{formatTimestamp(item.occurredAt)}</p>
                 <p className="text-sm">
-                  {item.actorName ? <PersonName fullName={item.actorName} /> : '—'}
+                  {item.actorName ? (
+                    <PersonName
+                      lastName={item.actorLastName}
+                      firstName={item.actorFirstName}
+                      middleName={item.actorMiddleName}
+                      fullName={item.actorName}
+                    />
+                  ) : (
+                    '—'
+                  )}
                 </p>
                 <Badge variant="secondary" className="w-fit">
                   {item.entityType}

@@ -264,6 +264,27 @@ describe('legacy acts import plan', () => {
     const conflict = planLegacyActsImport(changed, existingCatalog);
     expect(conflict.payloadConflicts.length).toBeGreaterThan(0);
     expect(conflict.blockingIssues.some((item) => item.includes('Конфликт'))).toBe(true);
+
+    const startedCatalog = catalog({
+      existingActs: [
+        {
+          ...existingCatalog.existingActs[0]!,
+          status: 'IN_PROGRESS',
+        },
+      ],
+      existingDefects: existingCatalog.existingDefects.map((item) => ({
+        ...item,
+        plannedDeadline: '2026-08-10',
+        engineerIds: ['eng-user-added'],
+        liableOrganizationIds: ['org-user-added'],
+      })),
+    });
+    const operational = planLegacyActsImport(parsed, startedCatalog);
+    expect(operational.actsToCreate).toBe(0);
+    expect(operational.defectsToCreate).toBe(0);
+    expect(operational.actsUnchanged).toBe(1);
+    expect(operational.defectsUnchanged).toBe(1);
+    expect(operational.payloadConflicts).toHaveLength(0);
   });
 
   it('blocks ambiguous object matching and does not invent work types', () => {

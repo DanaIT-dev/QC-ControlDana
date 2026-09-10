@@ -15,6 +15,7 @@ import {
   CSRF_HEADER_NAME,
   SESSION_COOKIE_NAME,
   capabilitiesForRole,
+  CONFIRMED_LAST_FIRST_TOKEN_ORDER,
   personNameWriteFields,
 } from '@sgr-registry/domain';
 import Redis from 'ioredis';
@@ -82,7 +83,7 @@ async function createUser(role: UserRole, status: 'ACTIVE' | 'ARCHIVED' = 'ACTIV
   const passwordHash = await hashArgon2id(DEMO_PASSWORD, { memoryCost: 4096, timeCost: 1 });
   const user = await prisma.user.create({
     data: {
-      ...personNameWriteFields(`Тест ${role}`),
+      ...personNameWriteFields(`Тест ${role}`, CONFIRMED_LAST_FIRST_TOKEN_ORDER),
       email,
       role,
       status,

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, describe, expect, it } from 'vitest';
 import { Pool } from 'pg';
-import { personNameWriteFields } from '@sgr-registry/domain';
+import { CONFIRMED_LAST_FIRST_TOKEN_ORDER, personNameWriteFields } from '@sgr-registry/domain';
 import {
   createOwnerPrismaClient,
   createPrismaClient,
@@ -47,7 +47,7 @@ describe('RLS transaction pg concurrency', () => {
   it('sets up users and an act with nested relations', async () => {
     const admin = await owner.user.create({
       data: {
-        ...personNameWriteFields(`${MARKER} admin`),
+        ...personNameWriteFields(`${MARKER} admin`, CONFIRMED_LAST_FIRST_TOKEN_ORDER),
         email: `${MARKER}.admin@example.sgr.local`,
         role: 'ADMIN',
         sessionVersion: 1,
@@ -55,7 +55,7 @@ describe('RLS transaction pg concurrency', () => {
     });
     const other = await owner.user.create({
       data: {
-        ...personNameWriteFields(`${MARKER} other`),
+        ...personNameWriteFields(`${MARKER} other`, CONFIRMED_LAST_FIRST_TOKEN_ORDER),
         email: `${MARKER}.other@example.sgr.local`,
         role: 'RESPONSIBLE_ENGINEER',
         sessionVersion: 1,

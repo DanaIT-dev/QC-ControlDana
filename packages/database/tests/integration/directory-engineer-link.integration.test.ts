@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Pool } from 'pg';
-import { personNameWriteFields } from '@sgr-registry/domain';
+import { CONFIRMED_LAST_FIRST_TOKEN_ORDER, personNameWriteFields } from '@sgr-registry/domain';
 import {
   createOwnerPrismaClient,
   createPrismaClient,
@@ -59,7 +59,7 @@ describe('directory engineer linking', () => {
   beforeAll(async () => {
     const admin = await owner.user.create({
       data: {
-        ...personNameWriteFields(`${MARKER} admin`),
+        ...personNameWriteFields(`${MARKER} admin`, CONFIRMED_LAST_FIRST_TOKEN_ORDER),
         email: `${MARKER}.admin@example.sgr.local`,
         role: 'ADMIN',
         sessionVersion: 1,
@@ -67,7 +67,7 @@ describe('directory engineer linking', () => {
     });
     const engineer = await owner.user.create({
       data: {
-        ...personNameWriteFields(ACCOUNT_NAME),
+        ...personNameWriteFields(ACCOUNT_NAME, CONFIRMED_LAST_FIRST_TOKEN_ORDER),
         email: `${MARKER}.vasilevich@example.sgr.local`,
         role: 'RESPONSIBLE_ENGINEER',
         sessionVersion: 1,
@@ -75,7 +75,7 @@ describe('directory engineer linking', () => {
     });
     const similar = await owner.user.create({
       data: {
-        ...personNameWriteFields(SIMILAR_NAME),
+        ...personNameWriteFields(SIMILAR_NAME, CONFIRMED_LAST_FIRST_TOKEN_ORDER),
         email: `${MARKER}.similar@example.sgr.local`,
         role: 'RESPONSIBLE_ENGINEER',
         sessionVersion: 1,
@@ -83,7 +83,7 @@ describe('directory engineer linking', () => {
     });
     const contractor = await owner.user.create({
       data: {
-        ...personNameWriteFields(ACCOUNT_NAME),
+        ...personNameWriteFields(ACCOUNT_NAME, CONFIRMED_LAST_FIRST_TOKEN_ORDER),
         email: `${MARKER}.contractor@example.sgr.local`,
         role: 'CONTRACTOR_ENGINEER',
         sessionVersion: 1,
@@ -197,7 +197,7 @@ describe('directory engineer linking', () => {
   it('does not auto-link when two active engineers match the same source name', async () => {
     const twin = await owner.user.create({
       data: {
-        ...personNameWriteFields(TWIN_NAME),
+        ...personNameWriteFields(TWIN_NAME, CONFIRMED_LAST_FIRST_TOKEN_ORDER),
         email: `${MARKER}.twin@example.sgr.local`,
         role: 'RESPONSIBLE_ENGINEER',
         sessionVersion: 1,

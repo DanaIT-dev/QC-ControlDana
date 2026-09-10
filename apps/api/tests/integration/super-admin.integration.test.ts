@@ -13,6 +13,7 @@ import {
   CSRF_HEADER_NAME,
   SESSION_COOKIE_NAME,
   capabilitiesForRole,
+  CONFIRMED_LAST_FIRST_TOKEN_ORDER,
   personNameWriteFields,
 } from '@sgr-registry/domain';
 import Redis from 'ioredis';
@@ -63,7 +64,7 @@ async function createUser(role: UserRole, extras: { status?: 'ACTIVE' | 'ARCHIVE
   const passwordHash = await hashArgon2id(DEMO_PASSWORD, { memoryCost: 4096, timeCost: 1 });
   const user = await prisma.user.create({
     data: {
-      ...personNameWriteFields(`SA ${role}`),
+      ...personNameWriteFields(`SA ${role}`, CONFIRMED_LAST_FIRST_TOKEN_ORDER),
       email,
       role,
       status: extras.status ?? 'ACTIVE',
@@ -410,7 +411,7 @@ describe('super-admin admin grants', () => {
     const createdPending = await mutate(sa, {
       method: 'POST',
       url: '/api/super-admin/users',
-      payload: { fullName: 'Pending User', email: pendingEmail },
+      payload: { lastName: 'Pending', firstName: 'User', email: pendingEmail },
     });
     expect(createdPending.statusCode).toBe(201);
     const pendingBody = createdPending.json() as {
@@ -506,7 +507,7 @@ describe('super-admin admin grants', () => {
     const pendingForGrant = await mutate(sa, {
       method: 'POST',
       url: '/api/super-admin/users',
-      payload: { fullName: 'Pending Grant', email: pendingGrantEmail },
+      payload: { lastName: 'Pending', firstName: 'Grant', email: pendingGrantEmail },
     });
     expect(pendingForGrant.statusCode).toBe(201);
     const pendingGrantId = (pendingForGrant.json() as { user: { id: string } }).user.id;

@@ -12,7 +12,9 @@ import {
   normalizeUnp,
   assertPasswordPolicy,
   APPROVED_DEFECT_TYPES_V1,
+  personNameFromParts,
   personNameWriteFields,
+  CONFIRMED_LAST_FIRST_TOKEN_ORDER,
 } from '@sgr-registry/domain';
 import argon2 from 'argon2';
 import {
@@ -50,37 +52,49 @@ const WORK_TYPES = [
 
 const DEMO_USERS = [
   {
-    fullName: 'Алексей Викторов',
+    lastName: 'Викторов',
+    firstName: 'Алексей',
+    middleName: null,
     email: 'alexey.viktorov@example.sgr.local',
     phone: '+375290000001',
     role: 'ADMIN' as const,
   },
   {
-    fullName: 'Ольга Романова',
+    lastName: 'Романова',
+    firstName: 'Ольга',
+    middleName: null,
     email: 'olga.romanova@example.sgr.local',
     phone: '+375290000006',
     role: 'MANAGER' as const,
   },
   {
-    fullName: 'Марина Соколова',
+    lastName: 'Соколова',
+    firstName: 'Марина',
+    middleName: null,
     email: 'marina.sokolova@example.sgr.local',
     phone: '+375290000002',
     role: 'SGR_MANAGER' as const,
   },
   {
-    fullName: 'Дмитрий Орлов',
+    lastName: 'Орлов',
+    firstName: 'Дмитрий',
+    middleName: null,
     email: 'dmitry.orlov@example.sgr.local',
     phone: '+375290000003',
     role: 'RESPONSIBLE_ENGINEER' as const,
   },
   {
-    fullName: 'Елена Крылова',
+    lastName: 'Крылова',
+    firstName: 'Елена',
+    middleName: null,
     email: 'elena.krylova@example.sgr.local',
     phone: '+375290000004',
     role: 'RESPONSIBLE_ENGINEER' as const,
   },
   {
-    fullName: 'Игорь Пантелеев',
+    lastName: 'Пантелеев',
+    firstName: 'Игорь',
+    middleName: null,
     email: 'igor.panteleev@example.sgr.local',
     phone: '+375290000005',
     role: 'CONTRACTOR_ENGINEER' as const,
@@ -110,7 +124,10 @@ async function seed(): Promise<void> {
   let preparedDemoPasswordHash: string | undefined;
   if (demoPassword) {
     for (const spec of DEMO_USERS) {
-      assertPasswordPolicy(demoPassword, { email: spec.email, fullName: spec.fullName });
+      assertPasswordPolicy(demoPassword, {
+        email: spec.email,
+        fullName: personNameFromParts(spec).fullName,
+      });
     }
     const existing = await prisma.user.findMany({
       where: { email: { in: DEMO_USERS.map((user) => normalizeEmail(user.email)) } },
@@ -217,7 +234,7 @@ async function seed(): Promise<void> {
           update: { status: 'ARCHIVED', archivedAt: new Date('2026-01-15T12:00:00.000Z') },
           create: {
             id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-            ...personNameWriteFields('Архивный Пользователь'),
+            ...personNameWriteFields('Архивный Пользователь', CONFIRMED_LAST_FIRST_TOKEN_ORDER),
             email: 'archived.user@example.sgr.local',
             role: 'RESPONSIBLE_ENGINEER',
             status: 'ARCHIVED',
@@ -835,7 +852,7 @@ async function seedDemoRegistry(
         data: [
           {
             actorUserId: ctx.engineerNorth.id,
-            actorName: 'Дмитрий Орлов',
+            actorName: 'Орлов Дмитрий',
             action: 'ACT_CREATED',
             entityType: 'ACT',
             entityId: firstAct.id,
@@ -845,7 +862,7 @@ async function seedDemoRegistry(
           },
           {
             actorUserId: ctx.engineerNorth.id,
-            actorName: 'Дмитрий Орлов',
+            actorName: 'Орлов Дмитрий',
             action: 'DEADLINE_UPDATED',
             entityType: 'DEFECT_ITEM',
             entityId: firstDefect.id,
@@ -1112,7 +1129,7 @@ async function seedE2eObjectsDirectory(
       sortOrder: 6,
       commissionedAt: calendarDateToUtcNoon('2022-03-10'),
       warrantyEndsAt: calendarDateToUtcNoon('2027-03-10'),
-      engineer: 'Дмитрий Орлов',
+      engineer: 'Орлов Дмитрий',
       assign: true,
     },
   ];
@@ -1240,7 +1257,9 @@ async function upsertOrganization(
 async function upsertDemoUser(
   tx: Prisma.TransactionClient,
   input: {
-    fullName: string;
+    lastName: string;
+    firstName: string;
+    middleName: string | null;
     email: string;
     phone: string;
     role: 'ADMIN' | 'SGR_MANAGER' | 'RESPONSIBLE_ENGINEER' | 'CONTRACTOR_ENGINEER' | 'MANAGER';
@@ -1248,11 +1267,19 @@ async function upsertDemoUser(
   },
 ) {
   const email = normalizeEmail(input.email);
+  const names = personNameFromParts({
+    lastName: input.lastName,
+    firstName: input.firstName,
+    middleName: input.middleName,
+  });
   const user = await tx.user.upsert({
     where: { email },
-    update: { mustChangePassword: false },
+    update: {
+      ...names,
+      mustChangePassword: false,
+    },
     create: {
-      ...personNameWriteFields(input.fullName),
+      ...names,
       email,
       phone: input.phone,
       role: input.role,

@@ -6,6 +6,7 @@ import {
   foldMatchKey,
   importedEngineerMatchKey,
   parseSourceSurnameInitials,
+  CONFIRMED_LAST_FIRST_TOKEN_ORDER,
   personNameWriteFields,
 } from '@sgr-registry/domain';
 import { createOwnerPrismaClient, databaseNameOf } from '../src/index';
@@ -149,7 +150,7 @@ async function main(): Promise<void> {
         .slice(0, 32);
       const user = await prisma.user.create({
         data: {
-          ...personNameWriteFields(official),
+          ...personNameWriteFields(official, CONFIRMED_LAST_FIRST_TOKEN_ORDER),
           email: `legacy.${key}@example.sgr.local`,
           role: 'RESPONSIBLE_ENGINEER',
           status: 'ACTIVE',

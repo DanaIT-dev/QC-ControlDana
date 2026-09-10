@@ -15,7 +15,11 @@ import Redis from 'ioredis';
 import { AppModule } from '../../src/app.module';
 import { configureHttpApp } from '../../src/configure-http';
 import { hashArgon2id } from '../../src/auth/crypto';
-import { SESSION_COOKIE_NAME, personNameWriteFields } from '@sgr-registry/domain';
+import {
+  SESSION_COOKIE_NAME,
+  CONFIRMED_LAST_FIRST_TOKEN_ORDER,
+  personNameWriteFields,
+} from '@sgr-registry/domain';
 import type { UserRole } from '@sgr-registry/contracts';
 
 const DEMO_PASSWORD = 'Dana-SGR-Demo-2026!';
@@ -60,7 +64,7 @@ async function createUser(role: UserRole) {
   const passwordHash = await hashArgon2id(DEMO_PASSWORD, { memoryCost: 4096, timeCost: 1 });
   const user = await prisma.user.create({
     data: {
-      ...personNameWriteFields(`Реестр ${role}`),
+      ...personNameWriteFields(`Реестр ${role}`, CONFIRMED_LAST_FIRST_TOKEN_ORDER),
       email,
       role,
     },

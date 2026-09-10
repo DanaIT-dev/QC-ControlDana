@@ -16,6 +16,7 @@ import {
   PREVIOUS_RLS_TX_TIMEOUT_MS,
   emailJobId,
   emailMessageId,
+  CONFIRMED_LAST_FIRST_TOKEN_ORDER,
   personNameWriteFields,
 } from '@sgr-registry/domain';
 import { NotificationDispatcher, NOTIFICATION_QUEUE } from '@sgr-registry/jobs';
@@ -243,7 +244,7 @@ describe('notification worker SMTP lifecycle', () => {
     const suffix = Math.random().toString(16).slice(2, 10);
     const user = await prisma.user.create({
       data: {
-        ...personNameWriteFields(`SMTP ${suffix}`),
+        ...personNameWriteFields(`SMTP ${suffix}`, CONFIRMED_LAST_FIRST_TOKEN_ORDER),
         email: `smtp.${suffix}@example.sgr.local`,
         role: 'RESPONSIBLE_ENGINEER',
       },
@@ -468,7 +469,7 @@ describe('notification worker SMTP lifecycle', () => {
   it('processes a backlog of 100 queued deliveries and recovers after restart', async () => {
     const suffix = Math.random().toString(16).slice(2, 8);
     const users = Array.from({ length: 100 }, (_, index) => ({
-      ...personNameWriteFields(`Burst ${suffix} ${index}`),
+      ...personNameWriteFields(`Burst ${suffix} ${index}`, CONFIRMED_LAST_FIRST_TOKEN_ORDER),
       email: `burst.${suffix}.${index}@example.sgr.local`,
       role: 'RESPONSIBLE_ENGINEER' as const,
     }));

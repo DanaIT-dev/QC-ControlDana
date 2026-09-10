@@ -6,12 +6,12 @@ const DEMO_PASSWORD = 'Dana-SGR-Demo-2026!';
 const ACCOUNTS = {
   admin: {
     email: 'alexey.viktorov@example.sgr.local',
-    name: 'Алексей Викторов',
+    name: 'Викторов Алексей',
     role: 'Администратор',
   },
   manager: {
     email: 'marina.sokolova@example.sgr.local',
-    name: 'Марина Соколова',
+    name: 'Соколова Марина',
     role: 'Руководитель СГР',
   },
 };
@@ -52,7 +52,7 @@ test.describe('authentication browser flows', () => {
     await login(page, ACCOUNTS.admin.email, DEMO_PASSWORD);
     await expect(page).toHaveURL(/\/registry$/);
     await expect(page.getByRole('button', { name: 'Меню пользователя' })).toContainText(
-      'Алексей В.',
+      'Викторов А.',
     );
     await expect(page.getByTitle(ACCOUNTS.admin.name).first()).toBeVisible();
     await expect(page.getByText(ACCOUNTS.admin.role)).toBeVisible();

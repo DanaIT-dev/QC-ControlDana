@@ -1,6 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { APPROVED_DEFECT_TYPES_V1, personNameWriteFields } from '@sgr-registry/domain';
+import {
+  APPROVED_DEFECT_TYPES_V1,
+  CONFIRMED_LAST_FIRST_TOKEN_ORDER,
+  personNameWriteFields,
+} from '@sgr-registry/domain';
 import { createOwnerPrismaClient } from '../../src/client';
 import { createPropertyObjectViaDefiner } from '../../src/create-property-object';
 import { importReferenceDirectories } from '../../src/directories-import';
@@ -151,7 +155,7 @@ describe('reference directories importer', () => {
   it('creates a manual object in one transaction and rolls back when audit cannot be written', async () => {
     const actor = await prisma.user.create({
       data: {
-        ...personNameWriteFields(`${MARKER} admin`),
+        ...personNameWriteFields(`${MARKER} admin`, CONFIRMED_LAST_FIRST_TOKEN_ORDER),
         email: `${MARKER}.admin@example.sgr.local`,
         role: 'ADMIN',
         status: 'ACTIVE',

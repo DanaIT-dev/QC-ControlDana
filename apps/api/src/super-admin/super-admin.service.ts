@@ -10,8 +10,9 @@ import {
   AdminGrantNotEligibleError,
   DuplicateValueError,
   LastAdminRevokeError,
+  composeOfficialFullName,
   normalizeUserEmail,
-  resolveOfficialFullName,
+  parsePersonNameInput,
   roleLabel,
   StaleWriteError,
 } from '@sgr-registry/domain';
@@ -133,12 +134,12 @@ export class SuperAdminService {
 
   async createPendingUser(actor: AuthenticatedUser, body: unknown, request: FastifyRequest) {
     const input = parseCommandBody(createUnassignedUserRequestSchema, body);
-    const fullName = resolveOfficialFullName({
-      fullName: input.fullName,
+    const parts = parsePersonNameInput({
       lastName: input.lastName,
       firstName: input.firstName,
       middleName: input.middleName ?? null,
     });
+    const fullName = composeOfficialFullName(parts);
     const email = normalizeUserEmail(input.email);
     const temporaryPassword = generateTemporaryPassword(16, { email, fullName });
     const passwordHash = await this.hasher.hash(temporaryPassword, { email, fullName });
@@ -146,7 +147,9 @@ export class SuperAdminService {
     try {
       const created = await this.prisma.client.$transaction(async (tx) => {
         return createPendingUserViaDefiner(tx, {
-          fullName,
+          lastName: parts.lastName,
+          firstName: parts.firstName,
+          middleName: parts.middleName,
           email,
           passwordHash,
           actorUserId: actor.id,

@@ -17,7 +17,9 @@ export type PendingUserRow = {
 export async function createPendingUserViaDefiner(
   tx: { $queryRaw: Prisma.TransactionClient['$queryRaw'] },
   input: {
-    fullName: string;
+    lastName: string;
+    firstName: string;
+    middleName: string | null;
     email: string;
     passwordHash: string;
     actorUserId: string;
@@ -39,7 +41,9 @@ export async function createPendingUserViaDefiner(
       updated_at,
       last_login_at
     FROM public.sgr_create_pending_user(
-      ${input.fullName},
+      ${input.lastName},
+      ${input.firstName},
+      ${input.middleName},
       ${input.email},
       ${input.passwordHash},
       ${input.actorUserId}::uuid,

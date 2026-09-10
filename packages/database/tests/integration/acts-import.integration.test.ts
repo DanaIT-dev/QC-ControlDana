@@ -4,7 +4,11 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import ExcelJS from 'exceljs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { LEGACY_ACT_SOURCE_SYSTEM, personNameWriteFields } from '@sgr-registry/domain';
+import {
+  LEGACY_ACT_SOURCE_SYSTEM,
+  CONFIRMED_LAST_FIRST_TOKEN_ORDER,
+  personNameWriteFields,
+} from '@sgr-registry/domain';
 import { createOwnerPrismaClient, createPrismaClient } from '../../src/client';
 import { withAuthenticatedDbContext } from '../../src/authenticated-context';
 import { importLegacyActs, rollbackLegacyActsImportBatch } from '../../src/acts-import';
@@ -119,7 +123,7 @@ describe('legacy acts importer', () => {
     });
     const engineer = await prisma.user.create({
       data: {
-        ...personNameWriteFields(ENGINEER_A_NAME),
+        ...personNameWriteFields(ENGINEER_A_NAME, CONFIRMED_LAST_FIRST_TOKEN_ORDER),
         email: `${MARKER}.orlov@example.sgr.local`,
         role: 'RESPONSIBLE_ENGINEER',
         status: 'ACTIVE',
@@ -129,7 +133,7 @@ describe('legacy acts importer', () => {
     createdUserIds.push(engineer.id);
     const second = await prisma.user.create({
       data: {
-        ...personNameWriteFields(ENGINEER_B_NAME),
+        ...personNameWriteFields(ENGINEER_B_NAME, CONFIRMED_LAST_FIRST_TOKEN_ORDER),
         email: `${MARKER}.krylova@example.sgr.local`,
         role: 'RESPONSIBLE_ENGINEER',
         status: 'ACTIVE',
@@ -319,6 +323,39 @@ describe('legacy acts importer', () => {
       expect(repeat.created.defects).toBe(0);
       expect(repeat.unchanged.acts).toBe(2);
 
+      const started = imported.find((act) => act.status === 'IMPORTED_UNSPECIFIED');
+      expect(started).toBeTruthy();
+      const notificationsBefore = await prisma.outboxEvent.count();
+      await prisma.act.update({
+        where: { id: started!.id },
+        data: { status: 'IN_PROGRESS', startedAt: new Date() },
+      });
+      const operational = await importLegacyActs({
+        prisma,
+        workbook: valid,
+        apply: false,
+        databaseName: 'sgr_registry_test',
+        environment: 'test',
+      });
+      expect(operational.plan.payloadConflicts).toHaveLength(0);
+      expect(operational.unchanged.acts).toBe(2);
+      expect(operational.unchanged.defects).toBe(3);
+      const startedAfter = await prisma.act.findUniqueOrThrow({ where: { id: started!.id } });
+      expect(startedAfter.status).toBe('IN_PROGRESS');
+      expect(startedAfter.sourceStatusRaw).toBe(started!.sourceStatusRaw);
+      const operationalApply = await importLegacyActs({
+        prisma,
+        workbook: valid,
+        apply: true,
+        databaseName: 'sgr_registry_test',
+        environment: 'test',
+      });
+      expect(operationalApply.created.acts).toBe(0);
+      expect(await prisma.outboxEvent.count()).toBe(notificationsBefore);
+      expect((await prisma.act.findUniqueOrThrow({ where: { id: started!.id } })).status).toBe(
+        'IN_PROGRESS',
+      );
+
       await writeFixture(file, [baseRow({ 1: 'С-1' })]);
       const changed = await readLegacyActsWorkbook(file);
       const conflict = await importLegacyActs({
@@ -391,7 +428,7 @@ describe('legacy acts importer', () => {
       expect(secret.length).toBeGreaterThanOrEqual(32);
       const outsider = await prisma.user.create({
         data: {
-          ...personNameWriteFields('Посторонний Инженер'),
+          ...personNameWriteFields('Посторонний Инженер', CONFIRMED_LAST_FIRST_TOKEN_ORDER),
           email: `${MARKER}.outsider@example.sgr.local`,
           role: 'RESPONSIBLE_ENGINEER',
           status: 'ACTIVE',
@@ -505,7 +542,7 @@ describe('legacy acts importer', () => {
       });
       const created = await prisma.user.create({
         data: {
-          ...personNameWriteFields('Минтюк Константин Андреевич'),
+          ...personNameWriteFields('Минтюк Константин Андреевич', CONFIRMED_LAST_FIRST_TOKEN_ORDER),
           email: `${MARKER}.mintyuk@example.sgr.local`,
           role: 'RESPONSIBLE_ENGINEER',
           status: 'ACTIVE',

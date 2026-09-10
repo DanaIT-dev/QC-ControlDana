@@ -49,6 +49,12 @@ pnpm db:seed
 pnpm acts:import -- --file="/absolute/path/to.xlsx" --dry-run --expect-sha256=<sha256>
 ```
 
+Двухсловное ФИО не разбирается автоматически. Подтверждённая коррекция структуры (без смены пароля и sessionVersion):
+
+```bash
+pnpm --filter @sgr-registry/database users:correct-name -- --user-id=<uuid> --last-name=<Фамилия> --first-name=<Имя> --confirm-database=sgr_registry
+```
+
 Не используйте bootstrap `sgr_registry` в `DATABASE_URL` / `AUTH_DATABASE_URL` / `WORKER_DATABASE_URL`. Seed и migrate — `MIGRATION_DATABASE_URL`. Development-базу не reset-ьте ради RLS.
 
 Внутренний чат акта не требует SMTP: Mailpit можно не открывать, чтобы проверить `@` упоминания. Worker по-прежнему нужен для остальных уведомлений и SLA.

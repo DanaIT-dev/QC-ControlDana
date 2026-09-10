@@ -14,9 +14,8 @@ export const expectedVersionSchema = z.number().int().positive();
 
 export const createUserRequestSchema = z
   .object({
-    fullName: z.string().optional(),
-    lastName: z.string().optional(),
-    firstName: z.string().optional(),
+    lastName: z.string(),
+    firstName: z.string(),
     middleName: z.union([z.string(), z.null()]).optional(),
     email: z.string(),
     role: z.enum(OPERATIONAL_ASSIGNABLE_ROLES),
@@ -256,6 +255,9 @@ export interface AuditLogListItem {
   reason: string | null;
   actorUserId: string | null;
   actorName: string | null;
+  actorLastName: string | null;
+  actorFirstName: string | null;
+  actorMiddleName: string | null;
   occurredAt: string;
 }
 

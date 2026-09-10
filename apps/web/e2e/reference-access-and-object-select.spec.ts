@@ -192,13 +192,13 @@ test.describe('reference access and linked object selection', () => {
     const errors = attachConsole(page);
     await login(page, ACCOUNTS.admin);
     await page.getByRole('link', { name: 'Справочники' }).click();
-    await expect(page.getByText('Дмитрий О.').first()).toBeVisible();
+    await expect(page.getByText('Орлов Д.').first()).toBeVisible();
     const stamp = Date.now();
     await page.getByRole('button', { name: 'Создать' }).click();
     await page.getByLabel('Название объекта').fill(`Е2Е объект инженеры ${stamp}`);
     await page.getByLabel('Адрес объекта').fill('Минск, инженеры');
     await page.getByRole('combobox', { name: 'Ответственные инженеры' }).click();
-    await page.getByRole('option', { name: /Дмитрий Орлов/ }).click();
+    await page.getByRole('option', { name: /Орлов Дмитрий/ }).click();
     await page.keyboard.press('Escape');
     const created = page.waitForResponse(
       (response) =>
@@ -210,7 +210,7 @@ test.describe('reference access and linked object selection', () => {
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await page.getByLabel('Поиск справочника').fill(String(stamp));
     await expect(page.getByRole('cell', { name: `Е2Е объект инженеры ${stamp}` })).toBeVisible();
-    await expect(page.getByText('Дмитрий О.').first()).toBeVisible();
+    await expect(page.getByText('Орлов Д.').first()).toBeVisible();
     expect(applicationErrors(errors)).toEqual([]);
   });
 
@@ -230,9 +230,9 @@ test.describe('reference access and linked object selection', () => {
     await page.getByLabel('Описание').fill('Создание с объекта');
     await chooseFirst(page, 'Вид дефекта');
     await page.getByRole('combobox', { name: 'Ответственные инженеры' }).click();
-    await expect(page.getByRole('option', { name: /Дмитрий Орлов/ })).toBeVisible();
-    await expect(page.getByRole('option', { name: /Елена Крылова/ })).toHaveCount(0);
-    await page.getByRole('option', { name: /Дмитрий Орлов/ }).click();
+    await expect(page.getByRole('option', { name: /Орлов Дмитрий/ })).toBeVisible();
+    await expect(page.getByRole('option', { name: /Крылова Елена/ })).toHaveCount(0);
+    await page.getByRole('option', { name: /Орлов Дмитрий/ }).click();
     await page.keyboard.press('Escape');
     await page.getByRole('button', { name: 'Создать акт' }).click();
     await expect(page).toHaveURL(/\/acts\//);

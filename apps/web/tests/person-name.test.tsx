@@ -21,6 +21,25 @@ describe('PersonName', () => {
     expect(parts[1]).toHaveTextContent('М.В.');
   });
 
+  it('uses structured parts for a user without patronymic', () => {
+    const { container } = render(
+      <PersonName
+        lastName="Ковалева"
+        firstName="Мария"
+        middleName={null}
+        fullName="Ковалева Мария"
+      />,
+    );
+    expect(container).toHaveTextContent('Ковалева М.');
+    expect(screen.getByLabelText('Ковалева Мария')).toBeVisible();
+  });
+
+  it('does not invent initials from an unconfirmed two-token fullName', () => {
+    const { container } = render(<PersonName fullName="Ковалева Мария" />);
+    expect(container).toHaveTextContent('Ковалева Мария');
+    expect(container).not.toHaveTextContent('Ковалева М.');
+  });
+
   it('splits abbreviated source names the same way', () => {
     render(<PersonName fullName="Василевич М.В." />);
     const root = screen.getByLabelText('Василевич М.В.');
