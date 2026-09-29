@@ -5,20 +5,26 @@ import { sessionCookieOptions, sessionCookieSecure } from '../../src/auth/cookie
 function productionEnv(overrides: Record<string, string> = {}) {
   return {
     NODE_ENV: 'production',
-    DATABASE_URL: 'postgresql://sgr_app_user:sgr@localhost:5432/sgr_registry',
-    AUTH_DATABASE_URL: 'postgresql://sgr_auth_user:sgr@localhost:5432/sgr_registry',
-    WORKER_DATABASE_URL: 'postgresql://sgr_worker_user:sgr@localhost:5432/sgr_registry',
-    MIGRATION_DATABASE_URL: 'postgresql://sgr_migrator:sgr@localhost:5432/sgr_registry',
+    DATABASE_URL: 'postgresql://sgr_app_user:sgr-app-production-secret@postgres:5432/sgr_registry',
+    AUTH_DATABASE_URL:
+      'postgresql://sgr_auth_user:sgr-auth-production-secret@postgres:5432/sgr_registry',
+    WORKER_DATABASE_URL:
+      'postgresql://sgr_worker_user:sgr-worker-production-secret@postgres:5432/sgr_registry',
+    MIGRATION_DATABASE_URL:
+      'postgresql://sgr_migrator:sgr-migrator-production-secret@postgres:5432/sgr_registry',
     RLS_CONTEXT_SECRET: 'production-rls-context-secret-value-32',
-    REDIS_URL: 'redis://sgr_api:prod-redis-api-not-dev@127.0.0.1:6379/0',
-    WORKER_REDIS_URL: 'redis://sgr_worker:prod-redis-worker-not-dev@127.0.0.1:6379/0',
+    REDIS_URL: 'redis://sgr_api:prod-redis-api-not-dev@redis:6379/0',
+    WORKER_REDIS_URL: 'redis://sgr_worker:prod-redis-worker-not-dev@redis:6379/0',
     S3_ENDPOINT: 'https://minio.example.local',
     S3_REGION: 'us-east-1',
-    S3_ACCESS_KEY: 'key',
-    S3_SECRET_KEY: 'secret',
+    S3_ACCESS_KEY: 'sgr-minio-production-access',
+    S3_SECRET_KEY: 'sgr-minio-production-secret',
     S3_BUCKET: 'sgr-attachments',
     WEB_ORIGIN: 'https://sgr.example.local',
     PUBLIC_APP_URL: 'https://sgr.example.local',
+    SMTP_HOST: 'smtp.example.internal',
+    SMTP_PASSWORD: 'smtp-production-secret-value',
+    EMAIL_FROM: 'sgr-registry@example.internal',
     ...overrides,
   };
 }
@@ -136,5 +142,37 @@ describe('production session cookie policy', () => {
     expect(tls.REDIS_URL.startsWith('rediss://')).toBe(true);
     expect(redisTlsOptions(tls.REDIS_URL)).toEqual({ tls: { rejectUnauthorized: true } });
     expect(redisTlsOptions('redis://sgr_api:x@127.0.0.1:6379/0')).toEqual({});
+  });
+
+  it('refuses production startup when secrets are missing, short, or taken from development', () => {
+    const weak = 'sgr_minio_dev_password';
+    expect(() => loadConfig(productionEnv({ S3_SECRET_KEY: weak }))).toThrow(
+      MissingConfigurationError,
+    );
+    expect(() =>
+      loadConfig(
+        productionEnv({ RLS_CONTEXT_SECRET: 'local-dev-rls-hmac-secret-not-for-production' }),
+      ),
+    ).toThrow(MissingConfigurationError);
+    expect(() => loadConfig(productionEnv({ SMTP_HOST: '127.0.0.1' }))).toThrow(
+      MissingConfigurationError,
+    );
+    expect(() =>
+      loadConfig(
+        productionEnv({
+          DATABASE_URL: 'postgresql://sgr_app_user:sgr_app_dev_password@postgres:5432/sgr_registry',
+        }),
+      ),
+    ).toThrow(MissingConfigurationError);
+    try {
+      loadConfig(productionEnv({ S3_SECRET_KEY: weak, SMTP_PASSWORD: 'short' }));
+      throw new Error('expected MissingConfigurationError');
+    } catch (error) {
+      expect(error).toBeInstanceOf(MissingConfigurationError);
+      const message = error instanceof Error ? error.message : '';
+      expect(message).toContain('S3_SECRET_KEY');
+      expect(message).not.toContain(weak);
+      expect(message).not.toContain('short');
+    }
   });
 });

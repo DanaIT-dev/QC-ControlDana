@@ -49,14 +49,18 @@ describe('infrastructure compose published ports', () => {
     expect(yaml).toMatch(/127\.0\.0\.1:\$\{MAILPIT_UI_PORT:-8025}:8025/);
   });
 
-  it('does not publish Redis in the production compose template', () => {
+  it('publishes only the reverse proxy and keeps Redis private', () => {
     const productionPath = resolve(
       import.meta.dirname,
       '../../../../infra/docker/compose.production.yaml',
     );
     const yaml = readFileSync(productionPath, 'utf8');
+    const redis = yaml.slice(yaml.indexOf('\n  redis:'), yaml.indexOf('\n  minio:'));
+    const proxy = yaml.slice(yaml.indexOf('\n  proxy:'), yaml.indexOf('\n  web:'));
     expect(yaml).toMatch(/^\s+redis:/m);
-    expect(yaml).not.toMatch(/^\s+ports:\s*$/m);
+    expect(redis).not.toMatch(/^\s+ports:\s*$/m);
+    expect(publishedPortMappings(yaml)).toEqual(['80:80', '443:443']);
+    expect(proxy).toMatch(/443:443/);
     expect(yaml).not.toMatch(/0\.0\.0\.0/);
     expect(yaml).not.toMatch(/local-development-only/);
     expect(yaml).not.toMatch(/requirepass/);

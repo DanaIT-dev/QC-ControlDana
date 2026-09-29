@@ -90,6 +90,14 @@ describe('person name', () => {
     ).toBeLessThan(0);
   });
 
+  it('shows the confirmed Bolutenko name as surname-first on every display surface', () => {
+    const parts = { lastName: 'Болутенко', firstName: 'Павел', middleName: null };
+    expect(formatPersonFull(parts)).toBe('Болутенко Павел');
+    expect(formatPersonShort(parts)).toBe('Болутенко П.');
+    expect(formatPersonShort(parts)).not.toBe('Павел Б.');
+    expect(formatPersonFull(parts)).not.toContain('Павел Б.');
+  });
+
   it('does not silently split a two-token legacy name', () => {
     expect(parseStoredOfficialPersonName('Мария Ковалева')).toEqual({
       ok: false,

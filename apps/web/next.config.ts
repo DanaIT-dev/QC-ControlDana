@@ -6,6 +6,8 @@ import { PERMISSIONS_POLICY, PRODUCTION_HSTS } from './lib/security-headers';
 loadEnvConfig(resolve(import.meta.dirname, '../..'));
 
 const nextConfig: NextConfig = {
+  output: 'standalone',
+  outputFileTracingRoot: resolve(import.meta.dirname, '../..'),
   poweredByHeader: false,
   distDir: process.env.SGR_REQUIRE_E2E_TARGET === '1' ? '.next-e2e' : '.next',
   transpilePackages: ['@sgr-registry/contracts', '@sgr-registry/domain'],

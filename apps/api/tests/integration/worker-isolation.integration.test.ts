@@ -35,6 +35,12 @@ import { startWorkerRuntime, type WorkerRuntime } from '../../../worker/src/runt
 
 const DEMO_PASSWORD = 'Dana-SGR-Demo-2026!';
 
+function futureIsoDate(daysAhead: number): string {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + daysAhead);
+  return date.toISOString().slice(0, 10);
+}
+
 let app: NestFastifyApplication;
 let prisma: PrismaClient;
 let redis: Redis;
@@ -169,7 +175,7 @@ async function createActWithDefect(
           claimDetails: 'Описание',
           liableOrganizationIds: [refs.liable.id],
           responsibleEngineerIds: [responsibleId],
-          plannedDeadline: '2026-09-15',
+          plannedDeadline: futureIsoDate(60),
         },
       ],
     },

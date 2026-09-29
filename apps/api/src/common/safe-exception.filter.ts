@@ -13,6 +13,7 @@ import {
   CONFLICT_ERROR_CODES,
   VALIDATION_ERROR_CODES,
   ValidationError,
+  redactLogText,
 } from '@sgr-registry/domain';
 import { MissingConfigurationError } from '@sgr-registry/config';
 
@@ -40,7 +41,16 @@ export class SafeExceptionFilter implements ExceptionFilter {
     const details =
       exception instanceof Error ? (exception.stack ?? exception.message) : String(exception);
     this.logger.error(
-      `${body.statusCode} ${body.error} requestId=${requestId ?? 'n/a'} ${details}`,
+      JSON.stringify({
+        timestamp: new Date().toISOString(),
+        service: 'api',
+        level: 'error',
+        event: 'http_exception',
+        requestId: requestId ?? null,
+        statusCode: body.statusCode,
+        errorCode: body.error,
+        detail: redactLogText(details).slice(0, 2_000),
+      }),
     );
 
     void response.status(body.statusCode).send(body);

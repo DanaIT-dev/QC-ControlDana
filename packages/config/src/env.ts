@@ -2,6 +2,14 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { config as loadDotenv } from 'dotenv';
 import { z } from 'zod';
+import {
+  databaseNameFromUrl,
+  isLoopbackHost,
+  isPrivateHostname,
+  isWeakSecret,
+  passwordFromUrl,
+  weakSecretMessage,
+} from './production-secrets';
 import { REDIS_API_ACL_USER, REDIS_WORKER_ACL_USER, redisUrlIssues } from './redis';
 
 const BOOTSTRAP_DB_USERS = new Set(['sgr_registry', 'postgres']);
@@ -225,6 +233,88 @@ const envSchema = z
         path: ['PUBLIC_APP_URL'],
         message: 'PUBLIC_APP_URL must use HTTPS in production',
       });
+    }
+    if (value.NODE_ENV === 'production') {
+      const secretFields: Array<[string, string]> = [
+        ['RLS_CONTEXT_SECRET', value.RLS_CONTEXT_SECRET],
+        ['S3_ACCESS_KEY', value.S3_ACCESS_KEY],
+        ['S3_SECRET_KEY', value.S3_SECRET_KEY],
+        ['SMTP_PASSWORD', value.SMTP_PASSWORD],
+      ];
+      for (const [path, secret] of secretFields) {
+        if (isWeakSecret(secret)) {
+          ctx.addIssue({
+            code: 'custom',
+            path: [path],
+            message: weakSecretMessage(path),
+          });
+        }
+      }
+      const databaseUrls = [
+        'DATABASE_URL',
+        'AUTH_DATABASE_URL',
+        'WORKER_DATABASE_URL',
+        'MIGRATION_DATABASE_URL',
+      ] as const;
+      for (const path of databaseUrls) {
+        const url = value[path];
+        if (isWeakSecret(passwordFromUrl(url))) {
+          ctx.addIssue({
+            code: 'custom',
+            path: [path],
+            message: weakSecretMessage(path),
+          });
+        }
+        const databaseName = databaseNameFromUrl(url);
+        if (databaseName.endsWith('_test') || databaseName.endsWith('_e2e')) {
+          ctx.addIssue({
+            code: 'custom',
+            path: [path],
+            message: `${path} must not point at a test or e2e database in production`,
+          });
+        }
+      }
+      for (const [path, url] of [
+        ['REDIS_URL', value.REDIS_URL],
+        ['WORKER_REDIS_URL', value.WORKER_REDIS_URL ?? ''],
+      ] as const) {
+        if (url && isWeakSecret(passwordFromUrl(url))) {
+          ctx.addIssue({
+            code: 'custom',
+            path: [path],
+            message: weakSecretMessage(path),
+          });
+        }
+      }
+      if (isLoopbackHost(value.SMTP_HOST)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['SMTP_HOST'],
+          message: 'SMTP_HOST must not be a loopback or mailpit address in production',
+        });
+      }
+      try {
+        const endpoint = new URL(value.S3_ENDPOINT);
+        if (isLoopbackHost(endpoint.hostname)) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['S3_ENDPOINT'],
+            message: 'S3_ENDPOINT must not use a loopback address in production',
+          });
+        } else if (endpoint.protocol !== 'https:' && !isPrivateHostname(endpoint.hostname)) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['S3_ENDPOINT'],
+            message: 'S3_ENDPOINT must use HTTPS outside the private network',
+          });
+        }
+      } catch {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['S3_ENDPOINT'],
+          message: 'S3_ENDPOINT is not a valid URL',
+        });
+      }
     }
     try {
       const parsed = new URL(value.PUBLIC_APP_URL);

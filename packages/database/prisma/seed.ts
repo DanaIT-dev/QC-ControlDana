@@ -102,6 +102,9 @@ const DEMO_USERS = [
 ] as const;
 
 async function seed(): Promise<void> {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('Database seed and demo reset are forbidden when NODE_ENV=production.');
+  }
   if (process.env.SGR_REQUIRE_E2E_TARGET === '1') {
     assertE2eDatabaseTarget(process.env);
   }

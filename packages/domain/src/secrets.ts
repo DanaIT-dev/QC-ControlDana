@@ -138,6 +138,21 @@ export function omitSensitiveKeys<T extends Record<string, unknown>>(input: T): 
   return scrubSensitiveValue(input) as T;
 }
 
+const LOG_SECRET_PATTERNS: Array<[RegExp, string]> = [
+  [/postgres(?:ql)?:\/\/[^\s'"]+/gi, 'postgresql://[redacted]'],
+  [/rediss?:\/\/[^\s'"]+/gi, 'redis://[redacted]'],
+  [/\$argon2[^\s'"]+/g, '[redacted-password-hash]'],
+  [/(?:smtp-password|session-id|csrf-token|set-cookie)\s*[:=]\s*\S+/gi, '[redacted-credential]'],
+];
+
+export function redactLogText(value: string): string {
+  let redacted = value;
+  for (const [pattern, replacement] of LOG_SECRET_PATTERNS) {
+    redacted = redacted.replace(pattern, replacement);
+  }
+  return redacted;
+}
+
 export function findSensitiveApiResponseLeaks(value: unknown, path = '$'): string[] {
   const leaks: string[] = [];
   collectSensitiveApiResponseLeaks(value, path, leaks);

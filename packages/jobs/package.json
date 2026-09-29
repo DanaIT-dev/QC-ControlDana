@@ -23,7 +23,7 @@
     "@sgr-registry/domain": "workspace:*",
     "bullmq": "^5.81.3",
     "ioredis": "^5.8.2",
-    "nodemailer": "^9.0.6"
+    "nodemailer": "^9.1.0"
   },
   "devDependencies": {
     "@sgr-registry/typescript-config": "workspace:*",

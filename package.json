@@ -31,7 +31,10 @@
     "objects:reconcile-engineers": "pnpm --filter @sgr-registry/database objects:reconcile-engineers",
     "db:seed": "pnpm --filter @sgr-registry/contracts build && pnpm --filter @sgr-registry/domain build && pnpm --filter @sgr-registry/database generate && pnpm --filter @sgr-registry/database seed",
     "infra:up": "node scripts/dev/sync-redis-secrets.mjs && docker compose -f infra/docker/compose.yaml --env-file .env up -d",
-    "infra:down": "docker compose -f infra/docker/compose.yaml --env-file .env down"
+    "infra:down": "docker compose -f infra/docker/compose.yaml --env-file .env down",
+    "ops:readiness": "pnpm --filter @sgr-registry/config build && node packages/config/dist/check-production-readiness.js",
+    "ops:restore:drill": "pnpm --filter @sgr-registry/database exec tsx scripts/restore-drill.ts",
+    "ops:production-compose": "node scripts/security/validate-production-compose.mjs"
   },
   "devDependencies": {
     "@sgr-registry/eslint-config": "workspace:*",

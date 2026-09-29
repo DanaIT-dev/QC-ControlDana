@@ -1,0 +1,80 @@
+groups:
+  - name: sgr-registry
+    rules:
+      - alert: ApiUnavailable
+        expr: probe_success{job="api-health"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: API health probe is failing
+      - alert: DatabaseUnavailable
+        expr: sgr_component_up{component="postgres"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: PostgreSQL readiness is down
+      - alert: RedisUnavailable
+        expr: sgr_component_up{component="redis"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Redis readiness is down
+      - alert: MinioUnavailable
+        expr: sgr_component_up{component="minio"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: MinIO readiness is down
+      - alert: DiskSpaceHigh
+        expr: (1 - node_filesystem_avail_bytes / node_filesystem_size_bytes) > 0.80
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Disk usage is above 80 percent
+      - alert: DiskSpaceCritical
+        expr: (1 - node_filesystem_avail_bytes / node_filesystem_size_bytes) > 0.90
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Disk usage is above 90 percent
+      - alert: BackupStale
+        expr: time() - sgr_backup_last_success_timestamp > 60 * 60 * 36
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: No successful backup in the last 36 hours
+      - alert: WorkerStopped
+        expr: sgr_worker_heartbeat_up == 0
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: Background worker heartbeat is missing
+      - alert: OutboxBacklog
+        expr: sgr_outbox_pending > 100
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: Notification outbox backlog is growing
+      - alert: RepeatedServerErrors
+        expr: sum(rate(sgr_http_responses_total{status=~"5.."}[5m])) > 0.2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: API 5xx rate is elevated
+      - alert: TlsCertificateExpiring
+        expr: (probe_ssl_earliest_cert_expiry - time()) / 86400 < 21
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: TLS certificate expires within 21 days

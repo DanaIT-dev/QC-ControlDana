@@ -1,0 +1,37 @@
+{
+	admin off
+	auto_https off
+	servers {
+		timeouts {
+			read_body 60s
+			read_header 10s
+			write 60s
+			idle 120s
+		}
+	}
+}
+
+:80 {
+	redir https://{host}{uri} permanent
+}
+
+:443 {
+	tls /etc/caddy/tls/fullchain.pem /etc/caddy/tls/privkey.pem
+	request_body {
+		max_size 22MB
+	}
+	header {
+		Strict-Transport-Security "max-age=15552000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
+	handle /api/* {
+		reverse_proxy api:3001
+	}
+	handle {
+		reverse_proxy web:3000
+	}
+}

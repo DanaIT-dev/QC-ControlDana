@@ -1,16 +1,200 @@
-# Production template. Copy to the deployment host and inject secrets via
-# Docker secrets or the orchestrator. Do not put real Redis passwords here.
-#
-# Redis:
-# - no host ports (not published on the host)
-# - protected-mode yes
-# - default user disabled
-# - ACL users sgr_api / sgr_worker from secret files
-# - reachable only on the internal compose/overlay network
+# Production stack. Inject secrets on the host. Do not commit infra/docker/secrets.
+# The only published ports belong to the reverse proxy.
+# Migrations are a separate profile: docker compose --profile migrate run --rm migrator
+# Seed and database reset are not part of this file.
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '5'
+
+x-hardening: &hardening
+  init: true
+  restart: unless-stopped
+  security_opt:
+    - no-new-privileges:true
+  logging: *logging
+  networks:
+    - sgr_internal
 
 services:
+  proxy:
+    image: caddy:2-alpine
+    <<: *hardening
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      SGR_TLS_DOMAIN: ${SGR_TLS_DOMAIN:?SGR_TLS_DOMAIN is required}
+    volumes:
+      - ./Caddyfile.production:/etc/caddy/Caddyfile:ro
+      - ./secrets/tls:/etc/caddy/tls:ro
+      - sgr_caddy_data:/data
+      - sgr_caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:80/ || exit 1']
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    stop_grace_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 256M
+
+  web:
+    image: sgr-registry-web:${SGR_IMAGE_TAG:?SGR_IMAGE_TAG is required}
+    <<: *hardening
+    env_file:
+      - ./secrets/app.env
+    environment:
+      NODE_ENV: production
+      PORT: '3000'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/login').then((r)=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    stop_grace_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.00'
+          memory: 512M
+
+  api:
+    image: sgr-registry-runtime:${SGR_IMAGE_TAG:?SGR_IMAGE_TAG is required}
+    <<: *hardening
+    env_file:
+      - ./secrets/app.env
+    environment:
+      NODE_ENV: production
+    command: ['node', 'apps/api/dist/main.js']
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3001/api/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.00'
+          memory: 768M
+
+  worker:
+    image: sgr-registry-runtime:${SGR_IMAGE_TAG:?SGR_IMAGE_TAG is required}
+    <<: *hardening
+    env_file:
+      - ./secrets/app.env
+    environment:
+      NODE_ENV: production
+    command: ['node', 'apps/worker/dist/main.js']
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3002/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.00'
+          memory: 768M
+
+  migrator:
+    profiles: ['migrate']
+    image: sgr-registry-runtime:${SGR_IMAGE_TAG:?SGR_IMAGE_TAG is required}
+    <<: *hardening
+    restart: 'no'
+    env_file:
+      - ./secrets/app.env
+    environment:
+      NODE_ENV: production
+    command:
+      [
+        'node',
+        'packages/database/node_modules/prisma/build/index.js',
+        'migrate',
+        'deploy',
+        '--schema',
+        'packages/database/prisma/schema.prisma',
+        '--config',
+        'packages/database/prisma.config.ts',
+      ]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:18
+    <<: *hardening
+    environment:
+      POSTGRES_USER: sgr_owner
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_DB: sgr_registry
+    secrets:
+      - postgres_password
+    volumes:
+      - sgr_postgres:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U sgr_owner -d sgr_registry']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.00'
+          memory: 2G
+
   redis:
     image: redis:7-alpine
+    <<: *hardening
     command: ['/usr/local/bin/sgr-redis-acl-entrypoint.sh']
     environment:
       REDIS_API_PASSWORD_FILE: /run/secrets/redis_api_password
@@ -20,9 +204,7 @@ services:
       - redis_worker_password
     volumes:
       - ./redis/acl-entrypoint.sh:/usr/local/bin/sgr-redis-acl-entrypoint.sh:ro
-      - sgr_registry_redis:/data
-    networks:
-      - sgr_internal
+      - sgr_redis:/data
     healthcheck:
       test:
         [
@@ -32,17 +214,76 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
-    restart: unless-stopped
+    stop_grace_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    <<: *hardening
+    command: ['server', '/data', '--console-address', ':9001']
+    environment:
+      MINIO_ROOT_USER_FILE: /run/secrets/minio_root_user
+      MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_root_password
+    secrets:
+      - minio_root_user
+      - minio_root_password
+    volumes:
+      - sgr_minio:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -f http://127.0.0.1:9000/minio/health/live || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.00'
+          memory: 1G
+
+  clamav:
+    image: clamav/clamav-debian:1.4@sha256:f6da737f9399d6a1851c463b2f88d02021a67f969ec42dd6e1751fecf7c3de4f
+    <<: *hardening
+    volumes:
+      - sgr_clamav:/var/lib/clamav
+    healthcheck:
+      test: ['CMD-SHELL', 'echo PING | nc -w 2 127.0.0.1 3310 | grep -q PONG']
+      interval: 30s
+      timeout: 5s
+      retries: 20
+      start_period: 180s
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.00'
+          memory: 2G
 
 secrets:
+  postgres_password:
+    file: ./secrets/postgres_password
   redis_api_password:
     file: ./secrets/redis_api_password
   redis_worker_password:
     file: ./secrets/redis_worker_password
+  minio_root_user:
+    file: ./secrets/minio_root_user
+  minio_root_password:
+    file: ./secrets/minio_root_password
 
 networks:
   sgr_internal:
     driver: bridge
 
 volumes:
-  sgr_registry_redis:
+  sgr_postgres:
+  sgr_redis:
+  sgr_minio:
+  sgr_clamav:
+  sgr_caddy_data:
+  sgr_caddy_config:
