@@ -71,7 +71,7 @@ pnpm ops:supply-chain
 5. Обновить OpenVEX. Не помечать CVE исправленным, пока package в образе не изменился.
 6. Прогнать `pnpm ops:supply-chain`.
 
-Major PostgreSQL, Redis, MinIO и API без отдельного обоснования не меняется. Случайный сторонний образ вместо официального не используется.
+Major PostgreSQL, Redis, объектное хранилище и API без отдельного обоснования не меняется. Случайный сторонний образ вместо официального не используется.
 
 ## Порядок source SHA
 
@@ -81,4 +81,4 @@ Major PostgreSQL, Redis, MinIO и API без отдельного обоснов
 
 ## Staging
 
-Runbook: `docs/runbooks/AMD64_RELEASE_CANDIDATE.md`. Staging compose — `infra/docker/compose.staging.yaml`. Он фиксирует `platform: linux/amd64`, не содержит `build:` и не использует `latest`. Deployable manifest не выпускается, пока официальный `linux/amd64` digest MinIO не подтверждён. CVE-2026-6653 в ClamAV достижим через загружаемый файл и без утверждённого risk owner держит production gate закрытым. QEMU smoke не заменяет staging на `x86_64`.
+Runbook: `docs/runbooks/AMD64_RELEASE_CANDIDATE.md`. Staging compose — `infra/docker/compose.staging.yaml`. Он фиксирует `platform: linux/amd64`, не содержит `build:` и не использует `latest`. Объектное хранилище — официальный RustFS 1.0.0 с подтверждённым `linux/amd64` digest. Контейнерный binary не имеет проверяемого provenance и классифицирован как `SOURCE_TAG_ONLY`. CVE-2026-6653 закрыт переходом на `clamav/clamav:1.5.4`; production по-прежнему закрыт, пока нет persistent staging, 24-часового soak и подписанного release. QEMU smoke не заменяет staging на `x86_64`.

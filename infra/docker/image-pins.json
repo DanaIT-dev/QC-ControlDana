@@ -42,16 +42,16 @@
       "amd64Confirmed": true
     },
     "clamav": {
-      "repository": "docker.io/clamav/clamav-debian",
-      "version": "1.4",
-      "reference": "clamav/clamav-debian:1.4",
-      "source": "docker.io/clamav/clamav-debian",
-      "manifestList": "sha256:f6da737f9399d6a1851c463b2f88d02021a67f969ec42dd6e1751fecf7c3de4f",
+      "repository": "docker.io/clamav/clamav",
+      "version": "1.5.4",
+      "reference": "clamav/clamav:1.5.4",
+      "source": "https://github.com/Cisco-Talos/clamav",
+      "manifestList": "sha256:ebec5bc138401b36ae987caa1a3fa3c3b2a21ed3d51f0bfa5852825e663e67b0",
       "platforms": {
-        "linux/amd64": "sha256:c3912a32ef2c41c31411a7a0b0da3b95ed999b64def60572ed1214d2a4a3cec3",
-        "linux/arm64": "sha256:aec993564af481994e9df59f01ebeb12cc726c2807dbc611d81d5fc04e9c2499"
+        "linux/amd64": "sha256:7659dcb0db47941d3cf8336af84bbb63c7e70b76fc00601774358412b42ed186"
       },
-      "amd64Confirmed": true
+      "amd64Confirmed": true,
+      "note": "Official Alpine image. The 2026-09-28 index contains linux/amd64 only. libxml2 2.13.9-r2 is outside CVE-2026-6653. The process user is root."
     },
     "object-storage": {
       "repository": "docker.io/rustfs/rustfs",

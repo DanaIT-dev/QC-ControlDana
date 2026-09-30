@@ -12,3 +12,9 @@ test('audit mode keeps a partial gate non-zero only for a block', () => {
   assert.equal(releaseGateExitCode('PARTIAL', 'audit'), 0);
   assert.equal(releaseGateExitCode('BLOCKED', 'audit'), 1);
 });
+
+test('production mode rejects a partial gate', () => {
+  assert.equal(releaseGateExitCode('PARTIAL', 'production'), 1);
+  assert.equal(releaseGateExitCode('BLOCKED', 'production'), 1);
+  assert.equal(releaseGateExitCode('PASS', 'production'), 0);
+});

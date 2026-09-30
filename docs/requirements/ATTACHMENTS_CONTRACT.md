@@ -36,7 +36,7 @@ PDF, JPEG, PNG, WebP. Максимум 20 МиБ и 50 активных влож
 
 Worker job `attachment.scan` стримит объект в clamd INSTREAM. CLEAN → READY. INFECTED → REJECTED, bytes удаляются, objectKey очищается. Ошибки: bounded retry, затем SCAN_FAILED. Production scan не отключается. Первый запуск ClamAV качает сигнатуры и может занять несколько минут.
 
-Локальный образ закреплён по digest (`clamav/clamav-debian:1.4@sha256:…`, index включает `linux/arm64`). Команда обновления digest — в [LOCAL_DEVELOPMENT.md](../runbooks/LOCAL_DEVELOPMENT.md).
+Локальный образ закреплён по digest (`clamav/clamav:1.5.4@sha256:…`, официальный Alpine index с `linux/amd64`). Команда обновления digest — в [LOCAL_DEVELOPMENT.md](../runbooks/LOCAL_DEVELOPMENT.md).
 
 ## Миграция stub-таблицы
 

@@ -64,11 +64,7 @@ async function listKeys(bucket: string, endpoint: string, prefix?: string): Prom
   }
 }
 
-async function listKeyPages(
-  s3: S3Client,
-  bucket: string,
-  prefix?: string,
-): Promise<string[]> {
+async function listKeyPages(s3: S3Client, bucket: string, prefix?: string): Promise<string[]> {
   const keys: string[] = [];
   let token: string | undefined;
   do {

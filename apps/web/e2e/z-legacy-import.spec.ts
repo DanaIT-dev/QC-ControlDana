@@ -104,10 +104,10 @@ async function filterImportedOnly(page: Page) {
 
 async function openFirstVisibleAct(page: Page) {
   const card = page.locator('.defect-card').first();
-  if ((await card.count()) > 0) {
+  if ((await card.count()) > 0 && (await card.isVisible())) {
     await card.getByRole('button', { name: 'Открыть' }).click();
   } else {
-    await page.locator('.registry-row').first().click();
+    await page.locator('.registry-row').first().locator('a[href^="/acts/"]').click();
   }
   await expect(page).toHaveURL(/\/acts\//);
 }
@@ -249,6 +249,7 @@ test.describe('legacy imported acts', () => {
     const errors = attachConsole(page);
     await login(page, ACCOUNTS.superAdmin);
     await page.getByLabel('Поиск').fill('Лазарчик');
+    await expect(page.getByText('Лазарчик Е.В.').first()).toBeVisible();
     await openFirstVisibleAct(page);
     await expect(page.getByText('Источник: импортированный реестр')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Взять в работу' })).toHaveCount(0);
@@ -353,6 +354,7 @@ test.describe('legacy imported acts', () => {
     const errors = attachConsole(page);
     await login(page, ACCOUNTS.admin);
     await page.getByLabel('Поиск').fill('Лазарчик');
+    await expect(page.getByText('Лазарчик Е.В.').first()).toBeVisible();
     await openFirstVisibleAct(page);
     await page.getByRole('button', { name: 'Сопоставить инженера' }).click();
     await page.screenshot({ path: resolve(SCREENSHOT_DIR, 'manual-resolve.png'), fullPage: true });

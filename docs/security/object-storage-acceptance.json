@@ -12,5 +12,12 @@
   "vexBound": true,
   "trivyCritical": 0,
   "trivyHigh": 0,
-  "checkedAt": "2026-09-30T13:00:00Z"
+  "provenance": "SOURCE_TAG_ONLY",
+  "sourceCommit": "d47f54bfb2f39f48bd1adda334bd27e151fe85b8",
+  "containerDigestCorrelated": false,
+  "soakHours": 0,
+  "ciPreflight": "PASS",
+  "ciPreflightSeconds": 1800,
+  "ciPreflightArchitecture": "aarch64",
+  "checkedAt": "2026-09-30T15:38:00Z"
 }

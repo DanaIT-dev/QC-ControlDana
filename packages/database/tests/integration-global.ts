@@ -18,6 +18,8 @@ export function teardown(): void {
     { cwd: resolve(import.meta.dirname, '..'), encoding: 'utf8' },
   );
   if (result.status !== 0) {
-    throw new Error(result.stderr || result.stdout || 'Database integration object storage cleanup failed');
+    throw new Error(
+      result.stderr || result.stdout || 'Database integration object storage cleanup failed',
+    );
   }
 }

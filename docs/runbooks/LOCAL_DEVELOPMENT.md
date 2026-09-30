@@ -12,17 +12,17 @@
 
 Первый запуск ClamAV качает сигнатуры (часто 1–3 минуты). `GET /api/ready` остаётся `not_ready`, пока `clamav` не ответит PONG. Production object storage должен быть с TLS и полностью приватным bucket.
 
-Образ ClamAV закреплён по immutable digest в `infra/docker/compose.yaml` (`clamav/clamav-debian:1.4@sha256:…`). Это index digest тега `1.4`, в нём есть `linux/arm64`. Плавающий тег без digest не используется.
+Образ ClamAV закреплён по immutable digest в `infra/docker/compose.yaml` (`clamav/clamav:1.5.4@sha256:…`). Это официальный Alpine index. В публикации от 2026-09-28 есть только `linux/amd64`. Плавающий тег без digest не используется.
 
-Обновление digest после проверки нового образа `1.4`:
+Обновление digest после проверки нового официального образа:
 
 ```bash
-docker pull clamav/clamav-debian:1.4
-docker image inspect clamav/clamav-debian:1.4 --format '{{index .RepoDigests 0}}'
+docker pull clamav/clamav:1.5.4
+docker image inspect clamav/clamav:1.5.4 --format '{{index .RepoDigests 0}}'
 docker compose -f infra/docker/compose.yaml --env-file .env up -d --force-recreate clamav
 ```
 
-Подставьте полученный `sha256:…` в `image:` Compose (формат `clamav/clamav-debian:1.4@sha256:…`) и пересоздайте сервис командой выше.
+Подставьте полученный `sha256:…` в `image:` Compose (формат `clamav/clamav:1.5.4@sha256:…`) и пересоздайте сервис командой выше.
 
 Образ Mailpit закреплён по immutable digest (`axllent/mailpit:v1.27.10@sha256:…`). UI/SMTP только на localhost (`127.0.0.1`). Обновление digest:
 

@@ -56,13 +56,20 @@ const storageChecks = {
   OBJECT_STORAGE_VEX_BOUND: false,
 };
 const acceptancePath = resolve(root, 'docs/security/object-storage-acceptance.json');
+let acceptance = {};
 if (existsSync(acceptancePath)) {
-  const acceptance = readJson(acceptancePath);
+  acceptance = readJson(acceptancePath);
   storageChecks.OBJECT_STORAGE_CONTRACT_PASSED = acceptance.contract === 'PASS';
   storageChecks.OBJECT_STORAGE_BACKUP_RESTORE_PASSED = acceptance.backupRestore === 'PASS';
   storageChecks.OBJECT_STORAGE_LICENSE_REVIEWED = acceptance.licenseReviewed === true;
   storageChecks.OBJECT_STORAGE_VEX_BOUND =
     acceptance.vexBound === true && acceptance.linuxAmd64 === storageAmd64;
+  if (acceptance.provenance !== 'VERIFIED_UPSTREAM_PROVENANCE') {
+    partial('RustFS container digest is not bound to source by verified provenance');
+    addReason('RUSTFS_BINARY_PROVENANCE_UNVERIFIED', {
+      classification: acceptance.provenance ?? 'UNVERIFIED_BINARY_ORIGIN',
+    });
+  }
 }
 for (const [code, passed] of Object.entries(storageChecks)) {
   if (!passed) {
@@ -275,6 +282,40 @@ if (!existsSync(releaseRecordPath)) {
   addReason('RELEASE_VEX_NOT_BOUND');
 }
 
+const mode = process.argv.includes('--mode=production')
+  ? 'production'
+  : process.argv.includes('--mode=publish')
+    ? 'publish'
+    : 'audit';
+if (mode === 'production') {
+  const clamavRiskPath = resolve(root, 'docs/security/CVE-2026-6653.json');
+  const clamavRisk = existsSync(clamavRiskPath) ? readJson(clamavRiskPath) : {};
+  if (clamavRisk.status !== 'FIXED') {
+    block('CVE-2026-6653 is not fixed and has no approved risk owner');
+  }
+  if (acceptance.provenance !== 'VERIFIED_UPSTREAM_PROVENANCE') {
+    block('RustFS source and container binary are not correlated by verified provenance');
+  }
+  if ((acceptance.soakHours ?? 0) < 24) {
+    block('RustFS staging soak is below 24 hours');
+  }
+  const stagingAcceptancePath = resolve(root, 'artifacts/release/staging-acceptance.json');
+  const stagingAcceptance = existsSync(stagingAcceptancePath)
+    ? readJson(stagingAcceptancePath)
+    : {};
+  if (stagingAcceptance.hostAvailable !== true) {
+    block('persistent staging host is not configured');
+  }
+  if (stagingAcceptance.offHostBackup !== true) {
+    block('off-host backup destination is not configured');
+  }
+  if (stagingAcceptance.monitoring !== true) {
+    block('staging monitoring stack is not configured');
+  }
+  if (stagingAcceptance.uat !== true) {
+    block('UAT is not recorded');
+  }
+}
 const result =
   blockers.length > 0 ? 'BLOCKED' : partials.length > 0 || reasons.length > 0 ? 'PARTIAL' : 'PASS';
 mkdirSync(artifactDir, { recursive: true });
@@ -298,8 +339,7 @@ const text = [
   ...reasons.map((item) => `REASON: ${item.code}`),
 ].join('\n');
 writeFileSync(resolve(artifactDir, 'gate.txt'), `${text}\n`);
-const mode = process.argv.includes('--mode=publish') ? 'publish' : 'audit';
-if (mode === 'audit' && result !== 'PASS') {
+if (mode !== 'publish' && result !== 'PASS') {
   console.error('PUBLICATION_FORBIDDEN');
 }
 console.log(text);
