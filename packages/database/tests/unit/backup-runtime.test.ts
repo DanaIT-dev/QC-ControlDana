@@ -1,6 +1,7 @@
-import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { mkdtemp, readdir, readFile, rm, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
 import {
@@ -56,5 +57,22 @@ describe('encrypted backup bundle', () => {
     expect(read.objects).toHaveLength(1);
     expect(read.objects[0]?.body.equals(body)).toBe(true);
     expect(read.manifest.plaintextSha256).toBe(written.manifest.plaintextSha256);
+    const manifestText = await readFile(join(written.directory, 'manifest.json'), 'utf8');
+    expect(manifestText).not.toContain('backup-key-material-not-in-git');
+    expect(existsSync(join(tmpdir(), `sgr-backup-scratch-${basename(written.directory)}`))).toBe(
+      false,
+    );
+    const wrongKey = join(root, 'keys', 'wrong.key');
+    await writeFile(wrongKey, 'another-backup-key-material');
+    const before = new Set(
+      (await readdir(tmpdir())).filter((entry) => entry.startsWith('sgr-backup-read-')),
+    );
+    await expect(
+      readEncryptedBackup({ directory: written.directory, keyFile: wrongKey }),
+    ).rejects.toThrow();
+    const leftovers = (await readdir(tmpdir())).filter(
+      (entry) => entry.startsWith('sgr-backup-read-') && !before.has(entry),
+    );
+    expect(leftovers).toEqual([]);
   });
 });

@@ -24,11 +24,19 @@ import {
   upsertUserCredentials,
 } from '../src/index';
 
+if (process.env.NODE_ENV === 'production') {
+  throw new Error('Database seed and demo reset are forbidden when NODE_ENV=production.');
+}
+
 const repoRoot = resolve(__dirname, '../../..');
 const envFile = existsSync(resolve(repoRoot, '.env'))
   ? resolve(repoRoot, '.env')
   : resolve(repoRoot, '.env.example');
 loadDotenv({ path: envFile, override: process.env.SGR_KEEP_PROCESS_ENV !== '1' });
+
+if (process.env.NODE_ENV === 'production') {
+  throw new Error('Database seed and demo reset are forbidden when NODE_ENV=production.');
+}
 
 const DEFECT_TYPES = APPROVED_DEFECT_TYPES_V1;
 

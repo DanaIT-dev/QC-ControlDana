@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { KNOWN_LEGACY_REGISTRY_SHA256 } from '@sgr-registry/domain';
+import { clickAdminNavItem, openMobileMenu } from './nav';
 
 const DEMO_PASSWORD = 'Dana-SGR-Demo-2026!';
 const ACCOUNTS = {
@@ -281,6 +282,70 @@ test.describe('legacy imported acts', () => {
     await page.evaluate(() => {
       document.documentElement.style.zoom = '1';
     });
+    expect(applicationErrors(errors)).toEqual([]);
+  });
+
+  test('covers 1920, 1024 and 375 layouts for the imported registry', async ({ page }) => {
+    const errors = attachConsole(page);
+    const viewports = [
+      { width: 1920, height: 1080 },
+      { width: 1024, height: 768 },
+      { width: 375, height: 812 },
+    ] as const;
+    await login(page, ACCOUNTS.admin);
+    for (const viewport of viewports) {
+      await page.setViewportSize(viewport);
+      await page.goto('/registry');
+      await filterImportedOnly(page);
+      await expect(page.getByText('Всего: 172')).toBeVisible();
+      await expect(page.getByText('Inspired by Andrew Rodkevich')).toBeVisible();
+      await expectNoHorizontalOverflow(page);
+      await page.screenshot({
+        path: resolve(SCREENSHOT_DIR, `gap-${viewport.width}x${viewport.height}-registry.png`),
+      });
+      await page.getByRole('button', { name: 'Фильтры' }).click();
+      await expect(page.getByRole('checkbox', { name: 'Импортированные' })).toBeVisible();
+      await page.screenshot({
+        path: resolve(SCREENSHOT_DIR, `gap-${viewport.width}x${viewport.height}-filters.png`),
+      });
+      await page.getByRole('button', { name: 'Показать результаты' }).click();
+      await page.getByLabel('Поиск').fill('Лазарчик');
+      await page.getByLabel('Поиск').press('Enter');
+      await expect(page.getByText('Лазарчик Е.В.').first()).toBeVisible();
+      await openFirstVisibleAct(page);
+      await expect(page.getByText('Инженер не сопоставлен').first()).toBeVisible();
+      await expectNoHorizontalOverflow(page);
+      await page.screenshot({
+        path: resolve(SCREENSHOT_DIR, `gap-${viewport.width}x${viewport.height}-act.png`),
+      });
+      await page.getByRole('button', { name: 'Сопоставить инженера' }).click();
+      const engineerSelect = page.getByLabel('Учётная запись инженера');
+      await expect(engineerSelect).toBeVisible();
+      expect((await engineerSelect.locator('option').allTextContents()).join('\n')).not.toMatch(
+        /@/,
+      );
+      await page.screenshot({
+        path: resolve(SCREENSHOT_DIR, `gap-${viewport.width}x${viewport.height}-dialog.png`),
+      });
+      await page.goto('/registry');
+      if (viewport.width < 1280) {
+        await openMobileMenu(page);
+        await expect(page.getByRole('dialog')).toBeVisible();
+        await page.screenshot({
+          path: resolve(SCREENSHOT_DIR, `gap-${viewport.width}x${viewport.height}-drawer.png`),
+        });
+        await page.keyboard.press('Escape');
+      }
+      await clickAdminNavItem(page, 'Пользователи');
+      await expect(page.getByRole('heading', { name: 'Пользователи' })).toBeVisible();
+      await expectNoHorizontalOverflow(page);
+      const bodyText = await page.locator('body').innerText();
+      expect(bodyText).not.toContain('undefined');
+      expect(bodyText).not.toMatch(/\bnull\b/);
+      await page.screenshot({
+        path: resolve(SCREENSHOT_DIR, `gap-${viewport.width}x${viewport.height}-users.png`),
+      });
+    }
     expect(applicationErrors(errors)).toEqual([]);
   });
 

@@ -23,7 +23,15 @@ export const PRODUCTION_READINESS_KEYS = [
   'BACKUP_ROOT',
   'TLS_CERT_FILE',
   'TLS_KEY_FILE',
+  'SGR_IMAGE_TAG',
+  'SGR_RUNTIME_IMAGE_DIGEST',
+  'SGR_WEB_IMAGE_DIGEST',
+  'SGR_MIGRATOR_IMAGE_DIGEST',
 ] as const;
+
+const GIT_SHA = /^[0-9a-f]{40}$/;
+const IMAGE_DIGEST = /^sha256:[a-f0-9]{64}$/;
+const MUTABLE_IMAGE_TAGS = new Set(['latest', 'stable', 'main', 'master']);
 
 export type ProductionReadinessFailure = {
   key: string;
@@ -96,6 +104,20 @@ export function assessProductionReadiness(source: NodeJS.ProcessEnv): Production
   }
   if (source.S3_ACCESS_KEY && isWeakSecret(source.S3_ACCESS_KEY)) {
     record('S3_ACCESS_KEY', weakSecretMessage('S3_ACCESS_KEY'));
+  }
+  const imageTag = source.SGR_IMAGE_TAG?.trim() ?? '';
+  if (imageTag && (MUTABLE_IMAGE_TAGS.has(imageTag) || !GIT_SHA.test(imageTag))) {
+    record('SGR_IMAGE_TAG', 'SGR_IMAGE_TAG must be the full Git commit SHA');
+  }
+  for (const key of [
+    'SGR_RUNTIME_IMAGE_DIGEST',
+    'SGR_WEB_IMAGE_DIGEST',
+    'SGR_MIGRATOR_IMAGE_DIGEST',
+  ] as const) {
+    const digest = source[key]?.trim() ?? '';
+    if (digest && !IMAGE_DIGEST.test(digest)) {
+      record(key, `${key} must be an immutable sha256 digest`);
+    }
   }
   if (source.WEB_ORIGIN && source.PUBLIC_APP_URL) {
     try {

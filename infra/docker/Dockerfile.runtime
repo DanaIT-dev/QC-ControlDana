@@ -1,4 +1,4 @@
-FROM node:24-bookworm-slim AS build
+FROM node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 AS build
 WORKDIR /app
 ENV CI=true
 RUN apt-get update \
@@ -16,7 +16,11 @@ COPY packages/database/package.json packages/database/package.json
 COPY packages/jobs/package.json packages/jobs/package.json
 COPY packages/eslint-config/package.json packages/eslint-config/package.json
 COPY packages/typescript-config/package.json packages/typescript-config/package.json
-RUN pnpm install --frozen-lockfile
+RUN --mount=type=cache,id=sgr-pnpm,target=/pnpm/store \
+  pnpm config set store-dir /pnpm/store \
+  && pnpm config set fetch-timeout 600000 \
+  && pnpm config set fetch-retries 5 \
+  && pnpm install --frozen-lockfile
 COPY packages packages
 COPY apps/api apps/api
 COPY apps/worker apps/worker
@@ -28,14 +32,41 @@ RUN pnpm --filter @sgr-registry/config build \
   && pnpm --filter @sgr-registry/api build \
   && pnpm --filter @sgr-registry/worker build
 
-FROM node:24-bookworm-slim AS runtime
+FROM node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 AS migrator
+ARG SGR_GIT_SHA=unknown
 WORKDIR /app
 ENV NODE_ENV=production
+ENV SGR_GIT_SHA=$SGR_GIT_SHA
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates \
-  && rm -rf /var/lib/apt/lists/* \
+  && rm -rf /var/lib/apt/lists/* /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
   && useradd --create-home --uid 10001 sgr
 COPY --from=build /app /app
+USER sgr
+HEALTHCHECK NONE
+CMD ["node", "packages/database/node_modules/prisma/build/index.js", "migrate", "deploy", "--schema", "packages/database/prisma/schema.prisma", "--config", "packages/database/prisma.config.ts"]
+
+FROM node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 AS runtime
+ARG SGR_GIT_SHA=unknown
+WORKDIR /app
+ENV NODE_ENV=production
+ENV SGR_GIT_SHA=$SGR_GIT_SHA
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates \
+  && rm -rf /var/lib/apt/lists/* /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
+  && useradd --create-home --uid 10001 sgr
+COPY --from=build /app /app
+# Prisma CLI and its MySQL/config helpers are not imported by the API or worker.
+RUN find node_modules/.pnpm -mindepth 1 -maxdepth 1 \( \
+      -name 'mysql2@*' -o \
+      -name 'deepmerge-ts@*' -o \
+      -name 'prisma@*' -o \
+      -name '@prisma+config@*' -o \
+      -name '@prisma+dev@*' -o \
+      -name '@prisma+studio-core@*' \
+    \) -exec rm -rf {} + \
+  && rm -rf node_modules/prisma \
+  && node -e "const fs=require('node:fs'); const left=fs.readdirSync('node_modules/.pnpm').filter((name)=>/^(mysql2@|deepmerge-ts@|prisma@|@prisma\\+config@|@prisma\\+dev@|@prisma\\+studio-core@)/.test(name)); if (left.length) { console.error(left.join('\\n')); process.exit(1); }"
 USER sgr
 EXPOSE 3001
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=10 \

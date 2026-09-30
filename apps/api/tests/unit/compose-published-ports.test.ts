@@ -65,6 +65,9 @@ describe('infrastructure compose published ports', () => {
     expect(yaml).not.toMatch(/local-development-only/);
     expect(yaml).not.toMatch(/requirepass/);
     expect(yaml).toMatch(/acl-entrypoint\.sh/);
+    expect(yaml).toMatch(/@sha256:[a-f0-9]{64}/);
+    expect(yaml).not.toMatch(/:latest/);
+    expect(yaml).not.toMatch(/image: redis:7-alpine\s*$/m);
     const acl = readFileSync(
       resolve(import.meta.dirname, '../../../../infra/docker/redis/acl-entrypoint.sh'),
       'utf8',

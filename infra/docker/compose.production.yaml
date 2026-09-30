@@ -20,7 +20,7 @@ x-hardening: &hardening
 
 services:
   proxy:
-    image: caddy:2-alpine
+    image: caddy:2-alpine@sha256:6aeddd44c3078b0f9a35206472a11420648a79c184603ef95957d0a20044cb2b
     <<: *hardening
     ports:
       - '80:80'
@@ -51,7 +51,7 @@ services:
           memory: 256M
 
   web:
-    image: sgr-registry-web:${SGR_IMAGE_TAG:?SGR_IMAGE_TAG is required}
+    image: sgr-registry-web:${SGR_IMAGE_TAG:?SGR_IMAGE_TAG is required}@${SGR_WEB_IMAGE_DIGEST:?SGR_WEB_IMAGE_DIGEST is required}
     <<: *hardening
     env_file:
       - ./secrets/app.env
@@ -78,7 +78,7 @@ services:
           memory: 512M
 
   api:
-    image: sgr-registry-runtime:${SGR_IMAGE_TAG:?SGR_IMAGE_TAG is required}
+    image: sgr-registry-runtime:${SGR_IMAGE_TAG:?SGR_IMAGE_TAG is required}@${SGR_RUNTIME_IMAGE_DIGEST:?SGR_RUNTIME_IMAGE_DIGEST is required}
     <<: *hardening
     env_file:
       - ./secrets/app.env
@@ -112,7 +112,7 @@ services:
           memory: 768M
 
   worker:
-    image: sgr-registry-runtime:${SGR_IMAGE_TAG:?SGR_IMAGE_TAG is required}
+    image: sgr-registry-runtime:${SGR_IMAGE_TAG:?SGR_IMAGE_TAG is required}@${SGR_RUNTIME_IMAGE_DIGEST:?SGR_RUNTIME_IMAGE_DIGEST is required}
     <<: *hardening
     env_file:
       - ./secrets/app.env
@@ -147,7 +147,7 @@ services:
 
   migrator:
     profiles: ['migrate']
-    image: sgr-registry-runtime:${SGR_IMAGE_TAG:?SGR_IMAGE_TAG is required}
+    image: sgr-registry-migrator:${SGR_IMAGE_TAG:?SGR_IMAGE_TAG is required}@${SGR_MIGRATOR_IMAGE_DIGEST:?SGR_MIGRATOR_IMAGE_DIGEST is required}
     <<: *hardening
     restart: 'no'
     env_file:
@@ -170,7 +170,7 @@ services:
         condition: service_healthy
 
   postgres:
-    image: postgres:18
+    image: postgres:18@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722
     <<: *hardening
     environment:
       POSTGRES_USER: sgr_owner
@@ -193,7 +193,7 @@ services:
           memory: 2G
 
   redis:
-    image: redis:7-alpine
+    image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
     <<: *hardening
     command: ['/usr/local/bin/sgr-redis-acl-entrypoint.sh']
     environment:
@@ -222,7 +222,7 @@ services:
           memory: 512M
 
   minio:
-    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z@sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e
     <<: *hardening
     command: ['server', '/data', '--console-address', ':9001']
     environment:

@@ -48,6 +48,10 @@ const ambiguous = names.filter((line) => {
   return fullName.split(' ').filter(Boolean).length === 2 && middleName.length === 0;
 });
 
+const roleCounts = rows(
+  `SELECT "role" || '=' || count(*) FROM users GROUP BY "role" ORDER BY "role"`,
+);
+
 const report = {
   database: DATABASE,
   counts,
@@ -64,6 +68,7 @@ const report = {
       sessionVersion,
     };
   }),
+  roleCounts,
   passwordFingerprint: fingerprint(credentials.join('\n')),
   credentialCount: credentials.length,
   duplicateActKeys: duplicateActs.length,

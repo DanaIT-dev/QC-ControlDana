@@ -9,7 +9,7 @@ Backup не хранится на runtime-томе PostgreSQL или MinIO. Кл
 - Метаданные без секретов: назначение копии и имя базы/bucket.
 - Manifest: класс хранения, SHA-256 открытого bundle и SHA-256 шифротекста.
 
-Шифрование: AES-256-GCM из Node.js `crypto`, ключ выводится через scrypt из файла ключа. Это authenticated encryption. LibreSSL `openssl enc` на macOS не используется: в нём нет рабочего AES-GCM. Пароли пользователей остаются Argon2id и не шифруются обратимо.
+Шифрование: AES-256-GCM из Node.js `crypto`, `authTagLength` 16, ключ выводится через scrypt из файла ключа. IV длиной 12 байт берётся из `randomBytes` для каждой копии и не переиспользуется. Tag проверяется при расшифровке: повреждённый ciphertext и чужой ключ завершаются ошибкой до записи plaintext. Временный открытый bundle удаляется в `finally`. Ключ не попадает в manifest, логи или архив. LibreSSL `openssl enc` на macOS не используется. Пароли пользователей остаются Argon2id и не шифруются обратимо.
 
 Политика хранения по умолчанию: 7 daily, 4 weekly, 3 monthly. Копия первого числа месяца считается monthly, воскресная — weekly.
 

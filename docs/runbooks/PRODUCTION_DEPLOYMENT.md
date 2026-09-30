@@ -4,11 +4,32 @@
 
 Наружу публикуются только порты `80` и `443` reverse proxy. PostgreSQL, Redis, MinIO, ClamAV, API, worker и web остаются в сети `sgr_internal`. HSTS задаётся в `infra/docker/Caddyfile.production` только на порту 443.
 
-Образы:
+Образы закреплены. Сторонние ссылки имеют вид `repository:version@sha256:...`. `latest` запрещён. Собственные образы собираются с тегом полного Git SHA и публикуются только вместе с digest:
 
 ```bash
-docker build -f infra/docker/Dockerfile.runtime -t sgr-registry-runtime:$SGR_IMAGE_TAG .
-docker build -f infra/docker/Dockerfile.web -t sgr-registry-web:$SGR_IMAGE_TAG .
+export SGR_IMAGE_TAG="$(git rev-parse HEAD)"
+docker build -f infra/docker/Dockerfile.runtime --target runtime \
+  --build-arg SGR_GIT_SHA="$SGR_IMAGE_TAG" \
+  -t "sgr-registry-runtime:$SGR_IMAGE_TAG" .
+docker build -f infra/docker/Dockerfile.runtime --target migrator \
+  --build-arg SGR_GIT_SHA="$SGR_IMAGE_TAG" \
+  -t "sgr-registry-migrator:$SGR_IMAGE_TAG" .
+docker build -f infra/docker/Dockerfile.web \
+  --build-arg SGR_GIT_SHA="$SGR_IMAGE_TAG" \
+  -t "sgr-registry-web:$SGR_IMAGE_TAG" .
+export SGR_RUNTIME_IMAGE_DIGEST="sha256:$(docker image inspect "sgr-registry-runtime:$SGR_IMAGE_TAG" --format '{{.Id}}' | cut -d: -f2)"
+export SGR_MIGRATOR_IMAGE_DIGEST="sha256:$(docker image inspect "sgr-registry-migrator:$SGR_IMAGE_TAG" --format '{{.Id}}' | cut -d: -f2)"
+export SGR_WEB_IMAGE_DIGEST="sha256:$(docker image inspect "sgr-registry-web:$SGR_IMAGE_TAG" --format '{{.Id}}' | cut -d: -f2)"
+```
+
+`SGR_IMAGE_TAG` должен быть 40 hex-символов. Digest — `sha256` и 64 hex-символа. `pnpm ops:readiness` отвергает `latest` и плавающий tag. Обновление стороннего образа: выбрать новый digest, прогнать Trivy image, заменить строку в compose, задеплоить. Откат — предыдущий digest, не прежний плавающий tag.
+
+Проверенная платформа образов на этой машине — `linux/arm64`. Digest Caddy, PostgreSQL, Redis, Node и ClamAV — manifest list, где lookup прошёл. MinIO `sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e` закреплён по локально скачанному образу: анонимный lookup registry отклонён, поэтому amd64 для этого digest здесь не подтверждался.
+
+Инвентарь development MinIO без вывода ключей и содержимого:
+
+```bash
+pnpm --filter @sgr-registry/database exec tsx scripts/inventory-minio.ts
 ```
 
 Секреты лежат в `infra/docker/secrets/` и не коммитятся. Шаблон имён переменных: `.env.production.example`. Проверка без печати значений:

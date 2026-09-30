@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { loadConfig, MissingConfigurationError, redisTlsOptions } from '@sgr-registry/config';
+import {
+  assessProductionReadiness,
+  loadConfig,
+  MissingConfigurationError,
+  redisTlsOptions,
+} from '@sgr-registry/config';
 import { sessionCookieOptions, sessionCookieSecure } from '../../src/auth/cookie';
 
 function productionEnv(overrides: Record<string, string> = {}) {
@@ -174,5 +179,41 @@ describe('production session cookie policy', () => {
       expect(message).not.toContain(weak);
       expect(message).not.toContain('short');
     }
+  });
+});
+
+describe('production image references', () => {
+  const digest = `sha256:${'ab'.repeat(32)}`;
+  const sha = 'a'.repeat(40);
+
+  it('rejects latest and non-digest image references without echoing them', () => {
+    const failures = assessProductionReadiness({
+      ...productionEnv(),
+      SGR_IMAGE_TAG: 'latest',
+      SGR_RUNTIME_IMAGE_DIGEST: 'latest',
+      SGR_WEB_IMAGE_DIGEST: 'sha256:abc',
+      SGR_MIGRATOR_IMAGE_DIGEST: '7-alpine',
+    });
+    expect(failures.map((failure) => failure.key)).toEqual(
+      expect.arrayContaining([
+        'SGR_IMAGE_TAG',
+        'SGR_RUNTIME_IMAGE_DIGEST',
+        'SGR_WEB_IMAGE_DIGEST',
+        'SGR_MIGRATOR_IMAGE_DIGEST',
+      ]),
+    );
+    expect(failures.map((failure) => failure.message).join('\n')).not.toContain('latest');
+    expect(failures.map((failure) => failure.message).join('\n')).not.toContain('7-alpine');
+  });
+
+  it('accepts a Git SHA and immutable digests', () => {
+    const failures = assessProductionReadiness({
+      ...productionEnv(),
+      SGR_IMAGE_TAG: sha,
+      SGR_RUNTIME_IMAGE_DIGEST: digest,
+      SGR_WEB_IMAGE_DIGEST: digest,
+      SGR_MIGRATOR_IMAGE_DIGEST: digest,
+    }).filter((failure) => failure.key.startsWith('SGR_'));
+    expect(failures).toEqual([]);
   });
 });

@@ -87,5 +87,17 @@ if (/REDIS_PASSWORD\s*:/.test(redis) && !/REDIS_.*PASSWORD_FILE/.test(redis)) {
 if (yaml.includes('0.0.0.0:') || yaml.includes('[::]:')) {
   fail('production compose must not bind wildcard host addresses');
 }
+if (/:latest\b/.test(yaml)) {
+  fail('production compose must not use a latest image tag');
+}
+const imageLines = yaml.split('\n').filter((line) => /^\s+image:/.test(line));
+if (imageLines.length === 0) {
+  fail('production compose has no images');
+}
+for (const line of imageLines) {
+  if (!/@sha256:[a-f0-9]{64}/.test(line) && !/@\$\{SGR_[A-Z0-9_]*IMAGE_DIGEST:/.test(line)) {
+    fail(`production image is not immutable: ${line.trim()}`);
+  }
+}
 
 console.log('production compose publishes only the reverse proxy and keeps data services private');
