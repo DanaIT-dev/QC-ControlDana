@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { waiverApproved } from '../release/evaluate-release.mjs';
 import { validateDecisions, validateOpenVex } from './openvex-lib.mjs';
 import { coversFinding, scanFindings } from './supply-chain.mjs';
 
@@ -9,6 +10,15 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const artifactDir = resolve(root, 'artifacts/supply-chain');
 const blockers = [];
 const partials = [];
+const reasons = [];
+
+function addReason(code, extra = {}) {
+  const reason = { code, blockingProduction: true, ...extra };
+  const key = JSON.stringify(reason);
+  if (!reasons.some((item) => JSON.stringify(item) === key)) {
+    reasons.push(reason);
+  }
+}
 
 function block(message) {
   blockers.push(message);
@@ -35,9 +45,10 @@ for (const error of validateOpenVex(openvex)) {
 
 if (!pins.images.minio?.amd64Confirmed) {
   partial('MinIO linux/amd64 digest is not confirmed');
-}
-if (pins.registryManifest !== 'PUBLISHED') {
-  partial('multi-arch registry manifest: NOT PUBLISHED');
+  addReason('MINIO_AMD64_DIGEST_UNCONFIRMED', {
+    requiredAction:
+      'Authorize pull scope for docker.io/minio/minio and record the linux/amd64 platform digest. Do not reuse the local arm64 image id.',
+  });
 }
 
 const compose = spawnSync('node', ['scripts/security/validate-production-compose.mjs'], {
@@ -66,6 +77,16 @@ for (const image of Object.values(pins.images)) {
       knownDigests.add(digest);
     }
   }
+  if (image.localArm64ImageId) {
+    knownDigests.add(image.localArm64ImageId);
+  }
+}
+if (pins.images.minio?.localArm64ImageId) {
+  partial('policy OpenVEX still cites the local MinIO image id');
+  addReason('RELEASE_VEX_NOT_BOUND', {
+    detail:
+      'docs/security/openvex.json is a source assessment bound to a local image id, not a published linux/amd64 digest',
+  });
 }
 
 const imagesPath = resolve(artifactDir, 'images.json');
@@ -107,10 +128,17 @@ if (!existsSync(smokePath)) {
   block('image smoke result is missing');
 } else {
   const smoke = readJson(smokePath);
-  if (smoke.status === 'BLOCKED_BY_LOCAL_ARCHITECTURE') {
-    partial('amd64 runtime smoke is BLOCKED_BY_LOCAL_ARCHITECTURE');
+  if (smoke.status === 'BLOCKED_BY_LOCAL_ARCHITECTURE' || smoke.status === 'LOCAL_EMULATED') {
+    partial(`amd64 runtime smoke is ${smoke.status}`);
+    addReason('STAGING_AMD64_NOT_AVAILABLE');
   } else if (smoke.status !== 'PASS') {
     block(`amd64 smoke did not pass: ${smoke.status}`);
+  }
+  if (smoke.hostArchitecture !== 'x86_64') {
+    partial('local smoke is not a real x86_64 staging acceptance');
+    addReason('STAGING_AMD64_NOT_AVAILABLE', {
+      hostArchitecture: smoke.hostArchitecture ?? null,
+    });
   }
 }
 
@@ -201,6 +229,16 @@ for (const fileName of reports) {
       }
       continue;
     }
+    if (
+      finding.severity === 'CRITICAL' &&
+      cover.statement.status === 'ACCEPTED_TEMPORARILY' &&
+      !waiverApproved(cover.statement)
+    ) {
+      addReason('CRITICAL_WAIVER_UNAPPROVED', {
+        cve: finding.cve,
+        image: imageName,
+      });
+    }
     if (cover.statement.status === 'AFFECTED_BLOCKING') {
       block(`${finding.severity} ${finding.cve} in ${imageName} is AFFECTED_BLOCKING`);
     }
@@ -210,21 +248,35 @@ for (const fileName of reports) {
   }
 }
 
-const result = blockers.length > 0 ? 'BLOCKED' : partials.length > 0 ? 'PARTIAL' : 'PASS';
+const releaseRecordPath = resolve(root, 'artifacts/release/record.json');
+if (!existsSync(releaseRecordPath)) {
+  partial('signed release record is absent');
+  addReason('RELEASE_RECORD_ABSENT');
+  addReason('SIGNATURES_NOT_VERIFIED');
+  addReason('RELEASE_VEX_NOT_BOUND');
+}
+
+const result =
+  blockers.length > 0 ? 'BLOCKED' : partials.length > 0 || reasons.length > 0 ? 'PARTIAL' : 'PASS';
 mkdirSync(artifactDir, { recursive: true });
 const summary = {
+  status: result,
   result,
+  reasons,
   blockers,
   partials,
   criticalFindings: criticalCount,
   highFindings: highCount,
   applicableFixableHigh: applicableHigh,
+  multiArchRequired: false,
+  productionDeployment: 'NOT_STARTED',
 };
 writeFileSync(resolve(artifactDir, 'gate.json'), `${JSON.stringify(summary, null, 2)}\n`);
 const text = [
   `SUPPLY_CHAIN_GATE: ${result}`,
   ...blockers.map((item) => `BLOCK: ${item}`),
   ...partials.map((item) => `PARTIAL: ${item}`),
+  ...reasons.map((item) => `REASON: ${item.code}`),
 ].join('\n');
 writeFileSync(resolve(artifactDir, 'gate.txt'), `${text}\n`);
 console.log(text);

@@ -1,0 +1,323 @@
+name: Release candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Immutable 40-character commit SHA that is already on origin/main
+        required: true
+        type: string
+      environment:
+        description: Target environment
+        required: true
+        default: staging
+        type: choice
+        options:
+          - staging
+      publish:
+        description: Push linux/amd64 images to GHCR
+        required: true
+        default: false
+        type: boolean
+      deploy:
+        description: Deploy exact digests to an already marked staging host
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  attestations: write
+  security-events: write
+
+concurrency:
+  group: qc-staging-release
+  cancel-in-progress: false
+
+jobs:
+  guard:
+    name: Guard staging source
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact source SHA
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.source_ref }}
+          fetch-depth: 0
+      - name: Accept only an immutable staging commit on main
+        env:
+          SOURCE_REF: ${{ inputs.source_ref }}
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+          if [ "$TARGET_ENVIRONMENT" != "staging" ]; then
+            echo "This workflow has no production environment." >&2
+            exit 1
+          fi
+          if ! printf '%s' "$SOURCE_REF" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "source_ref must be a full commit SHA." >&2
+            exit 1
+          fi
+          git fetch origin main
+          if ! git merge-base --is-ancestor "$SOURCE_REF" origin/main; then
+            echo "source commit is not contained in origin/main." >&2
+            exit 1
+          fi
+          if [ "$(git rev-parse HEAD)" != "$SOURCE_REF" ]; then
+            echo "Checked out HEAD does not match source_ref." >&2
+            exit 1
+          fi
+          if grep -n ':latest' infra/docker/compose.staging.yaml; then
+            echo "Mutable latest references are forbidden." >&2
+            exit 1
+          fi
+
+  verify:
+    name: Verify source
+    needs: guard
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact source SHA
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.source_ref }}
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+        with:
+          version: 11.24.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: node --test scripts/release/*.test.mjs scripts/security/openvex-lib.test.mjs
+      - run: node scripts/release/validate-staging-compose.mjs
+      - run: pnpm build
+
+  release:
+    name: Build amd64 release candidate
+    needs: verify
+    runs-on: ubuntu-24.04
+    outputs:
+      deployable: ${{ steps.decision.outputs.deployable }}
+    steps:
+      - name: Checkout exact source SHA
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.source_ref }}
+          fetch-depth: 0
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+        with:
+          version: 11.24.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Derive release identity from the source commit
+        id: identity
+        env:
+          SOURCE_REF: ${{ inputs.source_ref }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_REF"
+          short="$(git rev-parse --short=12 HEAD)"
+          date="$(TZ=UTC git show -s --format=%cd --date=format:%Y%m%d HEAD)"
+          created="$(git show -s --format=%cI HEAD)"
+          prefix="ghcr.io/$(printf '%s' "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')"
+          echo "release_id=rc-${date}-${short}" >> "$GITHUB_OUTPUT"
+          echo "created=${created}" >> "$GITHUB_OUTPUT"
+          echo "prefix=${prefix}" >> "$GITHUB_OUTPUT"
+      - name: Resolve official MinIO manifest
+        continue-on-error: true
+        run: node scripts/release/resolve-official-manifest.mjs
+      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+      - name: Log in to GHCR
+        if: inputs.publish
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build runtime image
+        id: runtime
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          file: infra/docker/Dockerfile.runtime
+          target: runtime
+          platforms: linux/amd64
+          push: ${{ inputs.publish }}
+          provenance: mode=max
+          sbom: false
+          tags: |
+            ${{ steps.identity.outputs.prefix }}/qc-api:${{ steps.identity.outputs.release_id }}
+            ${{ steps.identity.outputs.prefix }}/qc-worker:${{ steps.identity.outputs.release_id }}
+          build-args: |
+            SGR_GIT_SHA=${{ inputs.source_ref }}
+            SGR_VERSION=${{ steps.identity.outputs.release_id }}
+            SGR_CREATED=${{ steps.identity.outputs.created }}
+            SGR_SOURCE=https://github.com/${{ github.repository }}
+      - name: Build web image
+        id: web
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          file: infra/docker/Dockerfile.web
+          target: runtime
+          platforms: linux/amd64
+          push: ${{ inputs.publish }}
+          provenance: mode=max
+          sbom: false
+          tags: ${{ steps.identity.outputs.prefix }}/qc-web:${{ steps.identity.outputs.release_id }}
+          build-args: |
+            SGR_GIT_SHA=${{ inputs.source_ref }}
+            SGR_VERSION=${{ steps.identity.outputs.release_id }}
+            SGR_CREATED=${{ steps.identity.outputs.created }}
+            SGR_SOURCE=https://github.com/${{ github.repository }}
+      - name: Build migrator image
+        id: migrator
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          file: infra/docker/Dockerfile.runtime
+          target: migrator
+          platforms: linux/amd64
+          push: ${{ inputs.publish }}
+          provenance: mode=max
+          sbom: false
+          tags: ${{ steps.identity.outputs.prefix }}/qc-migrator:${{ steps.identity.outputs.release_id }}
+          build-args: |
+            SGR_GIT_SHA=${{ inputs.source_ref }}
+            SGR_VERSION=${{ steps.identity.outputs.release_id }}
+            SGR_CREATED=${{ steps.identity.outputs.created }}
+            SGR_SOURCE=https://github.com/${{ github.repository }}
+      - name: Install Cosign
+        if: inputs.publish
+        uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
+        with:
+          cosign-release: v2.6.5
+      - name: Scan the source tree
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: CRITICAL,HIGH
+          format: json
+          output: artifacts/release/trivy-filesystem.json
+          exit-code: '0'
+          version: v0.66.0
+      - name: Attest runtime provenance
+        if: inputs.publish
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        with:
+          subject-name: ${{ steps.identity.outputs.prefix }}/qc-api
+          subject-digest: ${{ steps.runtime.outputs.digest }}
+          push-to-registry: true
+      - name: Attest worker provenance
+        if: inputs.publish
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        with:
+          subject-name: ${{ steps.identity.outputs.prefix }}/qc-worker
+          subject-digest: ${{ steps.runtime.outputs.digest }}
+          push-to-registry: true
+      - name: Attest web provenance
+        if: inputs.publish
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        with:
+          subject-name: ${{ steps.identity.outputs.prefix }}/qc-web
+          subject-digest: ${{ steps.web.outputs.digest }}
+          push-to-registry: true
+      - name: Attest migrator provenance
+        if: inputs.publish
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        with:
+          subject-name: ${{ steps.identity.outputs.prefix }}/qc-migrator
+          subject-digest: ${{ steps.migrator.outputs.digest }}
+          push-to-registry: true
+      - name: Sign and verify published digests
+        if: inputs.publish
+        env:
+          PREFIX: ${{ steps.identity.outputs.prefix }}
+          RUNTIME_DIGEST: ${{ steps.runtime.outputs.digest }}
+          WEB_DIGEST: ${{ steps.web.outputs.digest }}
+          MIGRATOR_DIGEST: ${{ steps.migrator.outputs.digest }}
+        run: |
+          set -euo pipefail
+          identity="https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release-candidate.yml@refs/heads/main"
+          issuer="https://token.actions.githubusercontent.com"
+          for image in qc-api qc-web qc-worker qc-migrator; do
+            case "$image" in
+              qc-web) digest="$WEB_DIGEST" ;;
+              qc-migrator) digest="$MIGRATOR_DIGEST" ;;
+              *) digest="$RUNTIME_DIGEST" ;;
+            esac
+            reference="${PREFIX}/${image}@${digest}"
+            cosign sign --yes "$reference"
+            cosign verify \
+              --certificate-identity "$identity" \
+              --certificate-oidc-issuer "$issuer" \
+              "$reference"
+          done
+      - name: Write release gate
+        id: decision
+        run: |
+          set +e
+          node scripts/release/write-gate-artifact.mjs
+          code=$?
+          set -e
+          if [ "$code" = "1" ]; then
+            echo "deployable=false" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          echo "deployable=false" >> "$GITHUB_OUTPUT"
+          echo "Release gate did not reach PASS. Staging deploy stays disabled."
+      - name: Upload release artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-candidate-${{ steps.identity.outputs.release_id }}
+          path: artifacts/release/
+          if-no-files-found: error
+          retention-days: 90
+
+  deploy:
+    name: Deploy staging digests
+    needs: release
+    if: ${{ inputs.deploy && needs.release.outputs.deployable == 'true' }}
+    environment: staging
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Refuse an unmarked or non-amd64 host
+        env:
+          STAGING_SSH_HOST: ${{ secrets.STAGING_SSH_HOST }}
+          STAGING_SSH_USER: ${{ secrets.STAGING_SSH_USER }}
+          STAGING_SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${STAGING_SSH_HOST}" ] || [ -z "${STAGING_SSH_USER}" ] || [ -z "${STAGING_SSH_KEY}" ]; then
+            echo "STAGING_TARGET_NOT_CONFIGURED" >&2
+            exit 1
+          fi
+          install -m 700 -d "$RUNNER_TEMP/staging-ssh"
+          printf '%s\n' "$STAGING_SSH_KEY" > "$RUNNER_TEMP/staging-ssh/key"
+          chmod 600 "$RUNNER_TEMP/staging-ssh/key"
+          remote="$(ssh -i "$RUNNER_TEMP/staging-ssh/key" -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            "${STAGING_SSH_USER}@${STAGING_SSH_HOST}" \
+            'printf "arch=%s\nmarker=%s\n" "$(uname -m)" "$(cat /etc/sgr-staging-marker 2>/dev/null || true)"')"
+          printf '%s\n' "$remote"
+          printf '%s\n' "$remote" | grep -qx 'arch=x86_64' || {
+            echo "Staging host is not x86_64." >&2
+            exit 1
+          }
+          printf '%s\n' "$remote" | grep -qx 'marker=staging' || {
+            echo "Staging host is not marked as staging." >&2
+            exit 1
+          }
+          echo "Host preflight passed. Digest deployment continues only for this marked staging host."

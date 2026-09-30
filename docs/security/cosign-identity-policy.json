@@ -1,0 +1,6 @@
+{
+  "issuer": "https://token.actions.githubusercontent.com",
+  "repository": "DanaIT-dev/QC-ControlDana",
+  "workflow": ".github/workflows/release-candidate.yml@refs/heads/main",
+  "certificateIdentity": "https://github.com/DanaIT-dev/QC-ControlDana/.github/workflows/release-candidate.yml@refs/heads/main"
+}

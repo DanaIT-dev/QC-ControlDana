@@ -1,0 +1,301 @@
+# Isolated staging stack for a linux/amd64 release candidate.
+# Render this file only with immutable digests. Do not add a build key or a latest tag.
+# The reverse proxy is internal HTTP. It is not a production certificate and has no public DNS name.
+
+name: sgr-staging
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '5'
+
+x-hardening: &hardening
+  init: true
+  platform: linux/amd64
+  restart: unless-stopped
+  security_opt:
+    - no-new-privileges:true
+
+x-app-fs: &app-fs
+  read_only: true
+  cap_drop:
+    - ALL
+  tmpfs:
+    - /tmp
+  logging: *logging
+  networks:
+    - sgr_internal
+
+services:
+  proxy:
+    image: caddy:2-alpine@sha256:6aeddd44c3078b0f9a35206472a11420648a79c184603ef95957d0a20044cb2b
+    <<: *hardening
+    ports:
+      - '80:80'
+    volumes:
+      - ./Caddyfile.staging:/etc/caddy/Caddyfile:ro
+      - sgr_staging_caddy_data:/data
+      - sgr_staging_caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:80/login || exit 1']
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    stop_grace_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 256M
+
+  web:
+    image: ${SGR_WEB_REPOSITORY:?SGR_WEB_REPOSITORY is required}:${SGR_RELEASE_TAG:?SGR_RELEASE_TAG is required}@${SGR_WEB_IMAGE_DIGEST:?SGR_WEB_IMAGE_DIGEST is required}
+    <<: [*hardening, *app-fs]
+    user: '10001:10001'
+    tmpfs:
+      - /tmp
+      - /app/apps/web/.next/cache
+    env_file:
+      - ./secrets/app.env
+    environment:
+      NODE_ENV: production
+      PORT: '3000'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/login').then((r)=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    stop_grace_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.00'
+          memory: 512M
+
+  api:
+    image: ${SGR_API_REPOSITORY:?SGR_API_REPOSITORY is required}:${SGR_RELEASE_TAG:?SGR_RELEASE_TAG is required}@${SGR_API_IMAGE_DIGEST:?SGR_API_IMAGE_DIGEST is required}
+    <<: [*hardening, *app-fs]
+    user: '10001:10001'
+    env_file:
+      - ./secrets/app.env
+    environment:
+      NODE_ENV: production
+    command: ['node', 'apps/api/dist/main.js']
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3001/api/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.00'
+          memory: 768M
+
+  worker:
+    image: ${SGR_WORKER_REPOSITORY:?SGR_WORKER_REPOSITORY is required}:${SGR_RELEASE_TAG:?SGR_RELEASE_TAG is required}@${SGR_WORKER_IMAGE_DIGEST:?SGR_WORKER_IMAGE_DIGEST is required}
+    <<: [*hardening, *app-fs]
+    user: '10001:10001'
+    env_file:
+      - ./secrets/app.env
+    environment:
+      NODE_ENV: production
+    command: ['node', 'apps/worker/dist/main.js']
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3002/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.00'
+          memory: 768M
+
+  migrator:
+    profiles: ['migrate']
+    image: ${SGR_MIGRATOR_REPOSITORY:?SGR_MIGRATOR_REPOSITORY is required}:${SGR_RELEASE_TAG:?SGR_RELEASE_TAG is required}@${SGR_MIGRATOR_IMAGE_DIGEST:?SGR_MIGRATOR_IMAGE_DIGEST is required}
+    <<: [*hardening, *app-fs]
+    user: '10001:10001'
+    restart: 'no'
+    env_file:
+      - ./secrets/app.env
+    environment:
+      NODE_ENV: production
+    command:
+      [
+        'node',
+        'packages/database/node_modules/prisma/build/index.js',
+        'migrate',
+        'deploy',
+        '--schema',
+        'packages/database/prisma/schema.prisma',
+        '--config',
+        'packages/database/prisma.config.ts',
+      ]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:18@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722
+    <<: *hardening
+    environment:
+      POSTGRES_USER: sgr_owner
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_DB: sgr_registry
+    secrets:
+      - postgres_password
+    volumes:
+      - sgr_staging_postgres:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U sgr_owner -d sgr_registry']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.00'
+          memory: 2G
+
+  redis:
+    image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
+    <<: *hardening
+    command: ['/usr/local/bin/sgr-redis-acl-entrypoint.sh']
+    environment:
+      REDIS_API_PASSWORD_FILE: /run/secrets/redis_api_password
+      REDIS_WORKER_PASSWORD_FILE: /run/secrets/redis_worker_password
+    secrets:
+      - redis_api_password
+      - redis_worker_password
+    volumes:
+      - ./redis/acl-entrypoint.sh:/usr/local/bin/sgr-redis-acl-entrypoint.sh:ro
+      - sgr_staging_redis:/data
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'REDISCLI_AUTH="$$(cat /run/secrets/redis_api_password)" redis-cli --user sgr_api ping | grep -q PONG',
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    stop_grace_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z@${SGR_MINIO_IMAGE_DIGEST:?SGR_MINIO_IMAGE_DIGEST is required}
+    <<: *hardening
+    command: ['server', '/data', '--console-address', ':9001']
+    environment:
+      MINIO_ROOT_USER_FILE: /run/secrets/minio_root_user
+      MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_root_password
+    secrets:
+      - minio_root_user
+      - minio_root_password
+    volumes:
+      - sgr_staging_minio:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -f http://127.0.0.1:9000/minio/health/live || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.00'
+          memory: 1G
+
+  clamav:
+    image: clamav/clamav-debian:1.4@sha256:f6da737f9399d6a1851c463b2f88d02021a67f969ec42dd6e1751fecf7c3de4f
+    <<: *hardening
+    volumes:
+      - sgr_staging_clamav:/var/lib/clamav
+    healthcheck:
+      test: ['CMD-SHELL', 'echo PING | nc -w 2 127.0.0.1 3310 | grep -q PONG']
+      interval: 30s
+      timeout: 5s
+      retries: 20
+      start_period: 180s
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.00'
+          memory: 2G
+
+secrets:
+  postgres_password:
+    file: ./secrets/postgres_password
+  redis_api_password:
+    file: ./secrets/redis_api_password
+  redis_worker_password:
+    file: ./secrets/redis_worker_password
+  minio_root_user:
+    file: ./secrets/minio_root_user
+  minio_root_password:
+    file: ./secrets/minio_root_password
+
+networks:
+  sgr_internal:
+    driver: bridge
+
+volumes:
+  sgr_staging_postgres:
+  sgr_staging_redis:
+  sgr_staging_minio:
+  sgr_staging_clamav:
+  sgr_staging_caddy_data:
+  sgr_staging_caddy_config:

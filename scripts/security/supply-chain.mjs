@@ -17,7 +17,7 @@ export function imageDigest(pins, imageName) {
     return null;
   }
   if (imageName === 'minio') {
-    return image.platforms['linux/arm64'];
+    return image.platforms['linux/amd64'] ?? image.localArm64ImageId ?? null;
   }
   if (
     imageName === 'api' ||

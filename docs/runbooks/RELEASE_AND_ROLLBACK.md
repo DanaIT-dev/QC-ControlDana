@@ -1,6 +1,8 @@
 # Первый запуск и откат
 
-Этот runbook не заменяет разрешение на выкладку. Команды ниже выполняются на будущем production-хосте, не на development-базе `sgr_registry`.
+Этот runbook не заменяет разрешение на выкладку. Команды ниже выполняются на будущем production-хосте, не на development-базе `sgr_registry`. Текущий amd64 release candidate идёт только в staging и описан в `docs/runbooks/AMD64_RELEASE_CANDIDATE.md`. Production deployment этим этапом не начинается.
+
+Если предыдущий образ несовместим со схемой после forward-only миграции, database rollback не выполняется. Восстановление — roll-forward новым образом либо restore проверенного backup на чистые staging-тома. Staging volumes и development при этом не удаляются.
 
 ## До релиза
 

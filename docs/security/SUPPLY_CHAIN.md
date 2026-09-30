@@ -1,8 +1,8 @@
 # Цепочка поставки production-образов
 
-Целевая архитектура production — `linux/amd64`. `linux/arm64` — второй поддерживаемый вариант, а не замена серверной сборки. Локальная проверка на arm64 не подтверждает amd64 production.
+Целевая архитектура production и staging — `linux/amd64`. `linux/arm64` остаётся локальной машиной разработки. Multi-arch manifest не требуется и не является блокером. Локальная проверка через QEMU не подтверждает amd64 staging.
 
-Каталог digest: `infra/docker/image-pins.json`. Дата проверки manifest list — `2026-09-30`. Источник — `docker buildx imagetools inspect`.
+Каталог digest: `infra/docker/image-pins.json`. Дата проверки vendor manifest list — `2026-09-30`. Источник — registry API и `docker buildx imagetools inspect`. MinIO amd64 по-прежнему не подтверждён: анонимный Docker Hub вернул `insufficient_scope`, анонимный Quay — `UNAUTHORIZED`.
 
 Manifest digest не равен platform digest. Git SHA не равен Docker digest. Локальный image id не равен digest, опубликованному в registry. Отсутствие `FixedVersion` не означает отсутствие риска. Закрытый порт не устраняет уязвимость package. VEX требует доказательства runtime applicability.
 
@@ -10,8 +10,8 @@ Manifest digest не равен platform digest. Git SHA не равен Docker 
 
 - local single-platform validation: сборка и smoke на машине разработчика, в том числе amd64 через buildx/QEMU.
 - multi-platform build: `docker buildx build --platform linux/amd64,linux/arm64` без `docker load` как доказательства manifest.
-- registry manifest publication: не выполнен. `multi-arch registry manifest: NOT PUBLISHED`.
-- production deployment: не начат. Smoke на настоящем amd64-хосте обязателен отдельно.
+- registry publication: собственный amd64 release candidate публикуется workflow `.github/workflows/release-candidate.yml` в GHCR. Multi-arch manifest не требуется.
+- staging deployment: только после подтверждённого `linux/amd64` digest MinIO, подписи и smoke на реальном `x86_64`. Production deployment не начат.
 
 `docker load` не доказывает multi-arch manifest: локальный image store хранит одну платформу на tag.
 
@@ -60,7 +60,7 @@ CVE-2026-84782 — повтор DTLS handshake по UDP при non-blocking I/O.
 pnpm ops:supply-chain
 ```
 
-Машинный итог: `PASS`, `PARTIAL` или `BLOCKED`. `BLOCKED` запрещает commit и push этого блока. `PARTIAL` допустим, если причина — неподтверждённый registry digest MinIO, непубликованный multi-arch manifest или smoke `BLOCKED_BY_LOCAL_ARCHITECTURE`. Неклассифицированный CRITICAL, `AFFECTED_BLOCKING`, отсутствие SBOM или применимая исправимая HIGH без отдельного решения дают `BLOCKED`.
+Машинный итог: `PASS`, `PARTIAL` или `BLOCKED`. `BLOCKED` запрещает commit и push этого блока. `PARTIAL` допустим, если причина — неподтверждённый `linux/amd64` digest MinIO, отсутствие опубликованного release record или smoke не на реальном `x86_64`. Multi-arch manifest не входит в причины. Неклассифицированный CRITICAL, `AFFECTED_BLOCKING`, отсутствие SBOM или применимая исправимая HIGH без отдельного решения дают `BLOCKED`. Применимый CRITICAL со статусом `ACCEPTED_TEMPORARILY` без risk owner не даёт `PASS` и не открывает production.
 
 ## Обновление образа
 
@@ -73,6 +73,12 @@ pnpm ops:supply-chain
 
 Major PostgreSQL, Redis, MinIO и API без отдельного обоснования не меняется. Случайный сторонний образ вместо официального не используется.
 
+## Порядок source SHA
+
+Образы собираются только после commit, который добавляет release workflow. В OCI label передаётся SHA этого commit. Digest образов не коммитится обратно в Git: иначе следующий commit снова сменит revision. Release manifest, SBOM, provenance и release-bound OpenVEX хранятся как OCI referrers, GitHub Actions artifacts или GitHub release.
+
+`docs/security/openvex.json` — policy assessment. Он не является release-bound VEX, пока product id не равен опубликованному digest финального образа. `NOT_AFFECTED` с базового образа не переносится на финальный образ без проверки runtime path.
+
 ## Staging
 
-До staging на настоящем `linux/amd64` хосте: повторить smoke API, web, worker и migrator; подтвердить digest MinIO; опубликовать образы только отдельным решением; не считать локальный QEMU заменой этого шага.
+Runbook: `docs/runbooks/AMD64_RELEASE_CANDIDATE.md`. Staging compose — `infra/docker/compose.staging.yaml`. Он фиксирует `platform: linux/amd64`, не содержит `build:` и не использует `latest`. Deployable manifest не выпускается, пока официальный `linux/amd64` digest MinIO не подтверждён. CVE-2026-6653 в ClamAV достижим через загружаемый файл и без утверждённого risk owner держит production gate закрытым. QEMU smoke не заменяет staging на `x86_64`.

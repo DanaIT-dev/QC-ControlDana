@@ -1,7 +1,8 @@
 {
   "checkedAt": "2026-09-30T09:06:42Z",
   "productionPlatform": "linux/amd64",
-  "alsoSupported": ["linux/arm64"],
+  "multiArchRequired": false,
+  "localDevelopmentPlatform": "linux/arm64",
   "registryManifest": "NOT PUBLISHED",
   "images": {
     "caddy": {
@@ -57,13 +58,36 @@
       "version": "RELEASE.2025-04-22T22-12-26Z",
       "reference": "minio/minio:RELEASE.2025-04-22T22-12-26Z",
       "source": "docker.io/minio/minio",
+      "upstreamRelease": "https://github.com/minio/minio/releases/tag/RELEASE.2025-04-22T22-12-26Z",
       "manifestList": null,
       "platforms": {
         "linux/amd64": null,
-        "linux/arm64": "sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e"
+        "linux/arm64": null
       },
       "amd64Confirmed": false,
-      "note": "Anonymous registry lookup returned insufficient_scope. The recorded arm64 value is the local image id, not a confirmed multi-arch or amd64 digest."
+      "localArm64ImageId": "sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e",
+      "localArm64ImageIdIsEvidence": false,
+      "note": "Anonymous Docker Hub and Quay lookups on 2026-09-30 returned insufficient_scope / unauthorized. The local arm64 image id is not a linux/amd64 platform digest and is not pinned.",
+      "probes": [
+        {
+          "checkedAt": "2026-09-30T10:26:28Z",
+          "repository": "docker.io/minio/minio",
+          "method": "anonymous registry token and manifest GET",
+          "httpStatus": 401,
+          "error": "insufficient_scope",
+          "manifestListDigest": null,
+          "linuxAmd64Digest": null
+        },
+        {
+          "checkedAt": "2026-09-30T10:26:28Z",
+          "repository": "quay.io/minio/minio",
+          "method": "anonymous quay token and manifest GET",
+          "httpStatus": 401,
+          "error": "UNAUTHORIZED",
+          "manifestListDigest": null,
+          "linuxAmd64Digest": null
+        }
+      ]
     },
     "node": {
       "repository": "docker.io/library/node",

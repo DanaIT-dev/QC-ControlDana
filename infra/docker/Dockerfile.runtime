@@ -39,6 +39,8 @@ RUN pnpm prune --prod \
 FROM node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 AS migrator
 ARG SGR_GIT_SHA=unknown
 ARG SGR_VERSION=0.1.0
+ARG SGR_CREATED=unknown
+ARG SGR_SOURCE=https://github.com/DanaIT-dev/QC-ControlDana
 WORKDIR /app
 ENV NODE_ENV=production
 ENV SGR_GIT_SHA=$SGR_GIT_SHA
@@ -50,9 +52,12 @@ COPY --from=build /app /app
 RUN rm -rf apps/api/tests apps/worker/tests apps/web/e2e apps/web/tests packages/config/tests packages/contracts/tests packages/domain/tests packages/database/tests packages/jobs/tests \
   && rm -f /bin/sh /usr/bin/sh
 LABEL org.opencontainers.image.title="sgr-registry-migrator" \
+  org.opencontainers.image.description="QC-ControlDana database migrator. Runs prisma migrate deploy and does not serve traffic." \
   org.opencontainers.image.version="${SGR_VERSION}" \
   org.opencontainers.image.revision="${SGR_GIT_SHA}" \
-  org.opencontainers.image.source="https://github.com/DanaIT-dev/QC-ControlDana"
+  org.opencontainers.image.source="${SGR_SOURCE}" \
+  org.opencontainers.image.created="${SGR_CREATED}" \
+  org.opencontainers.image.licenses="LicenseRef-Dana-Proprietary"
 USER sgr
 ENTRYPOINT []
 HEALTHCHECK NONE
@@ -61,6 +66,8 @@ CMD ["node", "packages/database/node_modules/prisma/build/index.js", "migrate", 
 FROM node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 AS runtime
 ARG SGR_GIT_SHA=unknown
 ARG SGR_VERSION=0.1.0
+ARG SGR_CREATED=unknown
+ARG SGR_SOURCE=https://github.com/DanaIT-dev/QC-ControlDana
 WORKDIR /app
 ENV NODE_ENV=production
 ENV SGR_GIT_SHA=$SGR_GIT_SHA
@@ -82,9 +89,12 @@ RUN find node_modules/.pnpm -mindepth 1 -maxdepth 1 \( \
   && node -e "const fs=require('node:fs'); const left=fs.readdirSync('node_modules/.pnpm').filter((name)=>/^(mysql2@|deepmerge-ts@|prisma@|@prisma\\+config@|@prisma\\+dev@|@prisma\\+studio-core@)/.test(name)); if (left.length) { console.error(left.join('\\n')); process.exit(1); }" \
   && rm -f /bin/sh /usr/bin/sh
 LABEL org.opencontainers.image.title="sgr-registry-runtime" \
+  org.opencontainers.image.description="QC-ControlDana API and worker runtime. API starts apps/api/dist/main.js. Worker starts apps/worker/dist/main.js." \
   org.opencontainers.image.version="${SGR_VERSION}" \
   org.opencontainers.image.revision="${SGR_GIT_SHA}" \
-  org.opencontainers.image.source="https://github.com/DanaIT-dev/QC-ControlDana"
+  org.opencontainers.image.source="${SGR_SOURCE}" \
+  org.opencontainers.image.created="${SGR_CREATED}" \
+  org.opencontainers.image.licenses="LicenseRef-Dana-Proprietary"
 USER sgr
 ENTRYPOINT []
 EXPOSE 3001

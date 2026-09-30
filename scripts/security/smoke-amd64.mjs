@@ -230,15 +230,23 @@ const checks = {
 const failed = Object.entries(checks)
   .filter(([, ok]) => !ok)
   .map(([name]) => name);
+const hostArchitecture = spawnSync('uname', ['-m'], { encoding: 'utf8' }).stdout.trim();
+const emulated = hostArchitecture !== 'x86_64';
 const status =
   execFormat || !emulationWorked
     ? 'BLOCKED_BY_LOCAL_ARCHITECTURE'
-    : failed.length === 0
-      ? 'PASS'
-      : 'FAIL';
+    : failed.length > 0
+      ? 'FAIL'
+      : emulated
+        ? 'LOCAL_EMULATED'
+        : 'PASS';
 
 const smoke = {
   status,
+  hostArchitecture,
+  qemu: emulated,
+  stagingAcceptance: 'NOT_RUN',
+  digestKind: 'local-image-id',
   checks,
   failed,
   webStatus,

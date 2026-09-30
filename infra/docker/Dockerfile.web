@@ -30,6 +30,8 @@ RUN pnpm --filter @sgr-registry/contracts build \
 FROM node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 AS runtime
 ARG SGR_GIT_SHA=unknown
 ARG SGR_VERSION=0.1.0
+ARG SGR_CREATED=unknown
+ARG SGR_SOURCE=https://github.com/DanaIT-dev/QC-ControlDana
 WORKDIR /app
 ENV NODE_ENV=production
 ENV HOSTNAME=0.0.0.0
@@ -42,9 +44,12 @@ COPY --from=build /app/apps/web/.next/standalone /app
 COPY --from=build /app/apps/web/.next/static /app/apps/web/.next/static
 COPY --from=build /app/apps/web/public /app/apps/web/public
 LABEL org.opencontainers.image.title="sgr-registry-web" \
+  org.opencontainers.image.description="QC-ControlDana web application." \
   org.opencontainers.image.version="${SGR_VERSION}" \
   org.opencontainers.image.revision="${SGR_GIT_SHA}" \
-  org.opencontainers.image.source="https://github.com/DanaIT-dev/QC-ControlDana"
+  org.opencontainers.image.source="${SGR_SOURCE}" \
+  org.opencontainers.image.created="${SGR_CREATED}" \
+  org.opencontainers.image.licenses="LicenseRef-Dana-Proprietary"
 USER sgr
 ENTRYPOINT []
 EXPOSE 3000
