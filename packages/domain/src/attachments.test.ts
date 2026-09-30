@@ -214,6 +214,23 @@ describe('object keys and checksum', () => {
     expect(key).toBe(`attachments/${id}`);
     expect(key.includes('photo')).toBe(false);
     expect(() => assertOwnedObjectKey(key, id)).not.toThrow();
+    const previousEnv = process.env.NODE_ENV;
+    const previousRun = process.env.SGR_TEST_RUN_ID;
+    process.env.NODE_ENV = 'test';
+    process.env.SGR_TEST_RUN_ID = 'run-11111111-1111-4111-8111-111111111111';
+    expect(createAttachmentObjectKey(id)).toBe(
+      `runs/${process.env.SGR_TEST_RUN_ID}/attachments/${id}`,
+    );
+    if (previousEnv === undefined) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = previousEnv;
+    }
+    if (previousRun === undefined) {
+      delete process.env.SGR_TEST_RUN_ID;
+    } else {
+      process.env.SGR_TEST_RUN_ID = previousRun;
+    }
     expect(() => assertOwnedObjectKey('attachments/other', id)).toThrow();
     const bytes = Uint8Array.from([1, 2, 3]);
     expect(sha256Hex(bytes)).toBe(createHash('sha256').update(bytes).digest('hex'));

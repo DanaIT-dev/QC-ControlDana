@@ -95,7 +95,7 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
-      - run: node --test scripts/release/*.test.mjs scripts/security/openvex-lib.test.mjs
+      - run: node --test scripts/release/*.test.mjs scripts/security/openvex-lib.test.mjs scripts/security/check-semgrep-report.test.mjs
       - run: node scripts/release/validate-staging-compose.mjs
       - run: pnpm build
 
@@ -105,6 +105,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       deployable: ${{ steps.decision.outputs.deployable }}
+      release_id: ${{ steps.identity.outputs.release_id }}
     steps:
       - name: Checkout exact source SHA
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -321,3 +322,31 @@ jobs:
             exit 1
           }
           echo "Host preflight passed. Digest deployment continues only for this marked staging host."
+
+  native-amd64-acceptance:
+    name: Native amd64 acceptance
+    needs: release
+    if: ${{ inputs.publish && needs.release.result == 'success' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.source_ref }}
+      - name: Download the release record
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: release-candidate-${{ needs.release.outputs.release_id }}
+          path: artifacts/release
+      - name: Confirm the GitHub-hosted runner is native x86_64
+        run: |
+          set -euo pipefail
+          arch="$(uname -m)"
+          echo "uname=${arch}"
+          test "$arch" = "x86_64"
+      - name: Run ephemeral acceptance from published digests
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/release/native-amd64-acceptance.mjs

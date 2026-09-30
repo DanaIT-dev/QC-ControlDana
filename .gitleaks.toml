@@ -3,7 +3,7 @@ title = "sgr-registry"
 [extend]
 useDefault = true
 
-[allowlist]
+[[allowlists]]
 description = "Documented local-only demo placeholders, never production credentials"
 paths = [
   '''(.*)/node_modules/.*''',
@@ -17,7 +17,6 @@ paths = [
   '''(.*)/infra/docker/redis/acl-entrypoint\.sh$''',
   '''(.*)/infra/docker/secrets/.*''',
   '''(.*)/scripts/dev/sync-redis-secrets\.mjs$''',
-  '''(.*)/docs/security/.*''',
   '''(.*)/\.gitleaks\.toml$''',
 ]
 regexes = [
@@ -26,3 +25,9 @@ regexes = [
   '''sgr_minio_dev_password''',
   '''local-development-only''',
 ]
+
+[[allowlists]]
+description = "CycloneDX checksum fields in the SBOM index. Path exclusions are not used because they skip the whole file."
+condition = "AND"
+regexTarget = "line"
+regexes = ['''"[A-Za-z0-9._-]+\.cdx\.json"\s*:\s*"[a-f0-9]{64}"''']

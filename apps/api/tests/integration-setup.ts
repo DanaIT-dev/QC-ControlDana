@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { config as loadDotenv } from 'dotenv';
 import { afterAll } from 'vitest';
@@ -13,6 +13,10 @@ loadDotenv({ path: envFile });
 
 process.env.NODE_ENV = 'test';
 process.env.REDIS_KEY_PREFIX = 'sgr-test';
+const apiRunFile = resolve(repoRoot, 'tmp/api-integration-run-id');
+if (existsSync(apiRunFile)) {
+  process.env.SGR_TEST_RUN_ID = readFileSync(apiRunFile, 'utf8').trim();
+}
 process.env.AUTH_LOGIN_WINDOW_SECONDS ??= '60';
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;

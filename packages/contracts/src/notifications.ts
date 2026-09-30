@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { NOTIFICATION_TYPES } from './enums';
-import type { ReadyResponse } from './health';
+import type { ReadyResponse, SystemStatusOverviewItem } from './health';
 
 export const notificationListQuerySchema = z
   .object({
@@ -81,6 +81,6 @@ export interface SystemStatusResponse {
   components: ReadyResponse['components'] & {
     smtp?: { status: 'up' | 'down' | 'disabled'; latencyMs?: number };
   };
-  overview?: import('./health').SystemStatusOverviewItem[];
+  overview?: SystemStatusOverviewItem[];
   notifications?: NotificationOpsStatus;
 }

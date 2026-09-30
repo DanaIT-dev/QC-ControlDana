@@ -264,6 +264,9 @@ services:
   clamav:
     image: clamav/clamav-debian:1.4@sha256:f6da737f9399d6a1851c463b2f88d02021a67f969ec42dd6e1751fecf7c3de4f
     <<: *hardening
+    pids_limit: 256
+    tmpfs:
+      - /tmp:size=64M
     volumes:
       - sgr_clamav:/var/lib/clamav
     healthcheck:

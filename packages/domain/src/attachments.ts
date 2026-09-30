@@ -393,15 +393,34 @@ export function assertSafeImageDimensions(width: number, height: number): void {
   }
 }
 
+const TEST_RUN_ID = /^run-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function attachmentObjectPrefix(): string {
+  if (process.env.NODE_ENV !== 'test') {
+    return 'attachments';
+  }
+  const runId = process.env.SGR_TEST_RUN_ID;
+  if (!runId) {
+    return 'attachments';
+  }
+  if (!TEST_RUN_ID.test(runId)) {
+    throw new AttachmentPolicyError(
+      'UNSAFE_OBJECT_KEY',
+      'Некорректный идентификатор тестового запуска',
+    );
+  }
+  return `runs/${runId}/attachments`;
+}
+
 export function createAttachmentObjectKey(id: string = randomUUID()): string {
   if (!/^[0-9a-f-]{36}$/i.test(id)) {
     throw new AttachmentPolicyError('UNSAFE_OBJECT_KEY', 'Некорректный идентификатор объекта');
   }
-  return `attachments/${id}`;
+  return `${attachmentObjectPrefix()}/${id}`;
 }
 
 export function assertOwnedObjectKey(objectKey: string, attachmentId: string): void {
-  if (objectKey !== `attachments/${attachmentId}`) {
+  if (objectKey !== `${attachmentObjectPrefix()}/${attachmentId}`) {
     throw new AttachmentPolicyError('UNSAFE_OBJECT_KEY', 'Ключ объекта не принадлежит вложению');
   }
 }

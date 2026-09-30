@@ -92,8 +92,8 @@ export class ObjectStore {
   }
 
   async deleteExact(objectKey: string): Promise<void> {
-    if (!objectKey.startsWith('attachments/')) {
-      throw new Error('Refusing to delete an object outside attachments/');
+    if (!/^(attachments|runs\/run-[0-9a-f-]{36}\/attachments)\/[0-9a-f-]{36}$/i.test(objectKey)) {
+      throw new Error('Refusing to delete an object outside the attachment key format');
     }
     await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: objectKey }));
   }

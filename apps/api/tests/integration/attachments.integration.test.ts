@@ -354,7 +354,7 @@ describe('attachments integration', () => {
     expect(JSON.stringify(body)).not.toMatch(/objectKey|bucket|sgr_minio|S3_|attachments\//);
     const id = String(body.id);
     const row = await waitStatus(id, 'READY');
-    expect(row.objectKey).toBe(`attachments/${id}`);
+    expect(row.objectKey).toBe(`runs/${process.env.SGR_TEST_RUN_ID}/attachments/${id}`);
     expect(row.originalFilename).toBe('act.pdf');
     const list = await inject({
       method: 'GET',

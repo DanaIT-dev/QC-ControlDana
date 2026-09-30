@@ -25,6 +25,7 @@ docker run --rm --platform linux/arm64 \
     --json \
     --output /src/test-results/security-audit/semgrep.json \
     /src || true
+node "$ROOT/scripts/security/check-semgrep-report.mjs" "$OUT/semgrep.json"
 
 echo "==> Gitleaks working tree (redacted)"
 set +e

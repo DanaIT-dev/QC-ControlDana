@@ -364,7 +364,8 @@ describe('PostgreSQL RLS', () => {
       { userId: responsibleId, sessionVersion: 1, nonce: randomUUID() },
       secret,
     );
-    const altered = `${valid.slice(0, -2)}ff`;
+    const suffix = valid.slice(-2).toLowerCase() === 'ff' ? '00' : 'ff';
+    const altered = `${valid.slice(0, -2)}${suffix}`;
     const alteredResult = await sql(appUrl, `SELECT sgr_set_request_context($1)`, [altered]);
     expect(alteredResult.error).toMatch(/RLS context rejected|28000/);
     const expired = signUserRlsContext(
