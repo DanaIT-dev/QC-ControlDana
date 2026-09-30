@@ -74,7 +74,7 @@ echo "==> Trivy container images used by compose"
 for image in \
   postgres:18 \
   redis:7-alpine \
-  minio/minio:RELEASE.2025-04-22T22-12-26Z \
+  rustfs/rustfs:1.0.0@sha256:8cc9801755448b71a786705ce76692c77e14936cccd87cf2fc31842e58f4d1ff \
   clamav/clamav-debian:1.4@sha256:f6da737f9399d6a1851c463b2f88d02021a67f969ec42dd6e1751fecf7c3de4f \
   axllent/mailpit:v1.27.10@sha256:b1f1be18af530d939a11ee8820b379e0c88eeec204d904bfad68862adced3a5a
 do

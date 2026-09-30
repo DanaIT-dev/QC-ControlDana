@@ -317,7 +317,7 @@ describe('attachments integration', () => {
     await disconnectPrismaClient();
   });
 
-  it('reports minio and clamav on ready', async () => {
+  it('reports object storage and clamav on ready', async () => {
     const session = await login(admin.email);
     const response = await inject({
       method: 'GET',
@@ -327,10 +327,10 @@ describe('attachments integration', () => {
     expect(response.statusCode).toBe(200);
     const body = response.json() as {
       status: string;
-      components: { minio: { status: string }; clamav: { status: string } };
+      components: { objectStorage: { status: string }; clamav: { status: string } };
     };
     expect(body.status).toBe('ready');
-    expect(body.components.minio.status).toBe('up');
+    expect(body.components.objectStorage.status).toBe('up');
     expect(body.components.clamav.status).toBe('up');
     expect(JSON.stringify(body)).not.toMatch(
       /redis:\/\/|rediss:\/\/|sgr_api|sgr_worker|local-development-only/,

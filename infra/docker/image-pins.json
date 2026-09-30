@@ -53,41 +53,20 @@
       },
       "amd64Confirmed": true
     },
-    "minio": {
-      "repository": "docker.io/minio/minio",
-      "version": "RELEASE.2025-04-22T22-12-26Z",
-      "reference": "minio/minio:RELEASE.2025-04-22T22-12-26Z",
-      "source": "docker.io/minio/minio",
-      "upstreamRelease": "https://github.com/minio/minio/releases/tag/RELEASE.2025-04-22T22-12-26Z",
-      "manifestList": null,
+    "object-storage": {
+      "repository": "docker.io/rustfs/rustfs",
+      "version": "1.0.0",
+      "reference": "rustfs/rustfs:1.0.0",
+      "source": "https://github.com/rustfs/rustfs",
+      "upstreamRelease": "https://github.com/rustfs/rustfs/releases/tag/1.0.0",
+      "license": "Apache-2.0",
+      "manifestList": "sha256:8cc9801755448b71a786705ce76692c77e14936cccd87cf2fc31842e58f4d1ff",
       "platforms": {
-        "linux/amd64": null,
-        "linux/arm64": null
+        "linux/amd64": "sha256:ba0a1b53e36f321c0d46f3867104abef169f7bc59c467c664ddac87e7ddc9a8b",
+        "linux/arm64": "sha256:42edb61d588775f9431ff436216d14392d2234d4eb2ed68321569fbf7245b36b"
       },
-      "amd64Confirmed": false,
-      "localArm64ImageId": "sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e",
-      "localArm64ImageIdIsEvidence": false,
-      "note": "Anonymous Docker Hub and Quay lookups on 2026-09-30 returned insufficient_scope / unauthorized. The local arm64 image id is not a linux/amd64 platform digest and is not pinned.",
-      "probes": [
-        {
-          "checkedAt": "2026-09-30T10:26:28Z",
-          "repository": "docker.io/minio/minio",
-          "method": "anonymous registry token and manifest GET",
-          "httpStatus": 401,
-          "error": "insufficient_scope",
-          "manifestListDigest": null,
-          "linuxAmd64Digest": null
-        },
-        {
-          "checkedAt": "2026-09-30T10:26:28Z",
-          "repository": "quay.io/minio/minio",
-          "method": "anonymous quay token and manifest GET",
-          "httpStatus": 401,
-          "error": "UNAUTHORIZED",
-          "manifestListDigest": null,
-          "linuxAmd64Digest": null
-        }
-      ]
+      "amd64Confirmed": true,
+      "note": "Official rustfs/rustfs 1.0.0 manifest list. Platform digests were read from that index. The image user is rustfs. Console is disabled in compose."
     },
     "node": {
       "repository": "docker.io/library/node",

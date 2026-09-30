@@ -502,7 +502,7 @@ describe('auth integration', () => {
         'Worker',
         'PostgreSQL',
         'Redis',
-        'MinIO',
+        'Хранилище',
         'ClamAV',
         'Миграции',
         'Фоновые очереди',

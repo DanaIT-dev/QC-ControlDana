@@ -25,15 +25,11 @@
 | qc-web      | `ghcr.io/<owner>/qc-controldana/qc-web`      | `node apps/web/server.js`       |
 | qc-migrator | `ghcr.io/<owner>/qc-controldana/qc-migrator` | `prisma migrate deploy`         |
 
-API и worker — один digest. В manifest это две строки с общим `sharedRuntimeDigest` и разными командами. Vendor-образы Caddy, PostgreSQL, Redis, MinIO и ClamAV не перепубликовываются. В staging compose у каждого сервиса `platform: linux/amd64`.
+API и worker — один digest. В manifest это две строки с общим `sharedRuntimeDigest` и разными командами. Vendor-образы Caddy, PostgreSQL, Redis, RustFS и ClamAV не перепубликовываются. В staging compose у каждого сервиса `platform: linux/amd64`.
 
-## MinIO
+## Object storage
 
-Официальный образ: `minio/minio:RELEASE.2025-04-22T22-12-26Z`. Upstream release: `https://github.com/minio/minio/releases/tag/RELEASE.2025-04-22T22-12-26Z`.
-
-Пока Docker Hub отвечает `insufficient_scope`, amd64 digest не записывается. Локальный arm64 image id не используется. Случайный fork не используется. `scripts/release/resolve-official-manifest.mjs` пишет `artifacts/release/minio-probe.json` и не подставляет digest. Без подтверждённого digest deployable manifest не создаётся, staging deploy в workflow выключен.
-
-Нужное действие: войти в Docker Hub с правом `repository:minio/minio:pull`, повторить probe и записать отдельно manifest-list digest и `linux/amd64` platform digest.
+Официальный образ: `rustfs/rustfs:1.0.0`. Manifest list `sha256:8cc9801755448b71a786705ce76692c77e14936cccd87cf2fc31842e58f4d1ff`. `linux/amd64` `sha256:ba0a1b53e36f321c0d46f3867104abef169f7bc59c467c664ddac87e7ddc9a8b`. `scripts/release/resolve-official-manifest.mjs` читает этот pin и не обращается к registry MinIO. Подписанный release candidate по-прежнему не опубликован, пока нет registry digest собственных образов и staging acceptance.
 
 ## Подпись
 
@@ -47,7 +43,7 @@ CVE-2026-6653 — use-after-free в libxml2. ClamAV передаёт загру�
 
 ## Staging
 
-Хост должен заранее содержать маркер `/etc/sgr-staging-marker` со значением `staging`, архитектуру `x86_64` и отдельные volume, secret store, PostgreSQL, Redis и MinIO. Workflow сравнивает `uname -m` и маркер до подключения и не печатает секреты. Production environment в workflow отсутствует.
+Хост должен заранее содержать маркер `/etc/sgr-staging-marker` со значением `staging`, архитектуру `x86_64` и отдельные volume, secret store, PostgreSQL, Redis и объектное хранилище. Workflow сравнивает `uname -m` и маркер до подключения и не печатает секреты. Production environment в workflow отсутствует.
 
 До миграции непустая staging БД копируется off-host, checksum записывается, содержимое credential tables не печатается. Миграция — только `prisma migrate deploy` из migrator image. Повторный запуск должен показать отсутствие pending migrations. Seed и reset запрещены.
 
@@ -55,7 +51,7 @@ Rollback application images — смена digest на предыдущий immu
 
 ## Наблюдаемость
 
-Health и readiness API, health контейнеров, restart count, логи json-file и проверки PostgreSQL, Redis, MinIO, ClamAV входят в compose. Отдельный monitoring stack для production ещё не развёрнут и остаётся блокером production, не технического описания staging.
+Health и readiness API, health контейнеров, restart count, логи json-file и проверки PostgreSQL, Redis, объектного хранилища, ClamAV входят в compose. Отдельный monitoring stack для production ещё не развёрнут и остаётся блокером production, не технического описания staging.
 
 ## Локальная проверка без registry
 
@@ -65,4 +61,4 @@ node scripts/release/resolve-official-manifest.mjs
 node scripts/release/write-gate-artifact.mjs
 ```
 
-Ожидаемый итог без registry, Docker Hub auth и реального `x86_64` staging — `PARTIAL`. `PASS` допустим только при опубликованных digest, подтверждённом MinIO amd64, проверенной подписи, release-bound VEX, утверждённом critical waiver и staging acceptance на `x86_64`.
+Ожидаемый итог без registry и реального `x86_64` staging — `PARTIAL`. `PASS` допустим только при опубликованных digest, проверенной подписи, release-bound VEX, утверждённом critical waiver и staging acceptance на `x86_64`. Digest объектного хранилища уже подтверждён и сам по себе не делает release candidate опубликованным.

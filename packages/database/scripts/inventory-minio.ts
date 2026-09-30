@@ -16,8 +16,9 @@ function exitWith(detail: string): never {
 
 function s3(): S3Client {
   const endpoint = process.env.S3_ENDPOINT;
-  const accessKeyId = process.env.S3_ACCESS_KEY;
-  const secretAccessKey = process.env.S3_SECRET_KEY;
+  const accessKeyId = process.env.S3_ACCESS_KEY_ID?.trim() || process.env.S3_ACCESS_KEY?.trim();
+  const secretAccessKey =
+    process.env.S3_SECRET_ACCESS_KEY?.trim() || process.env.S3_SECRET_KEY?.trim();
   if (!endpoint || !accessKeyId || !secretAccessKey) {
     exitWith('S3 configuration is incomplete');
   }

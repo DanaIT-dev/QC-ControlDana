@@ -152,14 +152,36 @@ async function redisKeyFingerprint(
   }
 }
 
+function objectStorageCredential(
+  env: NodeJS.ProcessEnv,
+  canonical: string,
+  legacy: string,
+): string {
+  const next = env[canonical]?.trim();
+  const old = env[legacy]?.trim();
+  if (next && old && next !== old) {
+    throw new Error(`${canonical} and ${legacy} differ`);
+  }
+  const value = next || old;
+  if (!value) {
+    throw new Error(`${canonical} is required`);
+  }
+  if (!next && old) {
+    console.warn(
+      `${legacy} is deprecated. Set ${canonical}. This alias will be removed after 2026-12-31.`,
+    );
+  }
+  return value;
+}
+
 function s3Client(env: NodeJS.ProcessEnv): S3Client {
   return new S3Client({
     endpoint: required(env, 'S3_ENDPOINT'),
     region: env.S3_REGION ?? 'us-east-1',
     forcePathStyle: env.S3_FORCE_PATH_STYLE !== 'false',
     credentials: {
-      accessKeyId: required(env, 'S3_ACCESS_KEY'),
-      secretAccessKey: required(env, 'S3_SECRET_KEY'),
+      accessKeyId: objectStorageCredential(env, 'S3_ACCESS_KEY_ID', 'S3_ACCESS_KEY'),
+      secretAccessKey: objectStorageCredential(env, 'S3_SECRET_ACCESS_KEY', 'S3_SECRET_KEY'),
     },
   });
 }

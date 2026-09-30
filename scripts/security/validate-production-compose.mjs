@@ -32,7 +32,7 @@ function serviceBlock(name) {
 const privateServices = [
   'postgres',
   'redis',
-  'minio',
+  'object-storage',
   'clamav',
   'api',
   'worker',
@@ -84,7 +84,10 @@ if (/\brequirepass\b/.test(yaml) || /--requirepass/.test(yaml)) {
 if (/REDIS_PASSWORD\s*:/.test(redis) && !/REDIS_.*PASSWORD_FILE/.test(redis)) {
   fail('REDIS production compose must not inline Redis passwords');
 }
-if (yaml.includes('0.0.0.0:') || yaml.includes('[::]:')) {
+const published = yaml
+  .split('\n')
+  .filter((line) => /^\s+-\s+['"]?(?:0\.0\.0\.0:|\[::]:)/.test(line));
+if (published.length > 0) {
   fail('production compose must not bind wildcard host addresses');
 }
 if (/:latest\b/.test(yaml)) {
@@ -119,9 +122,12 @@ for (const image of Object.values(pins.images)) {
     }
   }
 }
-const minio = pins.images.minio;
-if (minio?.platforms?.['linux/arm64'] && yaml.includes(minio.platforms['linux/arm64'])) {
-  fail('production compose must not pin the arm64 MinIO digest for an amd64 deployment');
+const objectStorage = pins.images['object-storage'];
+if (
+  objectStorage?.platforms?.['linux/arm64'] &&
+  yaml.includes(objectStorage.platforms['linux/arm64'])
+) {
+  fail('production compose must not pin the arm64 object-storage digest for an amd64 deployment');
 }
 
 console.log('production compose publishes only the reverse proxy and keeps data services private');

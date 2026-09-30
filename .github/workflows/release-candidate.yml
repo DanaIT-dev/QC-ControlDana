@@ -134,8 +134,7 @@ jobs:
           echo "release_id=rc-${date}-${short}" >> "$GITHUB_OUTPUT"
           echo "created=${created}" >> "$GITHUB_OUTPUT"
           echo "prefix=${prefix}" >> "$GITHUB_OUTPUT"
-      - name: Resolve official MinIO manifest
-        continue-on-error: true
+      - name: Confirm pinned object-storage digest
         run: node scripts/release/resolve-official-manifest.mjs
       - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
       - name: Log in to GHCR

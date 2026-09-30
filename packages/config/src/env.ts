@@ -45,6 +45,28 @@ const booleanString = z
   .default('true')
   .transform((value) => value === 'true' || value === '1');
 
+const booleanStringOptional = z
+  .enum(['true', 'false', '1', '0'])
+  .optional()
+  .transform((value) => (value === undefined ? undefined : value === 'true' || value === '1'));
+
+const STORAGE_ALIAS_REMOVAL = '2026-12-31';
+const warnedStorageAliases = new Set<string>();
+
+export function resetStorageAliasWarnings(): void {
+  warnedStorageAliases.clear();
+}
+
+function warnDeprecatedStorageAlias(legacy: string, canonical: string): void {
+  if (warnedStorageAliases.has(legacy)) {
+    return;
+  }
+  warnedStorageAliases.add(legacy);
+  console.warn(
+    `${legacy} is deprecated. Set ${canonical}. This alias will be removed after ${STORAGE_ALIAS_REMOVAL}.`,
+  );
+}
+
 const booleanFalse = z
   .enum(['true', 'false', '1', '0'])
   .default('false')
@@ -88,11 +110,20 @@ const envSchema = z
       .optional(),
     S3_ENDPOINT: z.url('S3_ENDPOINT must be a URL'),
     S3_REGION: z.string().min(1),
-    S3_ACCESS_KEY: z.string().min(1, 'S3_ACCESS_KEY is required'),
-    S3_SECRET_KEY: z.string().min(1, 'S3_SECRET_KEY is required'),
+    S3_ACCESS_KEY_ID: z.string().min(1).optional(),
+    S3_SECRET_ACCESS_KEY: z.string().min(1).optional(),
+    S3_ACCESS_KEY: z.string().min(1).optional(),
+    S3_SECRET_KEY: z.string().min(1).optional(),
     S3_BUCKET: z.string().min(1),
     S3_TEST_BUCKET: z.string().min(1).default('sgr-attachments-test'),
     S3_FORCE_PATH_STYLE: booleanString,
+    S3_USE_SSL: booleanStringOptional,
+    S3_PRESIGNED_TTL_SECONDS: z.coerce.number().int().min(60).max(3_600).default(900),
+    S3_MULTIPART_THRESHOLD_BYTES: z.coerce
+      .number()
+      .int()
+      .min(5 * 1024 * 1024)
+      .default(5 * 1024 * 1024),
     CLAMD_HOST: z.string().min(1).default('127.0.0.1'),
     CLAMD_PORT: z.coerce.number().int().positive().default(3310),
     ATTACHMENT_MAX_BYTES: z.coerce
@@ -139,6 +170,70 @@ const envSchema = z
     WORKER_READY_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
   })
   .superRefine((value, ctx) => {
+    const production = value.NODE_ENV === 'production';
+    if (
+      value.S3_ACCESS_KEY_ID &&
+      value.S3_ACCESS_KEY &&
+      value.S3_ACCESS_KEY_ID !== value.S3_ACCESS_KEY
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['S3_ACCESS_KEY_ID'],
+        message: 'S3_ACCESS_KEY_ID and S3_ACCESS_KEY differ',
+      });
+    }
+    if (
+      value.S3_SECRET_ACCESS_KEY &&
+      value.S3_SECRET_KEY &&
+      value.S3_SECRET_ACCESS_KEY !== value.S3_SECRET_KEY
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['S3_SECRET_ACCESS_KEY'],
+        message: 'S3_SECRET_ACCESS_KEY and S3_SECRET_KEY differ',
+      });
+    }
+    if (production && (value.S3_ACCESS_KEY || value.S3_SECRET_KEY)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['S3_ACCESS_KEY_ID'],
+        message: `Production must set S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY. Deprecated aliases are rejected and will be removed after ${STORAGE_ALIAS_REMOVAL}.`,
+      });
+    }
+    if (!value.S3_ACCESS_KEY_ID && value.S3_ACCESS_KEY) {
+      if (!production) {
+        warnDeprecatedStorageAlias('S3_ACCESS_KEY', 'S3_ACCESS_KEY_ID');
+      }
+      value.S3_ACCESS_KEY_ID = value.S3_ACCESS_KEY;
+    }
+    if (!value.S3_SECRET_ACCESS_KEY && value.S3_SECRET_KEY) {
+      if (!production) {
+        warnDeprecatedStorageAlias('S3_SECRET_KEY', 'S3_SECRET_ACCESS_KEY');
+      }
+      value.S3_SECRET_ACCESS_KEY = value.S3_SECRET_KEY;
+    }
+    if (!value.S3_ACCESS_KEY_ID) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['S3_ACCESS_KEY_ID'],
+        message: 'S3_ACCESS_KEY_ID is required',
+      });
+    }
+    if (!value.S3_SECRET_ACCESS_KEY) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['S3_SECRET_ACCESS_KEY'],
+        message: 'S3_SECRET_ACCESS_KEY is required',
+      });
+    }
+    const https = value.S3_ENDPOINT.startsWith('https://');
+    if (value.S3_USE_SSL !== undefined && value.S3_USE_SSL !== https) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['S3_USE_SSL'],
+        message: 'S3_USE_SSL must match the S3_ENDPOINT scheme',
+      });
+    }
     if (value.SESSION_IDLE_TIMEOUT_SECONDS > value.SESSION_ABSOLUTE_LIFETIME_SECONDS) {
       ctx.addIssue({
         code: 'custom',
@@ -201,7 +296,6 @@ const envSchema = z
         });
       }
     }
-    const production = value.NODE_ENV === 'production';
     const redisApiIssues = redisUrlIssues(value.REDIS_URL, {
       production,
       expectedUsername: production ? REDIS_API_ACL_USER : undefined,
@@ -237,8 +331,8 @@ const envSchema = z
     if (value.NODE_ENV === 'production') {
       const secretFields: Array<[string, string]> = [
         ['RLS_CONTEXT_SECRET', value.RLS_CONTEXT_SECRET],
-        ['S3_ACCESS_KEY', value.S3_ACCESS_KEY],
-        ['S3_SECRET_KEY', value.S3_SECRET_KEY],
+        ['S3_ACCESS_KEY_ID', value.S3_ACCESS_KEY_ID ?? ''],
+        ['S3_SECRET_ACCESS_KEY', value.S3_SECRET_ACCESS_KEY ?? ''],
         ['SMTP_PASSWORD', value.SMTP_PASSWORD],
       ];
       for (const [path, secret] of secretFields) {

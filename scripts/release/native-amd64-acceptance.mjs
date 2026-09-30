@@ -26,7 +26,7 @@ if (!existsSync(recordPath)) {
 const record = JSON.parse(readFileSync(recordPath, 'utf8'));
 const images = Array.isArray(record.images) ? record.images : [];
 const missing = images.filter((image) => !image.registryDigest || image.platform !== 'linux/amd64');
-if (missing.length > 0 || !record.minioAmd64Digest) {
+if (missing.length > 0 || !record.objectStorageAmd64Digest) {
   console.log(
     JSON.stringify({
       result: 'NOT_RUN',

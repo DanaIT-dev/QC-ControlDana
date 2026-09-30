@@ -59,7 +59,7 @@ pnpm --filter @sgr-registry/database users:correct-name -- --user-id=<uuid> --la
 
 Внутренний чат акта не требует SMTP: Mailpit можно не открывать, чтобы проверить `@` упоминания. Worker по-прежнему нужен для остальных уведомлений и SLA.
 
-Порты PostgreSQL, Redis, MinIO, Mailpit и ClamAV публикуются только на `127.0.0.1`. Redis локально требует ACL. Production-шаблон не публикует Redis. Проверка:
+Порты PostgreSQL, Redis, объектного хранилища, Mailpit и ClamAV публикуются только на `127.0.0.1`. Redis локально требует ACL. Production-шаблон не публикует Redis. Проверка:
 
 ```bash
 node scripts/security/check-docker-exposure.mjs

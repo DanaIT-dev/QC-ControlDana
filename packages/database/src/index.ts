@@ -127,3 +127,9 @@ export {
   assertObjectsImportDatabaseTarget,
   ObjectsImportTargetError,
 } from './objects-import-target';
+export {
+  createObjectStore,
+  createS3Client,
+  ObjectStore,
+  resolveAttachmentBucket,
+} from './object-storage';

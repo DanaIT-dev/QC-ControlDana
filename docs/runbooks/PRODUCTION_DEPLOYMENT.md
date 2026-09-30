@@ -26,11 +26,11 @@ export SGR_WEB_IMAGE_DIGEST="sha256:$(docker image inspect "sgr-registry-web:$SG
 
 Целевая production-архитектура — `linux/amd64`. `linux/arm64` допустим только как второй вариант. Локальная проверка на arm64 не подтверждает amd64 production. Сборка `linux/amd64` на этой машине выполняется через buildx. Каталог digest: `infra/docker/image-pins.json`. В compose для образов с подтверждённым manifest list используется digest списка и `platform: ${SGR_PLATFORM:-linux/amd64}`. Manifest digest не равен platform digest. Git SHA не равен Docker digest. Локальный image id не равен digest в registry.
 
-MinIO не имеет подтверждённого `linux/amd64` digest: анонимный lookup registry вернул `insufficient_scope`. Compose требует `SGR_MINIO_IMAGE_DIGEST` и не подставляет локальный arm64 image id. `multi-arch registry manifest: NOT PUBLISHED`. Это внешний шаг выкладки, а не дефект кода.
+Объектное хранилище — RustFS `1.0.0` с подтверждённым `linux/amd64` digest. Подписанный release candidate не опубликован. `multi-arch registry manifest` собственных образов: `NOT PUBLISHED`. Production deployment не начат.
 
 Четыре разные операции не смешиваются: local single-platform validation, multi-platform build, registry manifest publication, production deployment. Подробности, SBOM, OpenVEX и security gate: `docs/security/SUPPLY_CHAIN.md`.
 
-Инвентарь development MinIO без вывода ключей и содержимого:
+Инвентарь development object storage без вывода ключей и содержимого:
 
 ```bash
 pnpm --filter @sgr-registry/database exec tsx scripts/inventory-minio.ts

@@ -282,7 +282,7 @@ test.describe('read-only SUPER_ADMIN oversight', () => {
     await expect(page.getByText('Web')).toBeVisible();
     await expect(page.getByText('PostgreSQL')).toBeVisible();
     await expect(page.getByText('Redis')).toBeVisible();
-    await expect(page.getByText('MinIO')).toBeVisible();
+    await expect(page.getByText('Хранилище')).toBeVisible();
     await expect(page.getByText('ClamAV')).toBeVisible();
     await expect(page.getByText('Миграции')).toBeVisible();
     await expect(page.getByText('Фоновые очереди')).toBeVisible();

@@ -11,8 +11,8 @@ export const PRODUCTION_READINESS_KEYS = [
   'REDIS_URL',
   'WORKER_REDIS_URL',
   'S3_ENDPOINT',
-  'S3_ACCESS_KEY',
-  'S3_SECRET_KEY',
+  'S3_ACCESS_KEY_ID',
+  'S3_SECRET_ACCESS_KEY',
   'RLS_CONTEXT_SECRET',
   'WEB_ORIGIN',
   'PUBLIC_APP_URL',
@@ -104,8 +104,14 @@ export function assessProductionReadiness(source: NodeJS.ProcessEnv): Production
   if (source.TLS_KEY_FILE && !fileExists(source.TLS_KEY_FILE)) {
     record('TLS_KEY_FILE', 'TLS private key file is missing');
   }
-  if (source.S3_ACCESS_KEY && isWeakSecret(source.S3_ACCESS_KEY)) {
-    record('S3_ACCESS_KEY', weakSecretMessage('S3_ACCESS_KEY'));
+  if (source.S3_ACCESS_KEY || source.S3_SECRET_KEY) {
+    record(
+      'S3_ACCESS_KEY_ID',
+      'Production must set S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY. Deprecated aliases are rejected and will be removed after 2026-12-31.',
+    );
+  }
+  if (source.S3_ACCESS_KEY_ID && isWeakSecret(source.S3_ACCESS_KEY_ID)) {
+    record('S3_ACCESS_KEY_ID', weakSecretMessage('S3_ACCESS_KEY_ID'));
   }
   const imageTag = source.SGR_IMAGE_TAG?.trim() ?? '';
   if (imageTag && (MUTABLE_IMAGE_TAGS.has(imageTag) || !GIT_SHA.test(imageTag))) {

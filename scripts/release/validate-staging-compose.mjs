@@ -35,7 +35,7 @@ export function validateStagingCompose(yaml) {
   const privateServices = [
     'postgres',
     'redis',
-    'minio',
+    'object-storage',
     'clamav',
     'api',
     'worker',

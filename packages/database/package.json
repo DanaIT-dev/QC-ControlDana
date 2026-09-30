@@ -36,6 +36,8 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1119.0",
+    "@aws-sdk/lib-storage": "^3.1119.0",
+    "@sgr-registry/config": "workspace:*",
     "@prisma/adapter-pg": "7.10.0",
     "@prisma/client": "7.10.0",
     "@sgr-registry/domain": "workspace:*",

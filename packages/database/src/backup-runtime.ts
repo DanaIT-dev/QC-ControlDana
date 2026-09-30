@@ -32,7 +32,7 @@ export type BackupManifest = {
   bucket: string;
   plaintextSha256: string;
   ciphertextSha256: string;
-  components: Array<'postgresql' | 'minio' | 'config-metadata'>;
+  components: Array<'postgresql' | 'object-storage' | 'config-metadata'>;
 };
 
 function log(
@@ -229,7 +229,7 @@ export async function writeEncryptedBackup(input: {
       bucket: input.bucket,
       plaintextSha256,
       ciphertextSha256,
-      components: ['postgresql', 'minio', 'config-metadata'],
+      components: ['postgresql', 'object-storage', 'config-metadata'],
     };
     writeFileSync(join(directory, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
     writeFileSync(

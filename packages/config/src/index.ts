@@ -1,4 +1,4 @@
-export { getConfig, loadConfig, MissingConfigurationError } from './env';
+export { getConfig, loadConfig, MissingConfigurationError, resetStorageAliasWarnings } from './env';
 export type { AppConfig } from './env';
 export { assessProductionReadiness, PRODUCTION_READINESS_KEYS } from './production-readiness';
 export type { ProductionReadinessFailure } from './production-readiness';

@@ -4,6 +4,14 @@ import test from 'node:test';
 import { evaluateRelease, waiverApproved } from './evaluate-release.mjs';
 
 const digest = (seed) => `sha256:${createHash('sha256').update(seed).digest('hex')}`;
+const storagePass = {
+  objectStorageAmd64Digest: digest('object-storage'),
+  objectStorageContract: 'PASS',
+  objectStorageBackupRestore: 'PASS',
+  objectStorageLicenseReviewed: true,
+  objectStorageSbomPresent: true,
+  objectStorageVexBound: true,
+};
 const source = 'a'.repeat(40);
 
 function image(role, extra = {}) {
@@ -68,23 +76,23 @@ function completeRecord() {
       image('caddy'),
       image('postgres'),
       image('redis'),
-      image('minio'),
+      image('object-storage'),
       image('clamav'),
     ],
   };
 }
 
 test('an absent release record is PARTIAL and blocks production', () => {
-  const result = evaluateRelease({ minioAmd64Digest: null, record: null });
+  const result = evaluateRelease({ objectStorageAmd64Digest: null, record: null });
   assert.equal(result.status, 'PARTIAL');
-  assert.ok(result.reasons.some((item) => item.code === 'MINIO_AMD64_DIGEST_UNCONFIRMED'));
+  assert.ok(result.reasons.some((item) => item.code === 'OBJECT_STORAGE_AMD64_DIGEST_CONFIRMED'));
   assert.ok(result.reasons.some((item) => item.code === 'STAGING_AMD64_NOT_AVAILABLE'));
   assert.ok(result.reasons.every((item) => item.blockingProduction === true));
 });
 
 test('an unapproved critical waiver cannot PASS', () => {
   const result = evaluateRelease({
-    minioAmd64Digest: digest('minio'),
+    ...storagePass,
     record: completeRecord(),
     criticalWaivers: [{ cve: 'CVE-2026-6653', image: 'clamav', status: 'ACCEPTED_TEMPORARILY' }],
   });
@@ -95,7 +103,7 @@ test('an unapproved critical waiver cannot PASS', () => {
 
 test('a complete signed amd64 staging record can PASS', () => {
   const result = evaluateRelease({
-    minioAmd64Digest: digest('minio'),
+    ...storagePass,
     record: completeRecord(),
     criticalWaivers: [
       {
@@ -120,7 +128,7 @@ test('a complete signed amd64 staging record can PASS', () => {
 test('qemu or arm64 staging cannot PASS', () => {
   const record = completeRecord();
   record.staging.architecture = 'aarch64';
-  const result = evaluateRelease({ minioAmd64Digest: digest('minio'), record });
+  const result = evaluateRelease({ ...storagePass, record });
   assert.equal(result.status, 'PARTIAL');
   assert.equal(result.reasons[0].code, 'STAGING_AMD64_NOT_AVAILABLE');
 });
@@ -144,7 +152,7 @@ test('a release pipeline cannot approve its own critical waiver', () => {
 test('a secret field blocks the record', () => {
   const record = completeRecord();
   record.databasePassword = 'hidden';
-  const result = evaluateRelease({ minioAmd64Digest: digest('minio'), record });
+  const result = evaluateRelease({ ...storagePass, record });
   assert.equal(result.status, 'BLOCKED');
   assert.equal(result.blockers[0].code, 'SECRET_IN_RELEASE_RECORD');
 });

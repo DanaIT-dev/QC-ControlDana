@@ -46,8 +46,8 @@ export function validateReleaseManifest(manifest) {
   if (!Array.isArray(manifest.mutableReferences) || manifest.mutableReferences.length > 0) {
     errors.push('mutableReferences must be an empty array');
   }
-  if (manifest.deployable === true && manifest.minioAmd64Confirmed !== true) {
-    errors.push('a deployable manifest requires a confirmed MinIO linux/amd64 digest');
+  if (manifest.deployable === true && manifest.objectStorageAmd64Confirmed !== true) {
+    errors.push('a deployable manifest requires a confirmed object-storage linux/amd64 digest');
   }
   const images = manifest.images;
   if (!Array.isArray(images) || images.length === 0) {

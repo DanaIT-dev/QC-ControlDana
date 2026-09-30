@@ -2,7 +2,7 @@
 
 Целевая архитектура production и staging — `linux/amd64`. `linux/arm64` остаётся локальной машиной разработки. Multi-arch manifest не требуется и не является блокером. Локальная проверка через QEMU не подтверждает amd64 staging.
 
-Каталог digest: `infra/docker/image-pins.json`. Дата проверки vendor manifest list — `2026-09-30`. Источник — registry API и `docker buildx imagetools inspect`. MinIO amd64 по-прежнему не подтверждён: анонимный Docker Hub вернул `insufficient_scope`, анонимный Quay — `UNAUTHORIZED`.
+Каталог digest: `infra/docker/image-pins.json`. Дата проверки vendor manifest list — `2026-09-30`. Объектное хранилище — официальный `rustfs/rustfs:1.0.0`, manifest list `sha256:8cc9801755448b71a786705ce76692c77e14936cccd87cf2fc31842e58f4d1ff`, `linux/amd64` `sha256:ba0a1b53e36f321c0d46f3867104abef169f7bc59c467c664ddac87e7ddc9a8b`.
 
 Manifest digest не равен platform digest. Git SHA не равен Docker digest. Локальный image id не равен digest, опубликованному в registry. Отсутствие `FixedVersion` не означает отсутствие риска. Закрытый порт не устраняет уязвимость package. VEX требует доказательства runtime applicability.
 
@@ -11,7 +11,7 @@ Manifest digest не равен platform digest. Git SHA не равен Docker 
 - local single-platform validation: сборка и smoke на машине разработчика, в том числе amd64 через buildx/QEMU.
 - multi-platform build: `docker buildx build --platform linux/amd64,linux/arm64` без `docker load` как доказательства manifest.
 - registry publication: собственный amd64 release candidate публикуется workflow `.github/workflows/release-candidate.yml` в GHCR. Multi-arch manifest не требуется.
-- staging deployment: только после подтверждённого `linux/amd64` digest MinIO, подписи и smoke на реальном `x86_64`. Production deployment не начат.
+- staging deployment: только после подписи и smoke на реальном `x86_64`. Digest объектного хранилища подтверждён. Production deployment не начат. Подписанный release candidate не опубликован.
 
 `docker load` не доказывает multi-arch manifest: локальный image store хранит одну платформу на tag.
 
@@ -24,7 +24,7 @@ repository:version@sha256:<multi-arch-manifest-digest>
 platform: ${SGR_PLATFORM:-linux/amd64}
 ```
 
-MinIO не имеет подтверждённого amd64 digest. Compose требует `SGR_MINIO_IMAGE_DIGEST` и не подставляет локальный arm64 id `sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e`. Пока digest не подтверждён для `linux/amd64`, MinIO не готов к production.
+Объектное хранилище закреплено digest manifest list в compose. Platform digest в compose не подставляется. Локальный image id не используется как доказательство amd64.
 
 Собственные образы не публикуются этим репозиторием. Их digest — локальный image id после `docker buildx build --platform linux/amd64 --load`. Readiness не требует выдуманный registry digest.
 

@@ -44,24 +44,24 @@ export class HealthService {
 
   async getReadiness(): Promise<ReadyResponse> {
     const config = loadConfig();
-    const [postgres, redis, minio, clamav] = await Promise.all([
+    const [postgres, redis, objectStorage, clamav] = await Promise.all([
       this.checkPostgres(config.DATABASE_URL),
       this.checkRedis(config.REDIS_URL),
-      this.checkMinio(),
+      this.checkObjectStorage(),
       this.checkClamav(),
     ]);
 
     const status =
       postgres.status === 'up' &&
       redis.status === 'up' &&
-      minio.status === 'up' &&
+      objectStorage.status === 'up' &&
       clamav.status === 'up'
         ? 'ready'
         : 'not_ready';
     return {
       status,
       timestamp: new Date().toISOString(),
-      components: { postgres, redis, minio, clamav },
+      components: { postgres, redis, objectStorage, clamav },
     };
   }
 
@@ -152,10 +152,10 @@ export class HealthService {
         message: safeMessage(ready.components.redis.message),
       },
       {
-        component: 'MinIO',
-        status: ready.components.minio.status === 'up' ? 'up' : 'down',
+        component: 'Хранилище',
+        status: ready.components.objectStorage.status === 'up' ? 'up' : 'down',
         checkedAt,
-        message: safeMessage(ready.components.minio.message),
+        message: safeMessage(ready.components.objectStorage.message),
       },
       {
         component: 'ClamAV',
@@ -295,14 +295,11 @@ export class HealthService {
     }
   }
 
-  private async checkMinio(): Promise<ComponentStatus> {
+  private async checkObjectStorage(): Promise<ComponentStatus> {
     const started = Date.now();
     try {
-      const { createS3Client, ObjectStore, resolveAttachmentBucket } =
-        await import('../attachments/object-store.js');
-      const config = loadConfig();
-      const store = new ObjectStore(createS3Client(config), resolveAttachmentBucket(config));
-      await store.ensureBucket();
+      const { createObjectStore } = await import('../attachments/object-store.js');
+      const store = createObjectStore(loadConfig());
       await store.ping();
       return { status: 'up', latencyMs: Date.now() - started };
     } catch {

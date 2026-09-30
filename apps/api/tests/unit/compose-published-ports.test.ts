@@ -42,8 +42,8 @@ describe('infrastructure compose published ports', () => {
     expect(yaml).toMatch(/REDIS_API_PASSWORD_FILE/);
     expect(yaml).not.toMatch(/REDIS_PASSWORD:\s*\$\{/);
     expect(yaml).not.toMatch(/REDISCLI_AUTH:\s*\$\{/);
-    expect(yaml).toMatch(/127\.0\.0\.1:\$\{MINIO_API_PORT:-9000}:9000/);
-    expect(yaml).toMatch(/127\.0\.0\.1:\$\{MINIO_CONSOLE_PORT:-9001}:9001/);
+    expect(yaml).toMatch(/127\.0\.0\.1:\$\{S3_API_PORT:-9000}:9000/);
+    expect(yaml).not.toMatch(/9001/);
     expect(yaml).toMatch(/127\.0\.0\.1:\$\{CLAMD_PORT:-3310}:3310/);
     expect(yaml).toMatch(/127\.0\.0\.1:\$\{MAILPIT_SMTP_PORT:-1025}:1025/);
     expect(yaml).toMatch(/127\.0\.0\.1:\$\{MAILPIT_UI_PORT:-8025}:8025/);
@@ -55,13 +55,13 @@ describe('infrastructure compose published ports', () => {
       '../../../../infra/docker/compose.production.yaml',
     );
     const yaml = readFileSync(productionPath, 'utf8');
-    const redis = yaml.slice(yaml.indexOf('\n  redis:'), yaml.indexOf('\n  minio:'));
+    const redis = yaml.slice(yaml.indexOf('\n  redis:'), yaml.indexOf('\n  object-storage:'));
     const proxy = yaml.slice(yaml.indexOf('\n  proxy:'), yaml.indexOf('\n  web:'));
     expect(yaml).toMatch(/^\s+redis:/m);
     expect(redis).not.toMatch(/^\s+ports:\s*$/m);
     expect(publishedPortMappings(yaml)).toEqual(['80:80', '443:443']);
     expect(proxy).toMatch(/443:443/);
-    expect(yaml).not.toMatch(/0\.0\.0\.0/);
+    expect(publishedPortMappings(yaml).join('\n')).not.toMatch(/0\.0\.0\.0/);
     expect(yaml).not.toMatch(/local-development-only/);
     expect(yaml).not.toMatch(/requirepass/);
     expect(yaml).toMatch(/acl-entrypoint\.sh/);

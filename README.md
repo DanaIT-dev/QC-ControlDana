@@ -12,7 +12,7 @@
 
 - Node.js 24 LTS (`24` в `.nvmrc`)
 - pnpm 11.24.0 через Corepack
-- Docker и Docker Compose для PostgreSQL 18, Redis, MinIO, ClamAV и Mailpit
+- Docker и Docker Compose для PostgreSQL 18, Redis, объектного хранилища RustFS, ClamAV и Mailpit
 
 ## Первый запуск
 
@@ -49,7 +49,7 @@ pnpm dev
 | `pnpm test`                    | Unit-тесты                                                     |
 | `pnpm test:integration`        | Integration-тесты только против `*_test` базы                  |
 | `pnpm test:e2e`                | Playwright: только `sgr_registry_e2e`, не development          |
-| `pnpm test:attachments:stream` | Streaming/RSS против test bucket MinIO                         |
+| `pnpm test:attachments:stream` | Streaming/RSS против test bucket объектного хранилища          |
 | `pnpm test:sla:performance`    | 100k DefectItem, cursor evaluator, без массовой email-отправки |
 | `pnpm format:check`            | Проверка Prettier                                              |
 | `pnpm db:generate`             | Prisma Client                                                  |

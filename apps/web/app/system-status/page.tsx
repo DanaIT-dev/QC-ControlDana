@@ -61,7 +61,7 @@ export default async function SystemStatusPage() {
                 ['API', status.status === 200 ? 'up' : 'down'],
                 ['PostgreSQL', data?.components.postgres.status === 'up' ? 'up' : 'down'],
                 ['Redis', data?.components.redis.status === 'up' ? 'up' : 'down'],
-                ['MinIO', data?.components.minio.status === 'up' ? 'up' : 'down'],
+                ['Хранилище', data?.components.objectStorage.status === 'up' ? 'up' : 'down'],
                 ['ClamAV', data?.components.clamav.status === 'up' ? 'up' : 'down'],
               ] as const
             ).map(([title, state]) => <OverviewCard key={title} title={title} status={state} />)}

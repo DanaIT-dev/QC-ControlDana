@@ -22,13 +22,13 @@ groups:
           severity: critical
         annotations:
           summary: Redis readiness is down
-      - alert: MinioUnavailable
-        expr: sgr_component_up{component="minio"} == 0
+      - alert: ObjectStorageUnavailable
+        expr: sgr_component_up{component="objectStorage"} == 0
         for: 2m
         labels:
           severity: critical
         annotations:
-          summary: MinIO readiness is down
+          summary: Object storage readiness is down
       - alert: DiskSpaceHigh
         expr: (1 - node_filesystem_avail_bytes / node_filesystem_size_bytes) > 0.80
         for: 10m

@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { waiverApproved } from '../release/evaluate-release.mjs';
+import { releaseGateExitCode } from './release-gate-exit.mjs';
 import { validateDecisions, validateOpenVex } from './openvex-lib.mjs';
 import { coversFinding, scanFindings } from './supply-chain.mjs';
 
@@ -43,12 +44,31 @@ for (const error of validateOpenVex(openvex)) {
   block(error);
 }
 
-if (!pins.images.minio?.amd64Confirmed) {
-  partial('MinIO linux/amd64 digest is not confirmed');
-  addReason('MINIO_AMD64_DIGEST_UNCONFIRMED', {
-    requiredAction:
-      'Authorize pull scope for docker.io/minio/minio and record the linux/amd64 platform digest. Do not reuse the local arm64 image id.',
-  });
+const storagePin = pins.images['object-storage'];
+const storageAmd64 = storagePin?.platforms?.['linux/amd64'] ?? '';
+const storageChecks = {
+  OBJECT_STORAGE_AMD64_DIGEST_CONFIRMED:
+    storagePin?.amd64Confirmed === true && /^sha256:[a-f0-9]{64}$/.test(storageAmd64),
+  OBJECT_STORAGE_CONTRACT_PASSED: false,
+  OBJECT_STORAGE_BACKUP_RESTORE_PASSED: false,
+  OBJECT_STORAGE_LICENSE_REVIEWED: false,
+  OBJECT_STORAGE_SBOM_PRESENT: existsSync(resolve(artifactDir, 'sbom/object-storage.cdx.json')),
+  OBJECT_STORAGE_VEX_BOUND: false,
+};
+const acceptancePath = resolve(root, 'docs/security/object-storage-acceptance.json');
+if (existsSync(acceptancePath)) {
+  const acceptance = readJson(acceptancePath);
+  storageChecks.OBJECT_STORAGE_CONTRACT_PASSED = acceptance.contract === 'PASS';
+  storageChecks.OBJECT_STORAGE_BACKUP_RESTORE_PASSED = acceptance.backupRestore === 'PASS';
+  storageChecks.OBJECT_STORAGE_LICENSE_REVIEWED = acceptance.licenseReviewed === true;
+  storageChecks.OBJECT_STORAGE_VEX_BOUND =
+    acceptance.vexBound === true && acceptance.linuxAmd64 === storageAmd64;
+}
+for (const [code, passed] of Object.entries(storageChecks)) {
+  if (!passed) {
+    partial(`${code} is not satisfied`);
+    addReason(code);
+  }
 }
 
 const compose = spawnSync('node', ['scripts/security/validate-production-compose.mjs'], {
@@ -81,11 +101,10 @@ for (const image of Object.values(pins.images)) {
     knownDigests.add(image.localArm64ImageId);
   }
 }
-if (pins.images.minio?.localArm64ImageId) {
-  partial('policy OpenVEX still cites the local MinIO image id');
+if (JSON.stringify(openvex).includes('pkg:oci/minio@')) {
+  partial('policy OpenVEX still cites the retired MinIO image');
   addReason('RELEASE_VEX_NOT_BOUND', {
-    detail:
-      'docs/security/openvex.json is a source assessment bound to a local image id, not a published linux/amd64 digest',
+    detail: 'docs/security/openvex.json still names the retired MinIO image',
   });
 }
 
@@ -182,7 +201,7 @@ const requiredSbom = [
   'caddy',
   'postgres',
   'redis',
-  'minio',
+  'object-storage',
   'clamav',
 ];
 for (const name of requiredSbom) {
@@ -279,5 +298,9 @@ const text = [
   ...reasons.map((item) => `REASON: ${item.code}`),
 ].join('\n');
 writeFileSync(resolve(artifactDir, 'gate.txt'), `${text}\n`);
+const mode = process.argv.includes('--mode=publish') ? 'publish' : 'audit';
+if (mode === 'audit' && result !== 'PASS') {
+  console.error('PUBLICATION_FORBIDDEN');
+}
 console.log(text);
-process.exit(result === 'BLOCKED' ? 1 : 0);
+process.exit(releaseGateExitCode(result, mode));

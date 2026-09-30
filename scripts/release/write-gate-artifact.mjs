@@ -9,16 +9,26 @@ const releaseDir = resolve(root, 'artifacts/release');
 const decisions = JSON.parse(
   readFileSync(resolve(root, 'docs/security/vulnerability-decisions.json'), 'utf8'),
 );
-const probePath = resolve(releaseDir, 'minio-probe.json');
-const probe = existsSync(probePath) ? JSON.parse(readFileSync(probePath, 'utf8')) : null;
+const pins = JSON.parse(readFileSync(resolve(root, 'infra/docker/image-pins.json'), 'utf8'));
+const acceptancePath = resolve(root, 'docs/security/object-storage-acceptance.json');
+const acceptance = existsSync(acceptancePath)
+  ? JSON.parse(readFileSync(acceptancePath, 'utf8'))
+  : {};
+const storage = pins.images['object-storage'] ?? {};
 const recordPath = resolve(releaseDir, 'record.json');
 const record = existsSync(recordPath) ? JSON.parse(readFileSync(recordPath, 'utf8')) : null;
 const criticalWaivers = (decisions.statements ?? []).filter(
   (statement) => statement.status === 'ACCEPTED_TEMPORARILY' && statement.cve === 'CVE-2026-6653',
 );
+const sbomPath = resolve(root, 'artifacts/supply-chain/sbom/object-storage.cdx.json');
 
 const result = evaluateRelease({
-  minioAmd64Digest: probe?.linuxAmd64Digest ?? null,
+  objectStorageAmd64Digest: storage.platforms?.['linux/amd64'] ?? null,
+  objectStorageContract: acceptance.contract ?? null,
+  objectStorageBackupRestore: acceptance.backupRestore ?? null,
+  objectStorageLicenseReviewed: acceptance.licenseReviewed === true,
+  objectStorageSbomPresent: existsSync(sbomPath),
+  objectStorageVexBound: acceptance.vexBound === true,
   record,
   criticalWaivers,
 });
@@ -26,7 +36,8 @@ mkdirSync(releaseDir, { recursive: true });
 const summary = {
   ...result,
   productionDeployment: 'NOT_STARTED',
-  minioAmd64Confirmed: Boolean(probe?.amd64Confirmed),
+  objectStorageAmd64Confirmed: storage.amd64Confirmed === true,
+  publication: result.status === 'PASS' ? 'ALLOWED' : 'PUBLICATION_FORBIDDEN',
 };
 writeFileSync(resolve(releaseDir, 'gate.json'), `${JSON.stringify(summary, null, 2)}\n`);
 console.log(JSON.stringify(summary, null, 2));

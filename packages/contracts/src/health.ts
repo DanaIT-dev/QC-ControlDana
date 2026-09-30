@@ -26,7 +26,7 @@ export const readyResponseSchema = z.object({
   components: z.object({
     postgres: componentStatusSchema,
     redis: componentStatusSchema,
-    minio: componentStatusSchema,
+    objectStorage: componentStatusSchema,
     clamav: componentStatusSchema,
     smtp: smtpStatusSchema.optional(),
   }),

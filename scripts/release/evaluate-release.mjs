@@ -3,7 +3,7 @@ const SHA = /^[0-9a-f]{40}$/;
 const RELEASE_ID = /^rc-\d{8}-[0-9a-f]{7,12}$/;
 
 const OWN_ROLES = ['qc-api', 'qc-web', 'qc-worker', 'qc-migrator'];
-const VENDOR_ROLES = ['caddy', 'postgres', 'redis', 'minio', 'clamav'];
+const VENDOR_ROLES = ['caddy', 'postgres', 'redis', 'object-storage', 'clamav'];
 const REQUIRED_ROLES = [...OWN_ROLES, ...VENDOR_ROLES];
 
 const SECRET_KEY =
@@ -45,15 +45,19 @@ export function evaluateRelease(input) {
   const reasons = [];
   const blockers = [];
   const record = input?.record ?? null;
-  const minioDigest = input?.minioAmd64Digest ?? null;
-
-  if (!DIGEST.test(minioDigest ?? '')) {
-    reasons.push(
-      reason('MINIO_AMD64_DIGEST_UNCONFIRMED', {
-        requiredAction:
-          'Authorize pull scope for the official docker.io/minio/minio repository and record the linux/amd64 platform digest. Do not reuse a local arm64 image id.',
-      }),
-    );
+  const objectStorageDigest = input?.objectStorageAmd64Digest ?? null;
+  const checks = {
+    OBJECT_STORAGE_AMD64_DIGEST_CONFIRMED: DIGEST.test(objectStorageDigest ?? ''),
+    OBJECT_STORAGE_CONTRACT_PASSED: input?.objectStorageContract === 'PASS',
+    OBJECT_STORAGE_BACKUP_RESTORE_PASSED: input?.objectStorageBackupRestore === 'PASS',
+    OBJECT_STORAGE_LICENSE_REVIEWED: input?.objectStorageLicenseReviewed === true,
+    OBJECT_STORAGE_SBOM_PRESENT: input?.objectStorageSbomPresent === true,
+    OBJECT_STORAGE_VEX_BOUND: input?.objectStorageVexBound === true,
+  };
+  for (const [code, passed] of Object.entries(checks)) {
+    if (!passed) {
+      reasons.push(reason(code));
+    }
   }
 
   for (const waiver of input?.criticalWaivers ?? []) {
@@ -72,7 +76,7 @@ export function evaluateRelease(input) {
     reasons.push(reason('STAGING_AMD64_NOT_AVAILABLE'));
     reasons.push(reason('SIGNATURES_NOT_VERIFIED'));
     reasons.push(reason('RELEASE_VEX_NOT_BOUND'));
-    return finish(reasons, blockers);
+    return finish(reasons, blockers, checks);
   }
 
   const forbidden = [];
@@ -189,10 +193,10 @@ export function evaluateRelease(input) {
     blockers.push(reason('POLICY_VEX_USED_AS_RELEASE_VEX'));
   }
 
-  return finish(reasons, blockers);
+  return finish(reasons, blockers, checks);
 }
 
-function finish(reasons, blockers) {
+function finish(reasons, blockers, checks) {
   const status = blockers.length > 0 ? 'BLOCKED' : reasons.length > 0 ? 'PARTIAL' : 'PASS';
-  return { status, reasons, blockers };
+  return { status, reasons, blockers, checks };
 }

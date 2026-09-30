@@ -21,8 +21,10 @@ async function main(): Promise<void> {
       region: process.env.S3_REGION ?? 'us-east-1',
       forcePathStyle: process.env.S3_FORCE_PATH_STYLE !== 'false',
       credentials: {
-        accessKeyId: process.env.S3_ACCESS_KEY ?? '',
-        secretAccessKey: process.env.S3_SECRET_KEY ?? '',
+        accessKeyId:
+          process.env.S3_ACCESS_KEY_ID?.trim() || process.env.S3_ACCESS_KEY?.trim() || '',
+        secretAccessKey:
+          process.env.S3_SECRET_ACCESS_KEY?.trim() || process.env.S3_SECRET_KEY?.trim() || '',
       },
     });
     let token: string | undefined;

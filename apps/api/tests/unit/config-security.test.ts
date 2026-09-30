@@ -1,9 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   assessProductionReadiness,
   loadConfig,
   MissingConfigurationError,
   redisTlsOptions,
+  resetStorageAliasWarnings,
 } from '@sgr-registry/config';
 import { sessionCookieOptions, sessionCookieSecure } from '../../src/auth/cookie';
 
@@ -20,10 +21,10 @@ function productionEnv(overrides: Record<string, string> = {}) {
     RLS_CONTEXT_SECRET: 'production-rls-context-secret-value-32',
     REDIS_URL: 'redis://sgr_api:prod-redis-api-not-dev@redis:6379/0',
     WORKER_REDIS_URL: 'redis://sgr_worker:prod-redis-worker-not-dev@redis:6379/0',
-    S3_ENDPOINT: 'https://minio.example.local',
+    S3_ENDPOINT: 'https://object-storage.example.local',
     S3_REGION: 'us-east-1',
-    S3_ACCESS_KEY: 'sgr-minio-production-access',
-    S3_SECRET_KEY: 'sgr-minio-production-secret',
+    S3_ACCESS_KEY_ID: 'sgr-object-storage-production-access',
+    S3_SECRET_ACCESS_KEY: 'sgr-object-storage-production-secret',
     S3_BUCKET: 'sgr-attachments',
     WEB_ORIGIN: 'https://sgr.example.local',
     PUBLIC_APP_URL: 'https://sgr.example.local',
@@ -151,7 +152,7 @@ describe('production session cookie policy', () => {
 
   it('refuses production startup when secrets are missing, short, or taken from development', () => {
     const weak = 'sgr_minio_dev_password';
-    expect(() => loadConfig(productionEnv({ S3_SECRET_KEY: weak }))).toThrow(
+    expect(() => loadConfig(productionEnv({ S3_SECRET_ACCESS_KEY: weak }))).toThrow(
       MissingConfigurationError,
     );
     expect(() =>
@@ -170,14 +171,62 @@ describe('production session cookie policy', () => {
       ),
     ).toThrow(MissingConfigurationError);
     try {
-      loadConfig(productionEnv({ S3_SECRET_KEY: weak, SMTP_PASSWORD: 'short' }));
+      loadConfig(productionEnv({ S3_SECRET_ACCESS_KEY: weak, SMTP_PASSWORD: 'short' }));
       throw new Error('expected MissingConfigurationError');
     } catch (error) {
       expect(error).toBeInstanceOf(MissingConfigurationError);
       const message = error instanceof Error ? error.message : '';
-      expect(message).toContain('S3_SECRET_KEY');
+      expect(message).toContain('S3_SECRET_ACCESS_KEY');
       expect(message).not.toContain(weak);
       expect(message).not.toContain('short');
+    }
+  });
+});
+
+describe('object storage credential aliases', () => {
+  it('rejects conflicting credential sets and production aliases without printing secrets', () => {
+    resetStorageAliasWarnings();
+    const canonical = 'canonical-access-key-value';
+    const legacy = 'legacy-access-key-value';
+    expect(() =>
+      loadConfig(
+        productionEnv({
+          NODE_ENV: 'development',
+          S3_ACCESS_KEY_ID: canonical,
+          S3_ACCESS_KEY: legacy,
+        }),
+      ),
+    ).toThrow(/S3_ACCESS_KEY_ID and S3_ACCESS_KEY differ/);
+    try {
+      loadConfig(productionEnv({ S3_ACCESS_KEY: legacy }));
+      throw new Error('expected MissingConfigurationError');
+    } catch (error) {
+      expect(error).toBeInstanceOf(MissingConfigurationError);
+      const message = error instanceof Error ? error.message : '';
+      expect(message).toContain('2026-12-31');
+      expect(message).not.toContain(legacy);
+    }
+    const warnings: string[] = [];
+    const spy = vi.spyOn(console, 'warn').mockImplementation((message?: unknown) => {
+      warnings.push(String(message));
+    });
+    try {
+      const config = loadConfig(
+        productionEnv({
+          NODE_ENV: 'development',
+          S3_ACCESS_KEY_ID: undefined,
+          S3_SECRET_ACCESS_KEY: undefined,
+          S3_ACCESS_KEY: canonical,
+          S3_SECRET_KEY: 'legacy-secret-key-value',
+        }),
+      );
+      expect(config.S3_ACCESS_KEY_ID).toBe(canonical);
+      expect(warnings.join('\n')).toContain('S3_ACCESS_KEY is deprecated');
+      expect(warnings.join('\n')).toContain('2026-12-31');
+      expect(warnings.join('\n')).not.toContain(canonical);
+      expect(warnings.join('\n')).not.toContain('legacy-secret-key-value');
+    } finally {
+      spy.mockRestore();
     }
   });
 });

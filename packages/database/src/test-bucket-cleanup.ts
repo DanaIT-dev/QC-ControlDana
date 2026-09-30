@@ -1,4 +1,5 @@
 import { DeleteObjectsCommand, ListObjectsV2Command, S3Client } from '@aws-sdk/client-s3';
+import { readObjectStorageCredential } from './object-storage';
 import {
   assertOwnedTestPrefix,
   assertSafeTestBucket,
@@ -8,10 +9,14 @@ import {
 
 function client(endpoint: string): S3Client {
   assertSafeTestEndpoint(endpoint);
-  const accessKeyId = process.env.S3_ACCESS_KEY;
-  const secretAccessKey = process.env.S3_SECRET_KEY;
+  const accessKeyId = readObjectStorageCredential(process.env, 'S3_ACCESS_KEY_ID', 'S3_ACCESS_KEY');
+  const secretAccessKey = readObjectStorageCredential(
+    process.env,
+    'S3_SECRET_ACCESS_KEY',
+    'S3_SECRET_KEY',
+  );
   if (!accessKeyId || !secretAccessKey) {
-    throw new Error('Test MinIO credentials are not configured');
+    throw new Error('Test object storage credentials are not configured');
   }
   return new S3Client({
     endpoint,
@@ -38,8 +43,32 @@ async function removeKeys(bucket: string, endpoint: string, keys: string[]): Pro
   return keys.length;
 }
 
+function isMissingBucket(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'name' in error &&
+    (error as { name?: string }).name === 'NoSuchBucket'
+  );
+}
+
 async function listKeys(bucket: string, endpoint: string, prefix?: string): Promise<string[]> {
   const s3 = client(endpoint);
+  try {
+    return await listKeyPages(s3, bucket, prefix);
+  } catch (error) {
+    if (isMissingBucket(error)) {
+      return [];
+    }
+    throw error;
+  }
+}
+
+async function listKeyPages(
+  s3: S3Client,
+  bucket: string,
+  prefix?: string,
+): Promise<string[]> {
   const keys: string[] = [];
   let token: string | undefined;
   do {
