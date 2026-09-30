@@ -34,7 +34,9 @@
     "infra:down": "docker compose -f infra/docker/compose.yaml --env-file .env down",
     "ops:readiness": "pnpm --filter @sgr-registry/config build && node packages/config/dist/check-production-readiness.js",
     "ops:restore:drill": "pnpm --filter @sgr-registry/database exec tsx scripts/restore-drill.ts",
-    "ops:production-compose": "node scripts/security/validate-production-compose.mjs"
+    "ops:production-compose": "node scripts/security/validate-production-compose.mjs",
+    "ops:openvex": "node scripts/security/render-openvex.mjs && node --test scripts/security/openvex-lib.test.mjs",
+    "ops:supply-chain": "node scripts/security/release-gate.mjs"
   },
   "devDependencies": {
     "@sgr-registry/eslint-config": "workspace:*",

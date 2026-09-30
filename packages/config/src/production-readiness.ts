@@ -27,10 +27,12 @@ export const PRODUCTION_READINESS_KEYS = [
   'SGR_RUNTIME_IMAGE_DIGEST',
   'SGR_WEB_IMAGE_DIGEST',
   'SGR_MIGRATOR_IMAGE_DIGEST',
+  'SGR_PLATFORM',
 ] as const;
 
 const GIT_SHA = /^[0-9a-f]{40}$/;
 const IMAGE_DIGEST = /^sha256:[a-f0-9]{64}$/;
+const PRODUCTION_PLATFORMS = new Set(['linux/amd64', 'linux/arm64']);
 const MUTABLE_IMAGE_TAGS = new Set(['latest', 'stable', 'main', 'master']);
 
 export type ProductionReadinessFailure = {
@@ -118,6 +120,10 @@ export function assessProductionReadiness(source: NodeJS.ProcessEnv): Production
     if (digest && !IMAGE_DIGEST.test(digest)) {
       record(key, `${key} must be an immutable sha256 digest`);
     }
+  }
+  const platform = source.SGR_PLATFORM?.trim() ?? '';
+  if (platform && !PRODUCTION_PLATFORMS.has(platform)) {
+    record('SGR_PLATFORM', 'SGR_PLATFORM must be linux/amd64 or linux/arm64');
   }
   if (source.WEB_ORIGIN && source.PUBLIC_APP_URL) {
     try {

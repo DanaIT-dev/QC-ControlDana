@@ -8,13 +8,13 @@
 
 ```bash
 export SGR_IMAGE_TAG="$(git rev-parse HEAD)"
-docker build -f infra/docker/Dockerfile.runtime --target runtime \
+docker buildx build --platform linux/amd64 --load -f infra/docker/Dockerfile.runtime --target runtime \
   --build-arg SGR_GIT_SHA="$SGR_IMAGE_TAG" \
   -t "sgr-registry-runtime:$SGR_IMAGE_TAG" .
-docker build -f infra/docker/Dockerfile.runtime --target migrator \
+docker buildx build --platform linux/amd64 --load -f infra/docker/Dockerfile.runtime --target migrator \
   --build-arg SGR_GIT_SHA="$SGR_IMAGE_TAG" \
   -t "sgr-registry-migrator:$SGR_IMAGE_TAG" .
-docker build -f infra/docker/Dockerfile.web \
+docker buildx build --platform linux/amd64 --load -f infra/docker/Dockerfile.web \
   --build-arg SGR_GIT_SHA="$SGR_IMAGE_TAG" \
   -t "sgr-registry-web:$SGR_IMAGE_TAG" .
 export SGR_RUNTIME_IMAGE_DIGEST="sha256:$(docker image inspect "sgr-registry-runtime:$SGR_IMAGE_TAG" --format '{{.Id}}' | cut -d: -f2)"
@@ -22,9 +22,13 @@ export SGR_MIGRATOR_IMAGE_DIGEST="sha256:$(docker image inspect "sgr-registry-mi
 export SGR_WEB_IMAGE_DIGEST="sha256:$(docker image inspect "sgr-registry-web:$SGR_IMAGE_TAG" --format '{{.Id}}' | cut -d: -f2)"
 ```
 
-`SGR_IMAGE_TAG` должен быть 40 hex-символов. Digest — `sha256` и 64 hex-символа. `pnpm ops:readiness` отвергает `latest` и плавающий tag. Обновление стороннего образа: выбрать новый digest, прогнать Trivy image, заменить строку в compose, задеплоить. Откат — предыдущий digest, не прежний плавающий tag.
+`SGR_IMAGE_TAG` должен быть 40 hex-символов. Digest — `sha256` и 64 hex-символа. `pnpm ops:readiness` отвергает `latest`, tag без digest и платформу вне `linux/amd64` и `linux/arm64`. Обновление стороннего образа: выбрать официальный patch, прогнать Trivy, заменить manifest digest в `infra/docker/image-pins.json` и compose, задеплоить. Откат — предыдущий digest, не прежний плавающий tag.
 
-Проверенная платформа образов на этой машине — `linux/arm64`. Digest Caddy, PostgreSQL, Redis, Node и ClamAV — manifest list, где lookup прошёл. MinIO `sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e` закреплён по локально скачанному образу: анонимный lookup registry отклонён, поэтому amd64 для этого digest здесь не подтверждался.
+Целевая production-архитектура — `linux/amd64`. `linux/arm64` допустим только как второй вариант. Локальная проверка на arm64 не подтверждает amd64 production. Сборка `linux/amd64` на этой машине выполняется через buildx. Каталог digest: `infra/docker/image-pins.json`. В compose для образов с подтверждённым manifest list используется digest списка и `platform: ${SGR_PLATFORM:-linux/amd64}`. Manifest digest не равен platform digest. Git SHA не равен Docker digest. Локальный image id не равен digest в registry.
+
+MinIO не имеет подтверждённого `linux/amd64` digest: анонимный lookup registry вернул `insufficient_scope`. Compose требует `SGR_MINIO_IMAGE_DIGEST` и не подставляет локальный arm64 image id. `multi-arch registry manifest: NOT PUBLISHED`. Это внешний шаг выкладки, а не дефект кода.
+
+Четыре разные операции не смешиваются: local single-platform validation, multi-platform build, registry manifest publication, production deployment. Подробности, SBOM, OpenVEX и security gate: `docs/security/SUPPLY_CHAIN.md`.
 
 Инвентарь development MinIO без вывода ключей и содержимого:
 

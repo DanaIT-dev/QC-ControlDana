@@ -32,30 +32,43 @@ RUN pnpm --filter @sgr-registry/config build \
   && pnpm --filter @sgr-registry/api build \
   && pnpm --filter @sgr-registry/worker build
 
+FROM build AS runtime-deps
+RUN pnpm prune --prod \
+  && rm -rf apps/api/tests apps/worker/tests apps/web/e2e apps/web/tests packages/config/tests packages/contracts/tests packages/domain/tests packages/database/tests packages/jobs/tests
+
 FROM node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 AS migrator
 ARG SGR_GIT_SHA=unknown
+ARG SGR_VERSION=0.1.0
 WORKDIR /app
 ENV NODE_ENV=production
 ENV SGR_GIT_SHA=$SGR_GIT_SHA
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates \
-  && rm -rf /var/lib/apt/lists/* /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
+  && rm -rf /var/lib/apt/lists/* /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
   && useradd --create-home --uid 10001 sgr
 COPY --from=build /app /app
+RUN rm -rf apps/api/tests apps/worker/tests apps/web/e2e apps/web/tests packages/config/tests packages/contracts/tests packages/domain/tests packages/database/tests packages/jobs/tests \
+  && rm -f /bin/sh /usr/bin/sh
+LABEL org.opencontainers.image.title="sgr-registry-migrator" \
+  org.opencontainers.image.version="${SGR_VERSION}" \
+  org.opencontainers.image.revision="${SGR_GIT_SHA}" \
+  org.opencontainers.image.source="https://github.com/DanaIT-dev/QC-ControlDana"
 USER sgr
+ENTRYPOINT []
 HEALTHCHECK NONE
 CMD ["node", "packages/database/node_modules/prisma/build/index.js", "migrate", "deploy", "--schema", "packages/database/prisma/schema.prisma", "--config", "packages/database/prisma.config.ts"]
 
 FROM node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 AS runtime
 ARG SGR_GIT_SHA=unknown
+ARG SGR_VERSION=0.1.0
 WORKDIR /app
 ENV NODE_ENV=production
 ENV SGR_GIT_SHA=$SGR_GIT_SHA
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates \
-  && rm -rf /var/lib/apt/lists/* /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
+  && rm -rf /var/lib/apt/lists/* /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
   && useradd --create-home --uid 10001 sgr
-COPY --from=build /app /app
+COPY --from=runtime-deps /app /app
 # Prisma CLI and its MySQL/config helpers are not imported by the API or worker.
 RUN find node_modules/.pnpm -mindepth 1 -maxdepth 1 \( \
       -name 'mysql2@*' -o \
@@ -66,8 +79,14 @@ RUN find node_modules/.pnpm -mindepth 1 -maxdepth 1 \( \
       -name '@prisma+studio-core@*' \
     \) -exec rm -rf {} + \
   && rm -rf node_modules/prisma \
-  && node -e "const fs=require('node:fs'); const left=fs.readdirSync('node_modules/.pnpm').filter((name)=>/^(mysql2@|deepmerge-ts@|prisma@|@prisma\\+config@|@prisma\\+dev@|@prisma\\+studio-core@)/.test(name)); if (left.length) { console.error(left.join('\\n')); process.exit(1); }"
+  && node -e "const fs=require('node:fs'); const left=fs.readdirSync('node_modules/.pnpm').filter((name)=>/^(mysql2@|deepmerge-ts@|prisma@|@prisma\\+config@|@prisma\\+dev@|@prisma\\+studio-core@)/.test(name)); if (left.length) { console.error(left.join('\\n')); process.exit(1); }" \
+  && rm -f /bin/sh /usr/bin/sh
+LABEL org.opencontainers.image.title="sgr-registry-runtime" \
+  org.opencontainers.image.version="${SGR_VERSION}" \
+  org.opencontainers.image.revision="${SGR_GIT_SHA}" \
+  org.opencontainers.image.source="https://github.com/DanaIT-dev/QC-ControlDana"
 USER sgr
+ENTRYPOINT []
 EXPOSE 3001
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=10 \
   CMD node -e "fetch('http://127.0.0.1:3001/api/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"

@@ -1,0 +1,81 @@
+{
+  "checkedAt": "2026-09-30T09:06:42Z",
+  "productionPlatform": "linux/amd64",
+  "alsoSupported": ["linux/arm64"],
+  "registryManifest": "NOT PUBLISHED",
+  "images": {
+    "caddy": {
+      "repository": "docker.io/library/caddy",
+      "version": "2.11.4-alpine",
+      "reference": "caddy:2-alpine",
+      "source": "docker.io/library/caddy",
+      "manifestList": "sha256:6aeddd44c3078b0f9a35206472a11420648a79c184603ef95957d0a20044cb2b",
+      "platforms": {
+        "linux/amd64": "sha256:040e9f7480b80b6d4a7e5013a21159b950a63dcbdb956e38abe2387fb28d9ec0",
+        "linux/arm64": "sha256:c802bf2721a427e961b9fd6a194c3888a180de9990b43f8530a02bd6be017e17"
+      },
+      "amd64Confirmed": true
+    },
+    "postgres": {
+      "repository": "docker.io/library/postgres",
+      "version": "18.6",
+      "reference": "postgres:18",
+      "source": "docker.io/library/postgres",
+      "manifestList": "sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722",
+      "platforms": {
+        "linux/amd64": "sha256:0377e72c5289ed2f98cf61b1a9c2db9eb9d300317fe14244492fbc94343b3d04",
+        "linux/arm64": "sha256:f4fcd2b983483177b15d72d94fb3614736211554f7cac5c2cc54a05c75110b90"
+      },
+      "amd64Confirmed": true
+    },
+    "redis": {
+      "repository": "docker.io/library/redis",
+      "version": "7.4.11-alpine",
+      "reference": "redis:7-alpine",
+      "source": "docker.io/library/redis",
+      "manifestList": "sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+      "platforms": {
+        "linux/amd64": "sha256:ca0acbb137c1dc3339c8b147a58fd6f42775d4599327b50e7b116c23de501af2",
+        "linux/arm64": "sha256:1f09a89a207d794a8c61d9edfc26e7c58427de10ccef7c5d18d638df79a63b85"
+      },
+      "amd64Confirmed": true
+    },
+    "clamav": {
+      "repository": "docker.io/clamav/clamav-debian",
+      "version": "1.4",
+      "reference": "clamav/clamav-debian:1.4",
+      "source": "docker.io/clamav/clamav-debian",
+      "manifestList": "sha256:f6da737f9399d6a1851c463b2f88d02021a67f969ec42dd6e1751fecf7c3de4f",
+      "platforms": {
+        "linux/amd64": "sha256:c3912a32ef2c41c31411a7a0b0da3b95ed999b64def60572ed1214d2a4a3cec3",
+        "linux/arm64": "sha256:aec993564af481994e9df59f01ebeb12cc726c2807dbc611d81d5fc04e9c2499"
+      },
+      "amd64Confirmed": true
+    },
+    "minio": {
+      "repository": "docker.io/minio/minio",
+      "version": "RELEASE.2025-04-22T22-12-26Z",
+      "reference": "minio/minio:RELEASE.2025-04-22T22-12-26Z",
+      "source": "docker.io/minio/minio",
+      "manifestList": null,
+      "platforms": {
+        "linux/amd64": null,
+        "linux/arm64": "sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e"
+      },
+      "amd64Confirmed": false,
+      "note": "Anonymous registry lookup returned insufficient_scope. The recorded arm64 value is the local image id, not a confirmed multi-arch or amd64 digest."
+    },
+    "node": {
+      "repository": "docker.io/library/node",
+      "version": "24-bookworm-slim",
+      "reference": "node:24-bookworm-slim",
+      "source": "docker.io/library/node",
+      "manifestList": "sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6",
+      "platforms": {
+        "linux/amd64": "sha256:5cbc7caba8c2c0f0bca675d1b61b9f2857e1cf1853c6164ee9dd409501a936e7",
+        "linux/arm64": "sha256:24b8bc17702002d2ed0c1da9ad66c3ee507cc279d0856726662ff2b6fc35c149"
+      },
+      "amd64Confirmed": true
+    }
+  }
+}

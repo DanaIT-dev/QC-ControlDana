@@ -99,5 +99,29 @@ for (const line of imageLines) {
     fail(`production image is not immutable: ${line.trim()}`);
   }
 }
+if (!yaml.includes('platform: ${SGR_PLATFORM:-linux/amd64}')) {
+  fail('production compose must select linux/amd64 unless SGR_PLATFORM overrides it');
+}
+for (const name of ['api', 'web', 'worker', 'migrator']) {
+  const block = serviceBlock(name);
+  if (!block.includes('*app-fs')) {
+    fail(`${name} must use the read-only non-root filesystem anchor`);
+  }
+}
+const pins = JSON.parse(readFileSync(resolve(root, 'infra/docker/image-pins.json'), 'utf8'));
+for (const image of Object.values(pins.images)) {
+  if (!image.manifestList) {
+    continue;
+  }
+  for (const digest of Object.values(image.platforms ?? {})) {
+    if (digest && digest !== image.manifestList && yaml.includes(digest)) {
+      fail('production compose must pin the multi-arch manifest digest, not a platform digest');
+    }
+  }
+}
+const minio = pins.images.minio;
+if (minio?.platforms?.['linux/arm64'] && yaml.includes(minio.platforms['linux/arm64'])) {
+  fail('production compose must not pin the arm64 MinIO digest for an amd64 deployment');
+}
 
 console.log('production compose publishes only the reverse proxy and keeps data services private');

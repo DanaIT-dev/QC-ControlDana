@@ -11,9 +11,17 @@ x-logging: &logging
 
 x-hardening: &hardening
   init: true
+  platform: ${SGR_PLATFORM:-linux/amd64}
   restart: unless-stopped
   security_opt:
     - no-new-privileges:true
+
+x-app-fs: &app-fs
+  read_only: true
+  cap_drop:
+    - ALL
+  tmpfs:
+    - /tmp
   logging: *logging
   networks:
     - sgr_internal
@@ -52,7 +60,11 @@ services:
 
   web:
     image: sgr-registry-web:${SGR_IMAGE_TAG:?SGR_IMAGE_TAG is required}@${SGR_WEB_IMAGE_DIGEST:?SGR_WEB_IMAGE_DIGEST is required}
-    <<: *hardening
+    <<: [*hardening, *app-fs]
+    user: '10001:10001'
+    tmpfs:
+      - /tmp
+      - /app/apps/web/.next/cache
     env_file:
       - ./secrets/app.env
     environment:
@@ -79,7 +91,8 @@ services:
 
   api:
     image: sgr-registry-runtime:${SGR_IMAGE_TAG:?SGR_IMAGE_TAG is required}@${SGR_RUNTIME_IMAGE_DIGEST:?SGR_RUNTIME_IMAGE_DIGEST is required}
-    <<: *hardening
+    <<: [*hardening, *app-fs]
+    user: '10001:10001'
     env_file:
       - ./secrets/app.env
     environment:
@@ -113,7 +126,8 @@ services:
 
   worker:
     image: sgr-registry-runtime:${SGR_IMAGE_TAG:?SGR_IMAGE_TAG is required}@${SGR_RUNTIME_IMAGE_DIGEST:?SGR_RUNTIME_IMAGE_DIGEST is required}
-    <<: *hardening
+    <<: [*hardening, *app-fs]
+    user: '10001:10001'
     env_file:
       - ./secrets/app.env
     environment:
@@ -148,7 +162,8 @@ services:
   migrator:
     profiles: ['migrate']
     image: sgr-registry-migrator:${SGR_IMAGE_TAG:?SGR_IMAGE_TAG is required}@${SGR_MIGRATOR_IMAGE_DIGEST:?SGR_MIGRATOR_IMAGE_DIGEST is required}
-    <<: *hardening
+    <<: [*hardening, *app-fs]
+    user: '10001:10001'
     restart: 'no'
     env_file:
       - ./secrets/app.env
@@ -222,7 +237,7 @@ services:
           memory: 512M
 
   minio:
-    image: minio/minio:RELEASE.2025-04-22T22-12-26Z@sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z@${SGR_MINIO_IMAGE_DIGEST:?SGR_MINIO_IMAGE_DIGEST is required}
     <<: *hardening
     command: ['server', '/data', '--console-address', ':9001']
     environment:

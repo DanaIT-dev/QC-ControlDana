@@ -206,6 +206,19 @@ describe('production image references', () => {
     expect(failures.map((failure) => failure.message).join('\n')).not.toContain('7-alpine');
   });
 
+  it('rejects a platform outside the production set without echoing it', () => {
+    const failures = assessProductionReadiness({
+      ...productionEnv(),
+      SGR_IMAGE_TAG: sha,
+      SGR_RUNTIME_IMAGE_DIGEST: digest,
+      SGR_WEB_IMAGE_DIGEST: digest,
+      SGR_MIGRATOR_IMAGE_DIGEST: digest,
+      SGR_PLATFORM: 'linux/386',
+    });
+    expect(failures.some((failure) => failure.key === 'SGR_PLATFORM')).toBe(true);
+    expect(failures.map((failure) => failure.message).join('\n')).not.toContain('386');
+  });
+
   it('accepts a Git SHA and immutable digests', () => {
     const failures = assessProductionReadiness({
       ...productionEnv(),
@@ -213,6 +226,7 @@ describe('production image references', () => {
       SGR_RUNTIME_IMAGE_DIGEST: digest,
       SGR_WEB_IMAGE_DIGEST: digest,
       SGR_MIGRATOR_IMAGE_DIGEST: digest,
+      SGR_PLATFORM: 'linux/amd64',
     }).filter((failure) => failure.key.startsWith('SGR_'));
     expect(failures).toEqual([]);
   });

@@ -5,8 +5,8 @@
 ## До релиза
 
 1. `git rev-parse HEAD` совпадает с проверенным commit, `git status --short` пустой.
-2. `SGR_IMAGE_TAG` равен `git rev-parse HEAD`. `SGR_RUNTIME_IMAGE_DIGEST`, `SGR_WEB_IMAGE_DIGEST` и `SGR_MIGRATOR_IMAGE_DIGEST` — immutable `sha256`. `latest` не используется.
-3. `pnpm ops:production-compose` проходит.
+2. `SGR_IMAGE_TAG` равен `git rev-parse HEAD`. `SGR_RUNTIME_IMAGE_DIGEST`, `SGR_WEB_IMAGE_DIGEST` и `SGR_MIGRATOR_IMAGE_DIGEST` — immutable `sha256`. `SGR_PLATFORM` — `linux/amd64`. `latest` не используется.
+3. `pnpm ops:production-compose` и `pnpm ops:supply-chain` проходят. Gate `BLOCKED` останавливает релиз. `PARTIAL` из-за неподтверждённого MinIO amd64 или отсутствия registry не разрешает production deployment.
 4. `infra/docker/secrets/app.env` заполнен. `pnpm ops:readiness` проходит и не печатает значения.
 5. Есть свежий зашифрованный backup и проверенный restore drill на изолированных ресурсах.
 6. На диске достаточно места под данные, логи и отдельный `BACKUP_ROOT`.
@@ -33,7 +33,7 @@ Seed и `prisma migrate reset` в production запрещены. `NODE_ENV=produ
 
 ## Откат
 
-Application rollback: вернуть предыдущие digest API, web и migrator, если миграция не меняла данные, которые новый код уже записал, и схема совместима со старым образом. Плавающий tag для отката не используется.
+Application rollback: вернуть предыдущие digest API, web и migrator из записанного релиза, если миграция не меняла данные, которые новый код уже записал, и схема совместима со старым образом. Откат указывает `repository:version@sha256:<digest>` и тот же `SGR_PLATFORM`. Плавающий tag и Git SHA вместо Docker digest для отката не используются.
 
 Database restore: остановить API и worker, восстановить PostgreSQL и MinIO из backup на чистые тома, затем запустить прежний image. Это нужно, когда миграция уже изменила production-данные или откат образа не поднимает readiness.
 

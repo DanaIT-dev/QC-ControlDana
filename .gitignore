@@ -43,6 +43,7 @@ Thumbs.db
 
 # Temporary
 tmp/
+artifacts/supply-chain/
 temp/
 .turbo/
 .cache/
