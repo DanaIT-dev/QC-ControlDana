@@ -29,6 +29,7 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
   THIRD_PARTY_DEADLINE_CHANGED: 'Изменён срок третьей стороны',
   DEFECT_COMPLETED: 'Дефект завершён',
   DEFECT_REOPENED: 'Дефект возвращён в работу',
+  ACT_CANCELLED: 'Акт аннулирован',
   ATTACHMENT_READY: 'Файл прошёл проверку',
   ATTACHMENT_REJECTED: 'Файл отклонён',
   ATTACHMENT_SCAN_FAILED: 'Не удалось проверить файл',

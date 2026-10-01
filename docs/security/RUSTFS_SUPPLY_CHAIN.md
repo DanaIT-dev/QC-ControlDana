@@ -55,6 +55,14 @@ A 1800-second disposable run on the local aarch64 host finished on 2026-09-30. I
 
 An earlier unbounded run retained about 73 GB and was stopped before its manifest comparison finished. That volume was removed after the size was recorded. Staging soaks of 24 and 72 hours have not been run.
 
+## RUSTSEC-2023-0071 reachability
+
+Rechecked on 2026-10-01 from tag `1.0.0` commit `d47f54bfb2f39f48bd1adda334bd27e151fe85b8`, cloned outside the product repository.
+
+`rsa` is a direct dependency of `crates/crypto` with feature `sha2`, locked at `0.10.0-rc.18`. A second copy, `0.9.10`, is reached through `openidconnect` from `crates/iam`. `crates/crypto/src/license_token.rs` function `parse` performs `RsaPrivateKey::decrypt` with `Pkcs1v15Encrypt`. The server calls `parse_license_with_public_key` only when `RUSTFS_LICENSE` is set. QC Compose does not set that variable. That configuration avoids the call during startup. It does not prove the official binary omitted the private-key function, and a closed or unused setting is not `not_affected`.
+
+Classification for publication: `AFFECTED_BLOCKING`. No VEX `not_affected` statement is issued. An internal rebuild from the same lockfile would not remove the advisory. The decision record is `docs/architecture/ADR-OBJECT-STORAGE-SUPPLY-CHAIN.md`.
+
 ## Decision
 
-QC keeps the official digest. Production mode treats the missing binary correlation as a blocker until upstream publishes a verifiable container provenance or an ADR accepts a locked internal build.
+QC keeps the official digest for development. A signed release candidate is not published while this advisory stays applicable to the source graph and the container digest is not correlated to that graph.

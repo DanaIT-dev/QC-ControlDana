@@ -118,6 +118,18 @@ export function ActOperations({
             Взять в работу
           </Button>
         ) : null}
+        {hasCapability(user.role, 'CANCEL_ACT') &&
+        act.status !== 'COMPLETED' &&
+        act.status !== 'CANCELLED' ? (
+          <CancelActButton
+            onSave={(reason) =>
+              run(`/api/acts/${act.id}/cancel`, 'POST', {
+                expectedVersion: act.version,
+                reason,
+              })
+            }
+          />
+        ) : null}
         {hasCapability(user.role, 'EDIT_ACT_HEADER') ? (
           <HeaderEditor
             act={act}
@@ -951,6 +963,46 @@ export function ActHistory({ actId }: { actId: string }) {
         </li>
       ))}
     </ol>
+  );
+}
+
+function CancelActButton({ onSave }: { onSave: (reason: string) => Promise<void> }) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState('');
+  const [pending, setPending] = useState(false);
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <Button type="button" variant="outline" onClick={() => setOpen(true)}>
+        Аннулировать
+      </Button>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Аннулировать акт</DialogTitle>
+        </DialogHeader>
+        <Label htmlFor="cancel-reason">Причина</Label>
+        <Textarea
+          id="cancel-reason"
+          value={reason}
+          onChange={(event) => setReason(event.target.value)}
+        />
+        <DialogFooter>
+          <Button
+            type="button"
+            disabled={pending || reason.trim().length === 0}
+            onClick={() => {
+              setPending(true);
+              void onSave(reason.trim()).finally(() => {
+                setPending(false);
+                setOpen(false);
+              });
+            }}
+          >
+            Аннулировать
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

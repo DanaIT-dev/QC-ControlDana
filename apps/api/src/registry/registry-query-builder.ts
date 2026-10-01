@@ -135,7 +135,9 @@ export function registryListWhere(
   warningDays: number,
   personSearchDefectIds: string[] = [],
 ): Prisma.DefectItemWhereInput {
-  const parts: Prisma.DefectItemWhereInput[] = [scope.defectItemWhere()];
+  const parts: Prisma.DefectItemWhereInput[] = [
+    scope.defectItemWhere({ includeCancelled: query.statuses.includes('CANCELLED') }),
+  ];
   const search = searchWhere(query.search, personSearchDefectIds);
   if (search) {
     parts.push(search);
@@ -206,6 +208,9 @@ export function registryStatusFilterWhere(
   }
   if (status === 'IN_PROGRESS') {
     return { status: 'IN_PROGRESS', act: { status: 'IN_PROGRESS' } };
+  }
+  if (status === 'CANCELLED') {
+    return { act: { status: 'CANCELLED' } };
   }
   return { status: 'COMPLETED' };
 }

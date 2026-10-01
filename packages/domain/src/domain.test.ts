@@ -24,6 +24,7 @@ import {
   canViewHistory,
   canViewSystemSettings,
   canManageSystemSettings,
+  cancelAct,
   completeDefectItem,
   computeActStatus,
   createDefectItem,
@@ -540,8 +541,32 @@ describe('registry query parsing', () => {
     expect(roundTrip.statuses).toEqual(['IN_PROGRESS']);
     expect(parseRegistryListQuery({ importedOnly: 'true' }).importedOnly).toBe(true);
     expect(parseRegistryListQuery({ statuses: 'NEW' }).statuses).toEqual(['NEW']);
-    expect(() => parseRegistryListQuery({ statuses: 'CANCELLED' })).toThrow(RegistryQueryError);
+    expect(parseRegistryListQuery({ statuses: 'CANCELLED' }).statuses).toEqual(['CANCELLED']);
     expect(() => parseRegistryListQuery({ pageSize: '50abc' })).toThrow(RegistryQueryError);
+  });
+});
+
+describe('act cancellation', () => {
+  it('requires a reason and refuses a completed act', () => {
+    expect(() =>
+      cancelAct(
+        { status: 'IN_PROGRESS', cancelledAt: null },
+        { reason: '   ', cancelledByUserId: 'user-1' },
+      ),
+    ).toThrow(/reason/i);
+    expect(() =>
+      cancelAct(
+        { status: 'COMPLETED', cancelledAt: null },
+        { reason: 'ошибочный документ', cancelledByUserId: 'user-1' },
+      ),
+    ).toThrow(/Завершённый акт/);
+    const cancelled = cancelAct(
+      { status: 'IN_PROGRESS', cancelledAt: null },
+      { reason: '  ошибочный документ  ', cancelledByUserId: 'user-1' },
+    );
+    expect(cancelled.status).toBe('CANCELLED');
+    expect(cancelled.cancellationReason).toBe('ошибочный документ');
+    expect(cancelled.cancelledByUserId).toBe('user-1');
   });
 });
 

@@ -16,6 +16,9 @@ export default defineConfig({
   workers: 1,
   timeout: 60_000,
   expect: { timeout: 15_000 },
+  reporter: process.env.CI
+    ? [['list'], ['json', { outputFile: 'test-results/e2e/results.json' }]]
+    : 'list',
   use: {
     baseURL: webOrigin,
     trace: 'on-first-retry',

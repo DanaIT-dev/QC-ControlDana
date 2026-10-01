@@ -193,3 +193,29 @@ test.describe('new act workflow status', () => {
     });
   }
 });
+
+test.describe('act cancellation', () => {
+  test('ADMIN cancels a new act and SUPER_ADMIN has no cancel action', async ({ page }) => {
+    test.setTimeout(90_000);
+    const errors = attachConsole(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await login(page, ACCOUNTS.admin);
+    const location = `Аннулирование ${Date.now()}`;
+    await createActFromForm(page, location);
+    const actUrl = page.url();
+    await page.getByRole('button', { name: 'Аннулировать' }).click();
+    await page.getByLabel('Причина').fill('ошибочно создан в проверке');
+    await page.getByRole('dialog').getByRole('button', { name: 'Аннулировать' }).click();
+    await expect(page.getByText('Аннулирован').first()).toBeVisible();
+    await expect(page.getByText('ошибочно создан в проверке')).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+
+    await page.getByRole('button', { name: 'Меню пользователя' }).click();
+    await page.getByRole('menuitem', { name: 'Выйти' }).click();
+    await expect(page).toHaveURL(/\/login/);
+    await login(page, SUPER_ADMIN_EMAIL);
+    await page.goto(actUrl);
+    await expect(page.getByRole('button', { name: 'Аннулировать' })).toHaveCount(0);
+    expect(applicationErrors(errors)).toEqual([]);
+  });
+});

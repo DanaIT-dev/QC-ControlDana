@@ -48,6 +48,19 @@ export class ActsController {
     return this.operationsService.createAct(user, body, request);
   }
 
+  @Post(':actId/cancel')
+  @HttpCode(200)
+  @UseGuards(BrowserOriginGuard, CsrfGuard, CapabilityGuard)
+  @RequireCapability('CANCEL_ACT')
+  cancel(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('actId') actId: string,
+    @Body() body: unknown,
+    @Req() request: FastifyRequest,
+  ) {
+    return this.operationsService.cancel(user, actId, body, request);
+  }
+
   @Post(':actId/start')
   @HttpCode(200)
   @UseGuards(BrowserOriginGuard, CsrfGuard, CapabilityGuard, ActStartRateLimitGuard)

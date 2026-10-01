@@ -1678,4 +1678,140 @@ describe('operations integration', () => {
       await prisma.auditLog.count({ where: { entityId: completedActId, action: 'ACT_STARTED' } }),
     ).toBe(1);
   });
+
+  it('cancels an in-progress act once and refuses a completed act', async () => {
+    const admin = await createUser('ADMIN');
+    const contractor = await createUser('CONTRACTOR_ENGINEER');
+    const responsible = await createUser('RESPONSIBLE_ENGINEER');
+    const superAdmin = await ensureActiveSuperAdmin();
+    const { object, customer, liable, defectType } = await catalogs();
+    await assignObjectEngineers(object.id, [responsible.id]);
+    const adminSession = await login(admin.email);
+    const contractorSession = await login(contractor.email);
+    const superSession = await login(superAdmin.email);
+    const created = await mutate(adminSession, {
+      method: 'POST',
+      url: '/api/acts',
+      payload: {
+        formCode: 'S1',
+        objectId: object.id,
+        customerOrganizationId: customer.id,
+        issuedOn: '2026-08-22',
+        defectItems: [
+          {
+            location: 'Аннулирование',
+            defectTypeId: defectType.id,
+            claimDetails: 'Ошибочная строка',
+            responsibleEngineerIds: [responsible.id],
+            liableOrganizationIds: [liable.id],
+          },
+        ],
+      },
+      headers: { 'idempotency-key': `cancel-${Date.now()}` },
+    });
+    expect(created.statusCode).toBe(201);
+    const actId = (created.json() as { id: string }).id;
+    createdActIds.push(actId);
+    const started = await mutate(adminSession, {
+      method: 'POST',
+      url: `/api/acts/${actId}/start`,
+      payload: {},
+    });
+    expect(started.statusCode).toBe(200);
+    const version = (started.json() as { version: number }).version;
+    expect(
+      (
+        await mutate(contractorSession, {
+          method: 'POST',
+          url: `/api/acts/${actId}/cancel`,
+          payload: { expectedVersion: version, reason: 'не моя операция' },
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await mutate(superSession, {
+          method: 'POST',
+          url: `/api/acts/${actId}/cancel`,
+          payload: { expectedVersion: version, reason: 'надзор' },
+        })
+      ).statusCode,
+    ).toBe(403);
+    const cancelled = await mutate(adminSession, {
+      method: 'POST',
+      url: `/api/acts/${actId}/cancel`,
+      payload: { expectedVersion: version, reason: 'ошибочно создан' },
+    });
+    expect(cancelled.statusCode).toBe(200);
+    expect((cancelled.json() as { status: string }).status).toBe('CANCELLED');
+    const repeat = await mutate(adminSession, {
+      method: 'POST',
+      url: `/api/acts/${actId}/cancel`,
+      payload: { expectedVersion: version + 1, reason: 'повтор' },
+    });
+    expect(repeat.statusCode).toBe(200);
+    expect(
+      await prisma.auditLog.count({ where: { entityId: actId, action: 'ACT_CANCELLED' } }),
+    ).toBe(1);
+    expect(
+      await prisma.outboxEvent.count({
+        where: { type: 'ACT_CANCELLED', payload: { path: ['actId'], equals: actId } },
+      }),
+    ).toBe(1);
+    await prisma.outboxEvent.deleteMany({
+      where: { type: 'ACT_CANCELLED', payload: { path: ['actId'], equals: actId } },
+    });
+    const stored = await prisma.act.findUniqueOrThrow({ where: { id: actId } });
+    expect(stored.cancellationReason).toBe('ошибочно создан');
+    expect(await prisma.defectItem.count({ where: { actId } })).toBe(1);
+    const completed = await mutate(adminSession, {
+      method: 'POST',
+      url: '/api/acts',
+      payload: {
+        formCode: 'S1',
+        objectId: object.id,
+        customerOrganizationId: customer.id,
+        issuedOn: '2026-08-23',
+        defectItems: [
+          {
+            location: 'Завершение',
+            defectTypeId: defectType.id,
+            claimDetails: 'Строка',
+            responsibleEngineerIds: [responsible.id],
+            liableOrganizationIds: [liable.id],
+          },
+        ],
+      },
+      headers: { 'idempotency-key': `cancel-done-${Date.now()}` },
+    });
+    const completedId = (completed.json() as { id: string }).id;
+    createdActIds.push(completedId);
+    await mutate(adminSession, {
+      method: 'POST',
+      url: `/api/acts/${completedId}/start`,
+      payload: {},
+    });
+    const detail = await read(adminSession, `/api/acts/${completedId}`);
+    const defect = (detail.json() as { defectItems: Array<{ id: string; version: number }> })
+      .defectItems[0]!;
+    expect(
+      (
+        await mutate(adminSession, {
+          method: 'POST',
+          url: `/api/defects/${defect.id}/complete`,
+          payload: { expectedVersion: defect.version },
+        })
+      ).statusCode,
+    ).toBe(200);
+    const completedAct = await prisma.act.findUniqueOrThrow({ where: { id: completedId } });
+    const refused = await mutate(adminSession, {
+      method: 'POST',
+      url: `/api/acts/${completedId}/cancel`,
+      payload: { expectedVersion: completedAct.version, reason: 'после исполнения' },
+    });
+    expect(refused.statusCode).toBe(409);
+    expect((await prisma.act.findUniqueOrThrow({ where: { id: completedId } })).status).toBe(
+      'COMPLETED',
+    );
+  });
 });

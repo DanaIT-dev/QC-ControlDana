@@ -222,6 +222,26 @@ export async function notifyDeadlineChanges(
   return ids;
 }
 
+export async function notifyActCancelled(
+  writer: OutboxWriter,
+  tx: OutboxTx,
+  input: { actId: string; objectId: string; actorUserId: string },
+): Promise<string> {
+  const managers = await activeRoleIds(tx, 'SGR_MANAGER');
+  const engineers = await tx.propertyObjectEngineer.findMany({
+    where: { propertyObjectId: input.objectId, unassignedAt: null },
+    select: { userId: true },
+  });
+  return writeDomainOutbox(writer, tx, {
+    type: 'ACT_CANCELLED',
+    occurrenceParts: ['ACT_CANCELLED', input.actId],
+    actId: input.actId,
+    defectItemId: null,
+    actorUserId: input.actorUserId,
+    extraRecipientIds: [...managers, ...engineers.map((row) => row.userId)],
+  });
+}
+
 export async function notifyDefectStatus(
   writer: OutboxWriter,
   tx: OutboxTx,

@@ -8,6 +8,7 @@ export {
 export type { WorkerDbRunner } from './dispatcher';
 export {
   notifyAttachmentScan,
+  notifyActCancelled,
   notifyDeadlineChanges,
   notifyDefectStatus,
   notifyResponsibleAssigned,

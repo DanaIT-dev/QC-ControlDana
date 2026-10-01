@@ -5,6 +5,7 @@ import {
   archiveProposalRequestSchema,
   auditLogQuerySchema,
   completeDefectRequestSchema,
+  cancelActRequestSchema,
   createActRequestSchema,
   historyQuerySchema,
   patchActHeaderRequestSchema,
@@ -22,6 +23,7 @@ import {
   ASSIGNABLE_ENGINEER_ROLE,
   BUSINESS_TIME_ZONE,
   IdempotencyConflictError,
+  ActCancellationError,
   InvalidTransitionError,
   StaleWriteError,
   ValidationError,
@@ -38,6 +40,7 @@ import {
   canCreatePropertyObject,
   canManageReferenceData,
   canManageUsers,
+  cancelAct,
   completeDefectItem,
   computeActStatus,
   createDefectItem,
@@ -74,6 +77,7 @@ import {
 import { actorContext, canonicalRequestHash, readIdempotencyKey } from '../common/request-context';
 import { RegistryAccessScope } from '../registry/registry-access-scope';
 import {
+  notifyActCancelled,
   notifyDeadlineChanges,
   notifyDefectStatus,
   notifyResponsibleAssigned,
@@ -694,6 +698,118 @@ export class OperationsService {
     }
     await this.outboxWriter.enqueue(result.outboxIds);
     return { id: result.id, version: result.version, status: result.status };
+  }
+
+  async cancel(user: AuthenticatedUser, actId: string, body: unknown, request: FastifyRequest) {
+    const input = parseCommandBody(cancelActRequestSchema, body);
+    const reason = normalizeRequiredReason(input.reason);
+    const ctx = actorContext(user, request);
+    const visible = await this.requireVisibleAct(user, actId);
+    if (visible.status === 'COMPLETED') {
+      throw new ActCancellationError('Завершённый акт нельзя аннулировать');
+    }
+    if (visible.status === 'CANCELLED') {
+      const current = await this.prisma.client.act.findUniqueOrThrow({
+        where: { id: actId },
+        select: {
+          id: true,
+          status: true,
+          version: true,
+          cancellationReason: true,
+          cancelledAt: true,
+        },
+      });
+      return {
+        id: current.id,
+        status: current.status,
+        version: current.version,
+        cancellationReason: current.cancellationReason,
+        cancelledAt: current.cancelledAt?.toISOString() ?? null,
+      };
+    }
+    const result = await this.prisma.client.$transaction(async (tx) => {
+      const current = await tx.act.findUniqueOrThrow({ where: { id: actId } });
+      if (current.status === 'CANCELLED') {
+        return {
+          id: current.id,
+          status: current.status,
+          version: current.version,
+          cancellationReason: current.cancellationReason,
+          cancelledAt: current.cancelledAt?.toISOString() ?? null,
+          outboxIds: [] as string[],
+        };
+      }
+      cancelAct(
+        { status: current.status, cancelledAt: current.cancelledAt },
+        { reason, cancelledByUserId: user.id },
+      );
+      if (current.version !== input.expectedVersion) {
+        throw new StaleWriteError();
+      }
+      const updated = await tx.act.updateMany({
+        where: {
+          id: actId,
+          version: input.expectedVersion,
+          status: { notIn: ['CANCELLED', 'COMPLETED'] },
+        },
+        data: {
+          status: 'CANCELLED',
+          cancelledAt: new Date(),
+          cancellationReason: reason,
+          cancelledByUserId: user.id,
+          version: { increment: 1 },
+        },
+      });
+      if (updated.count !== 1) {
+        const latest = await tx.act.findUniqueOrThrow({ where: { id: actId } });
+        if (latest.status === 'CANCELLED') {
+          return {
+            id: latest.id,
+            status: latest.status,
+            version: latest.version,
+            cancellationReason: latest.cancellationReason,
+            cancelledAt: latest.cancelledAt?.toISOString() ?? null,
+            outboxIds: [] as string[],
+          };
+        }
+        throw new StaleWriteError();
+      }
+      const fresh = await tx.act.findUniqueOrThrow({ where: { id: actId } });
+      const outboxId = await notifyActCancelled(this.outboxWriter, tx, {
+        actId,
+        objectId: fresh.objectId,
+        actorUserId: user.id,
+      });
+      await writeAuditLog(tx, {
+        ...ctx,
+        action: 'ACT_CANCELLED',
+        entityType: 'ACT',
+        entityId: actId,
+        reason,
+        oldValue: toJsonValue({ status: current.status }),
+        newValue: toJsonValue({
+          status: 'CANCELLED',
+          cancellationReason: reason,
+          cancelledByUserId: user.id,
+        }),
+      });
+      return {
+        id: fresh.id,
+        status: fresh.status,
+        version: fresh.version,
+        cancellationReason: fresh.cancellationReason,
+        cancelledAt: fresh.cancelledAt?.toISOString() ?? null,
+        outboxIds: [outboxId],
+      };
+    });
+    await this.outboxWriter.enqueue(result.outboxIds);
+    return {
+      id: result.id,
+      status: result.status,
+      version: result.version,
+      cancellationReason: result.cancellationReason,
+      cancelledAt: result.cancelledAt,
+    };
   }
 
   async startAct(user: AuthenticatedUser, actId: string, body: unknown, request: FastifyRequest) {

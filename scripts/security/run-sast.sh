@@ -2,6 +2,15 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+case "$(uname -m)" in
+  x86_64|amd64) SCAN_PLATFORM=linux/amd64 ;;
+  aarch64|arm64) SCAN_PLATFORM=linux/arm64 ;;
+  *) SCAN_PLATFORM="" ;;
+esac
+PLATFORM_ARGS=()
+if [[ -n "$SCAN_PLATFORM" ]]; then
+  PLATFORM_ARGS=(--platform "$SCAN_PLATFORM")
+fi
 # shellcheck disable=SC1091
 source "$ROOT/scripts/security/scanners.env"
 OUT="$ROOT/test-results/security-audit"
@@ -11,7 +20,7 @@ mkdir -p "$OUT" "$TRIVY_CACHE"
 cd "$ROOT"
 
 echo "==> Semgrep Community (typescript, nodejs, react, nextjs, owasp, security-audit)"
-docker run --rm --platform linux/arm64 \
+docker run --rm "${PLATFORM_ARGS[@]}" \
   -v "$ROOT:/src" \
   "$SEMGREP_IMAGE" \
   semgrep scan \
@@ -28,8 +37,7 @@ docker run --rm --platform linux/arm64 \
 node "$ROOT/scripts/security/check-semgrep-report.mjs" "$OUT/semgrep.json"
 
 echo "==> Gitleaks working tree (redacted)"
-set +e
-docker run --rm --platform linux/arm64 \
+docker run --rm "${PLATFORM_ARGS[@]}" \
   -v "$ROOT:/repo" \
   "$GITLEAKS_IMAGE" \
   detect --no-git --source /repo --redact --no-banner \
@@ -37,14 +45,13 @@ docker run --rm --platform linux/arm64 \
     --report-format json \
     --report-path /repo/test-results/security-audit/gitleaks-workdir.json
 echo "==> Gitleaks full git history (redacted)"
-docker run --rm --platform linux/arm64 \
+docker run --rm "${PLATFORM_ARGS[@]}" \
   -v "$ROOT:/repo" \
   "$GITLEAKS_IMAGE" \
   detect --source /repo --log-opts="--all" --redact --no-banner \
     --config /repo/.gitleaks.toml \
     --report-format json \
     --report-path /repo/test-results/security-audit/gitleaks-history.json
-set -e
 
 echo "==> pnpm audit (production)"
 pnpm audit --prod --json > "$OUT/pnpm-audit-prod.json" || true
@@ -54,21 +61,21 @@ echo "==> pnpm audit (all)"
 pnpm audit --json > "$OUT/pnpm-audit-all.json" || true
 
 echo "==> Trivy filesystem"
-docker run --rm --platform linux/arm64 \
+docker run --rm "${PLATFORM_ARGS[@]}" \
   -v "$ROOT:/repo" \
   -v "$OUT:/out" \
   -v "$TRIVY_CACHE:/root/.cache" \
   "$TRIVY_IMAGE" \
   fs --skip-dirs node_modules --skip-dirs .next --skip-dirs dist --skip-dirs coverage \
-    --scanners vuln,secret,misconfig --format json --output /out/trivy-fs.json /repo || true
+    --scanners vuln,secret,misconfig --format json --output /out/trivy-fs.json /repo
 
 echo "==> Trivy IaC / compose"
-docker run --rm --platform linux/arm64 \
+docker run --rm "${PLATFORM_ARGS[@]}" \
   -v "$ROOT:/repo" \
   -v "$OUT:/out" \
   -v "$TRIVY_CACHE:/root/.cache" \
   "$TRIVY_IMAGE" \
-  config --format json --output /out/trivy-config.json /repo/infra/docker || true
+  config --format json --output /out/trivy-config.json /repo/infra/docker
 
 echo "==> Trivy container images used by compose"
 for image in \
@@ -79,7 +86,7 @@ for image in \
   axllent/mailpit:v1.27.10@sha256:b1f1be18af530d939a11ee8820b379e0c88eeec204d904bfad68862adced3a5a
 do
   safe_name="$(echo "$image" | tr '/:@' '___')"
-  docker run --rm --platform linux/arm64 \
+  docker run --rm "${PLATFORM_ARGS[@]}" \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v "$OUT:/out" \
     -v "$TRIVY_CACHE:/root/.cache" \

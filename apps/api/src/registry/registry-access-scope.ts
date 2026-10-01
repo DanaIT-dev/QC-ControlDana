@@ -29,10 +29,15 @@ export class RegistryAccessScope {
     return { userId: this.userId, ...ACTIVE_OBJECT_ASSIGNMENT };
   }
 
-  defectItemWhere(): Prisma.DefectItemWhereInput {
+  defectItemWhere(options?: { includeCancelled?: boolean }): Prisma.DefectItemWhereInput {
     const mode = registryAccessMode(this.role);
     if (mode === 'all') {
       return {};
+    }
+    if (options?.includeCancelled) {
+      return mode === 'object_assigned'
+        ? { act: { propertyObject: this.assignedObjectWhere() } }
+        : {};
     }
     const uncancelled: Prisma.DefectItemWhereInput = {
       act: { status: { not: 'CANCELLED' } },

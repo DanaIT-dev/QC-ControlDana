@@ -50,7 +50,10 @@ export function cancelAct(
   if (!input.cancelledByUserId) {
     throw new ActCancellationError('Cancellation must record the acting user');
   }
-  if (act.cancelledAt !== null) {
+  if (act.status === 'COMPLETED') {
+    throw new ActCancellationError('Завершённый акт нельзя аннулировать');
+  }
+  if (act.cancelledAt !== null || act.status === 'CANCELLED') {
     throw new ActCancellationError('Act is already cancelled');
   }
 

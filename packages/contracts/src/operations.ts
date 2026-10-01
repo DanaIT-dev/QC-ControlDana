@@ -175,6 +175,13 @@ export const completeDefectRequestSchema = z
   })
   .strict();
 
+export const cancelActRequestSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    reason: z.string(),
+  })
+  .strict();
+
 export const reopenDefectRequestSchema = z
   .object({
     expectedVersion: expectedVersionSchema,
