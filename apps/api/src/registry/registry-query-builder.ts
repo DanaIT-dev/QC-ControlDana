@@ -8,7 +8,7 @@ import {
   type RegistryListQuery,
   type RegistrySortField,
 } from '@sgr-registry/domain';
-import type { RegistryAccessScope } from './registry-access-scope';
+import type { RegistryAccessScope } from './registry-access-scope.js';
 
 function likeNeedle(search: string): string {
   return `%${foldPersonSearchKey(search).replace(/[\\%_]/g, '\\$&')}%`;
@@ -104,22 +104,26 @@ export function deadlineStateWhere(
     case 'COMPLETED':
       return { status: 'COMPLETED' };
     case 'NO_DEADLINE':
-      return { status: 'IN_PROGRESS', act: { status: 'IN_PROGRESS' }, effectiveDeadline: null };
+      return {
+        status: { in: ['IN_PROGRESS', 'PENDING_INSPECTION'] },
+        act: { status: 'IN_PROGRESS' },
+        effectiveDeadline: null,
+      };
     case 'OVERDUE':
       return {
-        status: 'IN_PROGRESS',
+        status: { in: ['IN_PROGRESS', 'PENDING_INSPECTION'] },
         act: { status: 'IN_PROGRESS' },
         effectiveDeadline: { lte: todayNoon },
       };
     case 'WARNING':
       return {
-        status: 'IN_PROGRESS',
+        status: { in: ['IN_PROGRESS', 'PENDING_INSPECTION'] },
         act: { status: 'IN_PROGRESS' },
         effectiveDeadline: { gt: todayNoon, lte: warningLastNoon },
       };
     case 'NORMAL':
       return {
-        status: 'IN_PROGRESS',
+        status: { in: ['IN_PROGRESS', 'PENDING_INSPECTION'] },
         act: { status: 'IN_PROGRESS' },
         effectiveDeadline: { gt: warningLastNoon },
       };

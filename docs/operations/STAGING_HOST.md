@@ -18,12 +18,12 @@ Isolation:
 
 - a database volume that is not the development or production volume;
 - a Redis volume of its own;
-- a RustFS volume of its own;
+- a SeaweedFS volume of its own;
 - secrets that exist only in the GitHub `staging` environment;
 - no production URL and no production credential;
 - backup destination outside the staging host;
 - the public interface is the reverse proxy;
-- PostgreSQL, Redis, RustFS, and ClamAV publish no host port.
+- PostgreSQL, Redis, SeaweedFS, and ClamAV publish no host port.
 
 GitHub environment secrets, names only:
 
@@ -48,11 +48,11 @@ Separate encrypted volumes:
 
 - PostgreSQL data;
 - Redis data;
-- RustFS data, with a disk-usage alert before 80 percent full;
+- SeaweedFS data, with a disk-usage alert before 80 percent full;
 - ClamAV definitions;
 - application logs, retained for 30 days.
 
-DNS and TLS terminate on Caddy. The certificate name is the staging hostname. PostgreSQL, Redis, RustFS, and ClamAV stay on the Compose network and publish no host port. The firewall allows SSH from the operator network and HTTPS from the UAT network.
+DNS and TLS terminate on Caddy. The certificate name is the staging hostname. PostgreSQL, Redis, SeaweedFS, and ClamAV stay on the Compose network and publish no host port. The firewall allows SSH from the operator network and HTTPS from the UAT network.
 
 Compose is `infra/docker/compose.staging.yaml`. Secrets are injected by the GitHub `staging` environment. The repository stores only the secret names:
 
@@ -62,7 +62,7 @@ STAGING_SSH_USER
 STAGING_SSH_KEY
 ```
 
-Off-host backup is a copy of the PostgreSQL dump and the RustFS manifest to storage that is not the staging disk. A restore drill uses a disposable database and bucket on that host. Monitoring needs host disk, RustFS volume, API readiness, worker readiness, and backup success. Alerting goes to the operator channel. There is no alert destination in this repository.
+Off-host backup is a copy of the PostgreSQL dump and the SeaweedFS manifest to storage that is not the staging disk. A restore drill uses a disposable database and bucket on that host. Monitoring needs host disk, SeaweedFS volume, API readiness, worker readiness, and backup success. Alerting goes to the operator channel. There is no alert destination in this repository.
 
 The 24-hour soak runs only on this host, with its own `MAX_LIVE_OBJECTS`, `MAX_LIVE_BYTES`, `MAX_VOLUME_BYTES`, and `MIN_FREE_DISK_BYTES`. Rollback is the previous immutable image digest from `infra/docker/image-pins.json`, without deleting the data volumes.
 

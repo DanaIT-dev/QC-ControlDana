@@ -235,6 +235,15 @@ describe('operations integration', () => {
       await prisma.act.deleteMany({ where: { id: { in: actIds } } });
     }
     if (createdUserIds.length > 0) {
+      await prisma.userOrganizationMembership.deleteMany({
+        where: {
+          OR: [
+            { userId: { in: createdUserIds } },
+            { assignedByUserId: { in: createdUserIds } },
+            { revokedByUserId: { in: createdUserIds } },
+          ],
+        },
+      });
       await prisma.propertyObjectEngineer.deleteMany({
         where: { userId: { in: createdUserIds } },
       });
@@ -695,7 +704,10 @@ describe('operations integration', () => {
       url: `/api/defects/${defectId}/complete`,
       payload: { expectedVersion: assignedBody.defectItems[0]!.version, readyAt: '2026-08-20' },
     });
-    expect(completeByAssigned.statusCode).toBe(200);
+    expect(completeByAssigned.statusCode).toBe(409);
+    await prisma.userOrganizationMembership.create({
+      data: { userId: contractor.id, organizationId: liable.id, assignedByUserId: admin.id },
+    });
     expect(
       (
         await mutate(contractorSession, {
@@ -1086,6 +1098,9 @@ describe('operations integration', () => {
     const defectVersion = (
       afterProposal.json() as { defectItems: Array<{ id: string; version: number }> }
     ).defectItems[0]!.version;
+    await prisma.userOrganizationMembership.create({
+      data: { userId: contractor.id, organizationId: liable.id, assignedByUserId: admin.id },
+    });
     const thirdParty = await mutate(contractorSession, {
       method: 'PATCH',
       url: `/api/defects/${defectId}/deadlines`,
@@ -1635,7 +1650,7 @@ describe('operations integration', () => {
             defectTypeId: defectType.id,
             claimDetails: 'Один дефект',
             responsibleEngineerIds: [responsible.id],
-            liableOrganizationIds: [liable.id],
+            liableOrganizationIds: [],
           },
         ],
       },
@@ -1778,7 +1793,7 @@ describe('operations integration', () => {
             defectTypeId: defectType.id,
             claimDetails: 'Строка',
             responsibleEngineerIds: [responsible.id],
-            liableOrganizationIds: [liable.id],
+            liableOrganizationIds: [],
           },
         ],
       },

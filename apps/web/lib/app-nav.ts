@@ -22,6 +22,7 @@ export function navSectionsForRole(role: UserRole): AppNavSections {
   const administration: AppNavItem[] = [];
   if (
     satisfiesCapability(role, 'VIEW_ALL_ACTS') ||
+    satisfiesCapability(role, 'VIEW_ORGANIZATION_ACTS') ||
     satisfiesCapability(role, 'VIEW_ASSIGNED_DEFECTS')
   ) {
     primary.push({

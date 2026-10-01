@@ -1,14 +1,14 @@
 import { Controller, Get, HttpCode, Inject, Post, Req, Res, UseGuards } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { loadConfig } from '@sgr-registry/config';
-import type { AuthenticatedUser } from './authenticated-user';
-import { AuthService, toSafeProfile } from './auth.service';
-import { AuthenticationGuard } from './authentication.guard';
-import { BrowserOriginGuard } from './browser-origin.guard';
-import { clearSessionCookie, sessionCookieSecure, setSessionCookie } from './cookie';
-import { CsrfGuard } from './csrf.guard';
-import { CurrentUser } from './current-user.decorator';
-import { CapabilityGuard, RequireCapability } from '../common/capability.guard';
+import type { AuthenticatedUser } from './authenticated-user.js';
+import { AuthService, toSafeProfile } from './auth.service.js';
+import { AuthenticationGuard } from './authentication.guard.js';
+import { BrowserOriginGuard } from './browser-origin.guard.js';
+import { clearSessionCookie, sessionCookieSecure, setSessionCookie } from './cookie.js';
+import { CsrfGuard } from './csrf.guard.js';
+import { CurrentUser } from './current-user.decorator.js';
+import { CapabilityGuard, RequireCapability } from '../common/capability.guard.js';
 
 function writeSessionCookie(reply: FastifyReply, sessionId: string): void {
   const config = loadConfig();

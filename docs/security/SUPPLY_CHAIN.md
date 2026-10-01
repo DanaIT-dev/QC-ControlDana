@@ -2,7 +2,7 @@
 
 Целевая архитектура production и staging — `linux/amd64`. `linux/arm64` остаётся локальной машиной разработки. Multi-arch manifest не требуется и не является блокером. Локальная проверка через QEMU не подтверждает amd64 staging.
 
-Каталог digest: `infra/docker/image-pins.json`. Дата проверки vendor manifest list — `2026-09-30`. Объектное хранилище — официальный `rustfs/rustfs:1.0.0`, manifest list `sha256:8cc9801755448b71a786705ce76692c77e14936cccd87cf2fc31842e58f4d1ff`, `linux/amd64` `sha256:ba0a1b53e36f321c0d46f3867104abef169f7bc59c467c664ddac87e7ddc9a8b`.
+Каталог digest: `infra/docker/image-pins.json`. Дата проверки vendor manifest list — `2026-09-30`. Объектное хранилище development и staging — официальный `chrislusf/seaweedfs:4.48`, manifest list `sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d`, `linux/amd64` `sha256:aba492e2a4e4c90bff795745e8e660affa1f09e7650f5981bd7bccd1a06cd931`. RustFS в этот контур не входит.
 
 Manifest digest не равен platform digest. Git SHA не равен Docker digest. Локальный image id не равен digest, опубликованному в registry. Отсутствие `FixedVersion` не означает отсутствие риска. Закрытый порт не устраняет уязвимость package. VEX требует доказательства runtime applicability.
 
@@ -81,4 +81,4 @@ Major PostgreSQL, Redis, объектное хранилище и API без о�
 
 ## Staging
 
-Runbook: `docs/runbooks/AMD64_RELEASE_CANDIDATE.md`. Staging compose — `infra/docker/compose.staging.yaml`. Он фиксирует `platform: linux/amd64`, не содержит `build:` и не использует `latest`. Объектное хранилище — официальный RustFS 1.0.0 с подтверждённым `linux/amd64` digest. Контейнерный binary не имеет проверяемого provenance и классифицирован как `SOURCE_TAG_ONLY`. CVE-2026-6653 закрыт переходом на `clamav/clamav:1.5.4`; production по-прежнему закрыт, пока нет persistent staging, 24-часового soak и подписанного release. QEMU smoke не заменяет staging на `x86_64`.
+Runbook: `docs/runbooks/AMD64_RELEASE_CANDIDATE.md`. Staging compose — `infra/docker/compose.staging.yaml`. Он фиксирует `platform: linux/amd64`, не содержит `build:` и не использует `latest`. Объектное хранилище — официальный SeaweedFS 4.48 с подтверждённым `linux/amd64` digest. CVE-2026-6653 закрыт переходом на `clamav/clamav:1.5.4`; production по-прежнему закрыт, пока нет persistent staging, 24-часового soak и подписанного release. QEMU smoke не заменяет staging на `x86_64`.

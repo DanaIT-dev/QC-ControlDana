@@ -3,13 +3,20 @@ import type { ProposalSlot } from '@sgr-registry/contracts';
 import { isOversightRole } from './capabilities';
 import { isBusinessStaffRole } from './role-hierarchy';
 
-export type RegistryAccessMode = 'all' | 'all_uncancelled' | 'object_assigned';
+export type RegistryAccessMode =
+  'all' | 'all_uncancelled' | 'object_assigned' | 'organization_liable';
 
 export function registryAccessMode(role: UserRole): RegistryAccessMode {
   if (isOversightRole(role)) {
     return 'all';
   }
-  return role === 'RESPONSIBLE_ENGINEER' ? 'object_assigned' : 'all_uncancelled';
+  if (role === 'RESPONSIBLE_ENGINEER') {
+    return 'object_assigned';
+  }
+  if (role === 'CONTRACTOR_ENGINEER') {
+    return 'organization_liable';
+  }
+  return 'all_uncancelled';
 }
 
 export function isObjectScopedRole(role: UserRole): boolean {

@@ -10,6 +10,7 @@ export const CAPABILITIES = [
   'CREATE_PROPERTY_OBJECT',
   'VIEW_SYSTEM_STATUS',
   'VIEW_ALL_ACTS',
+  'VIEW_ORGANIZATION_ACTS',
   'VIEW_ASSIGNED_DEFECTS',
   'CREATE_ACT',
   'START_ACT',
@@ -21,6 +22,9 @@ export const CAPABILITIES = [
   'EDIT_THIRD_PARTY_DEADLINE',
   'COMPLETE_DEFECT',
   'REOPEN_DEFECT',
+  'SUBMIT_DEFECT_FOR_INSPECTION',
+  'ACCEPT_DEFECT_REPAIR',
+  'REJECT_DEFECT_REPAIR',
   'MANAGE_PROPOSALS',
   'VIEW_PROPOSAL_A',
   'VIEW_HISTORY',
@@ -60,6 +64,8 @@ const ADMIN_CAPABILITIES = [
   'EDIT_THIRD_PARTY_DEADLINE',
   'COMPLETE_DEFECT',
   'REOPEN_DEFECT',
+  'ACCEPT_DEFECT_REPAIR',
+  'REJECT_DEFECT_REPAIR',
   'MANAGE_PROPOSALS',
   'VIEW_PROPOSAL_A',
   'VIEW_HISTORY',
@@ -106,6 +112,8 @@ const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
     'EDIT_THIRD_PARTY_DEADLINE',
     'COMPLETE_DEFECT',
     'REOPEN_DEFECT',
+    'ACCEPT_DEFECT_REPAIR',
+    'REJECT_DEFECT_REPAIR',
     'MANAGE_PROPOSALS',
     'VIEW_PROPOSAL_A',
     'VIEW_HISTORY',
@@ -123,7 +131,8 @@ const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
     'VIEW_OWN_PROFILE',
   ],
   CONTRACTOR_ENGINEER: [
-    'VIEW_ALL_ACTS',
+    'VIEW_ORGANIZATION_ACTS',
+    'SUBMIT_DEFECT_FOR_INSPECTION',
     'EDIT_THIRD_PARTY_DEADLINE',
     'MANAGE_PROPOSALS',
     'VIEW_PROPOSAL_A',
@@ -150,6 +159,8 @@ const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
     'EDIT_THIRD_PARTY_DEADLINE',
     'COMPLETE_DEFECT',
     'REOPEN_DEFECT',
+    'ACCEPT_DEFECT_REPAIR',
+    'REJECT_DEFECT_REPAIR',
     'VIEW_PROPOSAL_A',
     'VIEW_ASSIGNED_HISTORY',
     'VIEW_ACT_CHAT',
@@ -169,6 +180,7 @@ export const OVERSIGHT_READ_CAPABILITIES: readonly Capability[] = [
   'VIEW_REFERENCE_DATA',
   'VIEW_SYSTEM_STATUS',
   'VIEW_ALL_ACTS',
+  'VIEW_ORGANIZATION_ACTS',
   'VIEW_ASSIGNED_DEFECTS',
   'VIEW_PROPOSAL_A',
   'VIEW_HISTORY',
@@ -204,6 +216,10 @@ export const CAPABILITY_LABELS: Record<Capability, string> = {
   EDIT_THIRD_PARTY_DEADLINE: 'Изменение срока третьей стороны',
   COMPLETE_DEFECT: 'Завершение дефекта',
   REOPEN_DEFECT: 'Возврат дефекта в работу',
+  SUBMIT_DEFECT_FOR_INSPECTION: 'Передача дефекта на проверку',
+  ACCEPT_DEFECT_REPAIR: 'Приёмка устранения дефекта',
+  REJECT_DEFECT_REPAIR: 'Возврат устранения на доработку',
+  VIEW_ORGANIZATION_ACTS: 'Просмотр актов своей организации',
   MANAGE_PROPOSALS: 'Управление предложениями',
   VIEW_PROPOSAL_A: 'Просмотр предложения A',
   VIEW_HISTORY: 'Просмотр полной истории изменений',
@@ -348,7 +364,11 @@ export function postLoginPath(role: UserRole, mustChangePassword = false): strin
   if (isPendingRole(role)) {
     return '/pending-role';
   }
-  if (hasCapability(role, 'VIEW_ALL_BUSINESS_DATA') || hasCapability(role, 'VIEW_ALL_ACTS')) {
+  if (
+    hasCapability(role, 'VIEW_ALL_BUSINESS_DATA') ||
+    hasCapability(role, 'VIEW_ALL_ACTS') ||
+    hasCapability(role, 'VIEW_ORGANIZATION_ACTS')
+  ) {
     return '/registry';
   }
   if (hasCapability(role, 'MANAGE_ADMIN_GRANTS')) {

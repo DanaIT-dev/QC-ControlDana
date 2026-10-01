@@ -12,10 +12,10 @@ import {
   type PrismaClient,
 } from '@sgr-registry/database';
 import type { FastifyRequest } from 'fastify';
-import type { AuthenticatedUser } from './authenticated-user';
-import { requestIdOf } from '../common/request-context';
-import { REDIS_CLIENT, RedisUnavailableError } from './redis.constants';
-import type Redis from 'ioredis';
+import type { AuthenticatedUser } from './authenticated-user.js';
+import { requestIdOf } from '../common/request-context.js';
+import { REDIS_CLIENT, RedisUnavailableError } from './redis.constants.js';
+import type { Redis } from 'ioredis';
 
 export const PRISMA_CLIENT = Symbol('PRISMA_CLIENT');
 export const AUTH_PRISMA_CLIENT = Symbol('AUTH_PRISMA_CLIENT');

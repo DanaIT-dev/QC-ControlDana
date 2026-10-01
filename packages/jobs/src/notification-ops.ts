@@ -6,8 +6,8 @@ import {
   parseWorkerHeartbeat,
   resolveWorkerHeartbeatKey,
 } from '@sgr-registry/domain';
-import type Redis from 'ioredis';
-import { probeSmtpTransport } from './dispatcher';
+import type { Redis } from 'ioredis';
+import { probeSmtpTransport } from './dispatcher.js';
 
 export async function probeSmtp(input: { emailEnabled: boolean }): Promise<{
   status: 'up' | 'down' | 'disabled';

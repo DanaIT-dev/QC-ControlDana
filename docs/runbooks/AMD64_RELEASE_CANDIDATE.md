@@ -25,11 +25,11 @@
 | qc-web      | `ghcr.io/<owner>/qc-controldana/qc-web`      | `node apps/web/server.js`       |
 | qc-migrator | `ghcr.io/<owner>/qc-controldana/qc-migrator` | `prisma migrate deploy`         |
 
-API и worker — один digest. В manifest это две строки с общим `sharedRuntimeDigest` и разными командами. Vendor-образы Caddy, PostgreSQL, Redis, RustFS и ClamAV не перепубликовываются. В staging compose у каждого сервиса `platform: linux/amd64`.
+API и worker — один digest. В manifest это две строки с общим `sharedRuntimeDigest` и разными командами. Vendor-образы Caddy, PostgreSQL, Redis, SeaweedFS и ClamAV не перепубликовываются. В staging compose у каждого сервиса `platform: linux/amd64`.
 
 ## Object storage
 
-Официальный образ: `rustfs/rustfs:1.0.0`. Manifest list `sha256:8cc9801755448b71a786705ce76692c77e14936cccd87cf2fc31842e58f4d1ff`. `linux/amd64` `sha256:ba0a1b53e36f321c0d46f3867104abef169f7bc59c467c664ddac87e7ddc9a8b`. `scripts/release/resolve-official-manifest.mjs` читает этот pin и не обращается к registry MinIO. Подписанный release candidate по-прежнему не опубликован, пока нет registry digest собственных образов и staging acceptance.
+Официальный образ development и staging: `chrislusf/seaweedfs:4.48`. Manifest list `sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d`. `linux/amd64` `sha256:aba492e2a4e4c90bff795745e8e660affa1f09e7650f5981bd7bccd1a06cd931`. `scripts/release/resolve-official-manifest.mjs` читает этот pin и не обращается к registry. Подписанный release candidate по-прежнему не опубликован. Production compose использует тот же SeaweedFS digest и не публикует object storage наружу. Это не production acceptance.
 
 ## Подпись
 

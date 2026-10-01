@@ -2,8 +2,8 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { loadConfig, MissingConfigurationError } from '@sgr-registry/config';
-import { AppModule } from './app.module';
-import { configureHttpApp } from './configure-http';
+import { AppModule } from './app.module.js';
+import { configureHttpApp } from './configure-http.js';
 
 async function bootstrap(): Promise<void> {
   let config;

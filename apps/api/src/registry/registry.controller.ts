@@ -11,19 +11,19 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { FastifyRequest } from 'fastify';
-import type { AuthenticatedUser } from '../auth/authenticated-user';
-import { AuthenticationGuard } from '../auth/authentication.guard';
-import { BrowserOriginGuard } from '../auth/browser-origin.guard';
-import { CsrfGuard } from '../auth/csrf.guard';
-import { CurrentUser } from '../auth/current-user.decorator';
-import { CapabilityGuard, RequireCapability } from '../common/capability.guard';
-import { RegistryService } from './registry.service';
+import type { AuthenticatedUser } from '../auth/authenticated-user.js';
+import { AuthenticationGuard } from '../auth/authentication.guard.js';
+import { BrowserOriginGuard } from '../auth/browser-origin.guard.js';
+import { CsrfGuard } from '../auth/csrf.guard.js';
+import { CurrentUser } from '../auth/current-user.decorator.js';
+import { CapabilityGuard, RequireCapability } from '../common/capability.guard.js';
+import { RegistryService } from './registry.service.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 @Controller('registry')
 @UseGuards(AuthenticationGuard, CapabilityGuard)
-@RequireCapability('VIEW_ALL_ACTS', 'VIEW_ASSIGNED_DEFECTS')
+@RequireCapability('VIEW_ALL_ACTS', 'VIEW_ORGANIZATION_ACTS', 'VIEW_ASSIGNED_DEFECTS')
 export class RegistryController {
   constructor(@Inject(RegistryService) private readonly registryService: RegistryService) {}
 

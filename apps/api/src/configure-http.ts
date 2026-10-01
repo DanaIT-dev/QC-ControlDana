@@ -8,7 +8,7 @@ import {
   JSON_BODY_MAX_BYTES,
   PERMISSIONS_POLICY,
   isMultipartUploadRoute,
-} from './common/http-limits';
+} from './common/http-limits.js';
 
 export async function configureHttpApp(
   app: NestFastifyApplication,

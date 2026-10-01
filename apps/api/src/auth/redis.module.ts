@@ -1,7 +1,7 @@
 import { Global, Inject, Injectable, Module, type OnModuleDestroy } from '@nestjs/common';
 import { loadConfig, redisTlsOptions } from '@sgr-registry/config';
-import Redis from 'ioredis';
-import { REDIS_CLIENT } from './redis.constants';
+import { Redis } from 'ioredis';
+import { REDIS_CLIENT } from './redis.constants.js';
 
 @Injectable()
 class RedisShutdown implements OnModuleDestroy {

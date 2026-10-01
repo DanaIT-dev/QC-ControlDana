@@ -1,8 +1,8 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
 import type { FastifyRequest } from 'fastify';
 import { CSRF_HEADER_NAME } from '@sgr-registry/domain';
-import type { AuthenticatedUser } from './authenticated-user';
-import { safeEqual } from './crypto';
+import type { AuthenticatedUser } from './authenticated-user.js';
+import { safeEqual } from './crypto.js';
 
 @Injectable()
 export class CsrfGuard implements CanActivate {

@@ -13,7 +13,11 @@
 | MANAGE_REFERENCE_DATA        | да    | да          | нет                 | нет                                      |
 | VIEW_REFERENCE_DATA          | да    | да          | нет                 | да, только объекты и организации         |
 | VIEW_SYSTEM_STATUS           | да    | нет         | нет                 | нет                                      |
-| VIEW_ALL_ACTS                | да    | да          | да                  | нет                                      |
+| VIEW_ALL_ACTS                | да    | да          | нет                 | нет                                      |
+| VIEW_ORGANIZATION_ACTS       | нет   | нет         | да                  | нет                                      |
+| SUBMIT_DEFECT_FOR_INSPECTION | нет   | нет         | да                  | нет                                      |
+| ACCEPT_DEFECT_REPAIR         | да    | да          | нет                 | да                                       |
+| REJECT_DEFECT_REPAIR         | да    | да          | нет                 | да                                       |
 | VIEW_ASSIGNED_DEFECTS        | —     | —           | —                   | да, все акты закреплённых объектов       |
 | CREATE_ACT                   | да    | да          | нет                 | да, только закреплённые активные объекты |
 | START_ACT                    | да    | да          | нет                 | да, только закреплённые активные объекты |
@@ -47,7 +51,9 @@
 
 Сумма Proposal A видна ADMIN, SGR_MANAGER и SUPER_ADMIN (`canViewProposalASum`). B/C видны всем, кроме RESPONSIBLE_ENGINEER. Для каждого видимого слота в реестре показываются наименование организации и стоимость. RESPONSIBLE не мутирует A/B/C.
 
-`VIEW_HISTORY` — полный журнал акта. `VIEW_ASSIGNED_HISTORY` — события всех дефектов актов закреплённых объектов (и безопасный объём шапки акта); B/C исключаются. `CONTRACTOR_ENGINEER` не читает историю: вкладка и history API недоступны (`403`), прямой SQL под runtime-ролью тоже пуст. Действия подрядчика по-прежнему пишутся в AuditLog и видны ADMIN и SGR_MANAGER.
+`VIEW_HISTORY` — полный журнал акта. `VIEW_ASSIGNED_HISTORY` — события всех дефектов актов закреплённых объектов (и безопасный объём шапки акта); B/C исключаются. `CONTRACTOR_ENGINEER` видит только объекты, акты и дефекты, где организация из его активной `UserOrganizationMembership` назначена ответственной (`DefectItemLiableOrganization`). Связь хранится по UUID. Совпадение названия, ФИО, email или строки импорта доступ не даёт. Пользователь без активной membership не видит подрядных актов. Назначать membership может только роль с `MANAGE_USERS`. `SUPER_ADMIN` видит membership только для чтения. Прямой чужой UUID возвращает `404`.
+
+`CONTRACTOR_ENGINEER` не читает историю: вкладка и history API недоступны (`403`), прямой SQL под runtime-ролью тоже пуст. Действия подрядчика по-прежнему пишутся в AuditLog и видны ADMIN и SGR_MANAGER.
 
 `VIEW_ACT_CHAT` — внутреннее обсуждение акта. Подрядчик не имеет capability: вкладка не рендерится, GET/POST чата и кандидаты `@` возвращают `403`. Снятие `PropertyObjectEngineer` сразу закрывает чат ответственному; старые сообщения сохраняются. Упоминание не выдаёт доступ к акту.
 

@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common';
-import { AuthModule } from '../auth/auth.module';
-import { PrismaModule } from '../auth/prisma.module';
-import { SuperAdminMutationRateLimitGuard } from './super-admin-rate-limit.guard';
-import { SuperAdminController } from './super-admin.controller';
-import { SuperAdminService } from './super-admin.service';
+import { AuthModule } from '../auth/auth.module.js';
+import { PrismaModule } from '../auth/prisma.module.js';
+import { SuperAdminMutationRateLimitGuard } from './super-admin-rate-limit.guard.js';
+import { SuperAdminController } from './super-admin.controller.js';
+import { SuperAdminService } from './super-admin.service.js';
 
 @Module({
   imports: [PrismaModule, AuthModule],

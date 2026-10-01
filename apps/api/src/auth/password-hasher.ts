@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { loadConfig } from '@sgr-registry/config';
 import type { PasswordPolicyContext } from '@sgr-registry/domain';
-import { hashArgon2id, hashPassword, verifyPassword } from './crypto';
+import { hashArgon2id, hashPassword, verifyPassword } from './crypto.js';
 
 @Injectable()
 export class Argon2PasswordHasher {

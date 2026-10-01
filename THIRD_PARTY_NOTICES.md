@@ -1,21 +1,18 @@
 # Third-party notices
 
-## RustFS
+## SeaweedFS
 
-- Project: https://github.com/rustfs/rustfs
-- Version used: 1.0.0
-- Image: `rustfs/rustfs:1.0.0@sha256:8cc9801755448b71a786705ce76692c77e14936cccd87cf2fc31842e58f4d1ff`
+- Project: https://github.com/seaweedfs/seaweedfs
+- Version used: 4.48
+- Image: `chrislusf/seaweedfs:4.48@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d`
 - License: Apache License, Version 2.0
-- License text: https://github.com/rustfs/rustfs/blob/1.0.0/LICENSE
-- Security policy: https://github.com/rustfs/rustfs/blob/1.0.0/SECURITY.md
-
-The image inspected on 2026-09-30 does not contain a `LICENSE` or `NOTICE` file. The tag `1.0.0` in the upstream repository is Apache-2.0 and has no `NOTICE` file.
+- License text: https://github.com/seaweedfs/seaweedfs/blob/4.48/LICENSE
 
 Apache-2.0 obligations that apply when this software is distributed: keep the license text and copyright notices, state significant modifications, and retain attribution notices from the upstream project. This file records the license. It is not a statement that distribution has no remaining legal obligation.
 
-## SeaweedFS
+## RustFS
 
-SeaweedFS 4.48 was evaluated and not selected. Its upstream license is Apache-2.0: https://github.com/seaweedfs/seaweedfs/blob/4.48/LICENSE. It is not part of the running compose.
+RustFS 1.0.0 is not used by the development or staging compose. The previous evaluation remains in `docs/security/RUSTFS_SUPPLY_CHAIN.md`. Its volume is retained and is not mounted.
 
 ## MinIO
 

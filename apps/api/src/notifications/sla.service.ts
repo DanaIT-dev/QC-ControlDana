@@ -14,9 +14,9 @@ import {
   slaStateOf,
   formatPersonShort,
 } from '@sgr-registry/domain';
-import type { AuthenticatedUser } from '../auth/authenticated-user';
-import { PrismaService } from '../auth/prisma.tokens';
-import { RegistryAccessScope } from '../registry/registry-access-scope';
+import type { AuthenticatedUser } from '../auth/authenticated-user.js';
+import { PrismaService } from '../auth/prisma.tokens.js';
+import { resolveRegistryAccessScope } from '../registry/registry-access-scope.js';
 
 @Injectable()
 export class SlaQueryService {
@@ -27,7 +27,7 @@ export class SlaQueryService {
   }
 
   async summary(user: AuthenticatedUser): Promise<SlaSummaryResponse> {
-    const base = this.baseWhere(user);
+    const base = await this.baseWhere(user);
     const [warning, dueToday, overdue1to2, overdue3to6, overdue7plus, noDeadline] =
       await Promise.all([
         this.prisma.slaClock.count({ where: { ...base, ...this.bucketWhere('WARNING') } }),
@@ -48,7 +48,7 @@ export class SlaQueryService {
     const page = parsed.page ?? 1;
     const pageSize = parsed.pageSize ?? DEFAULT_SLA_PAGE_SIZE;
     const where: Prisma.SlaClockWhereInput = {
-      ...this.baseWhere(user, parsed.kind),
+      ...(await this.baseWhere(user, parsed.kind)),
       ...(parsed.bucket ? this.bucketWhere(parsed.bucket) : {}),
     };
     const orderBy: Prisma.SlaClockOrderByWithRelationInput[] =
@@ -144,11 +144,11 @@ export class SlaQueryService {
     };
   }
 
-  private baseWhere(
+  private async baseWhere(
     user: AuthenticatedUser,
     kind?: 'GENERAL' | 'THIRD_PARTY',
-  ): Prisma.SlaClockWhereInput {
-    const scope = new RegistryAccessScope(user);
+  ): Promise<Prisma.SlaClockWhereInput> {
+    const scope = await resolveRegistryAccessScope(this.prisma, user);
     const kinds = (['GENERAL', 'THIRD_PARTY'] as const).filter((item) =>
       canReceiveDeadlineKind(user.role, item),
     );
@@ -156,7 +156,7 @@ export class SlaQueryService {
     return {
       kind: { in: selected },
       defectItem: {
-        AND: [scope.defectItemWhere(), { status: 'IN_PROGRESS' }],
+        AND: [scope.defectItemWhere(), { status: { in: ['IN_PROGRESS', 'PENDING_INSPECTION'] } }],
       },
     };
   }

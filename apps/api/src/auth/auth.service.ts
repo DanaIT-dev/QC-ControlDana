@@ -27,16 +27,16 @@ import {
   sessionAbsoluteExpiresAt,
 } from '@sgr-registry/domain';
 import type { FastifyRequest } from 'fastify';
-import type { AuthenticatedUser } from './authenticated-user';
-import { generateOpaqueToken, hashSessionId } from './crypto';
-import { Argon2PasswordHasher } from './password-hasher';
-import { AUTH_PRISMA_CLIENT } from './prisma.tokens';
+import type { AuthenticatedUser } from './authenticated-user.js';
+import { generateOpaqueToken, hashSessionId } from './crypto.js';
+import { Argon2PasswordHasher } from './password-hasher.js';
+import { AUTH_PRISMA_CLIENT } from './prisma.tokens.js';
 import type { PrismaClient } from '@sgr-registry/database';
-import { RedisUnavailableError } from './redis.constants';
-import { clientIp } from './request-meta';
-import { isLoginRateLimited, RedisSessionStore } from './redis-session.store';
-import type { StoredSession } from './session-store';
-import { toJsonValue } from '../common/audit-writer';
+import { RedisUnavailableError } from './redis.constants.js';
+import { clientIp } from './request-meta.js';
+import { isLoginRateLimited, RedisSessionStore } from './redis-session.store.js';
+import type { StoredSession } from './session-store.js';
+import { toJsonValue } from '../common/audit-writer.js';
 
 const DUMMY_PASSWORD_MATERIAL = 'sgr-dummy-verify-material-not-a-user-password';
 

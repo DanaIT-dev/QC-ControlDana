@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { loadConfig } from '@sgr-registry/config';
-import type Redis from 'ioredis';
+import type { Redis } from 'ioredis';
 import {
   REDIS_CLIENT,
   RedisUnavailableError,
@@ -8,8 +8,8 @@ import {
   loginFailuresIpKey,
   sessionKey,
   userSessionsKey,
-} from './redis.constants';
-import type { LoginRateLimitState, SessionStore, StoredSession } from './session-store';
+} from './redis.constants.js';
+import type { LoginRateLimitState, SessionStore, StoredSession } from './session-store.js';
 
 @Injectable()
 export class RedisSessionStore implements SessionStore {

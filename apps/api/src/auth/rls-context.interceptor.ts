@@ -8,9 +8,9 @@ import {
 import { Reflector } from '@nestjs/core';
 import type { FastifyRequest } from 'fastify';
 import { from, lastValueFrom, type Observable } from 'rxjs';
-import type { AuthenticatedUser } from './authenticated-user';
-import { PrismaService } from './prisma.tokens';
-import { SKIP_RLS_TRANSACTION } from './skip-rls-transaction';
+import type { AuthenticatedUser } from './authenticated-user.js';
+import { PrismaService } from './prisma.tokens.js';
+import { SKIP_RLS_TRANSACTION } from './skip-rls-transaction.js';
 
 @Injectable()
 export class RlsContextInterceptor implements NestInterceptor {

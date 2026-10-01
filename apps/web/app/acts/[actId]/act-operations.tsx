@@ -167,8 +167,54 @@ export function ActOperations({
         user={user}
         onSave={(body) => run(`/api/defects/${item.id}/deadlines`, 'PATCH', body)}
       />
+      {hasCapability(user.role, 'SUBMIT_DEFECT_FOR_INSPECTION') &&
+      item.status === 'IN_PROGRESS' &&
+      item.liableOrganizations.length > 0 &&
+      act.status !== 'NEW' ? (
+        <ReasonAction
+          label="Передать на проверку"
+          title="Передать дефект на проверку"
+          description="Опишите выполненную работу. Подтверждающие файлы можно приложить в блоке файлов дефекта."
+          fieldLabel="Комментарий о выполненной работе"
+          confirmLabel="Передать"
+          onConfirm={(comment) =>
+            void run(`/api/defects/${item.id}/submit-for-inspection`, 'POST', {
+              expectedVersion: item.version,
+              comment,
+            })
+          }
+        />
+      ) : null}
+      {hasCapability(user.role, 'ACCEPT_DEFECT_REPAIR') && item.status === 'PENDING_INSPECTION' ? (
+        <Button
+          type="button"
+          onClick={() =>
+            void run(`/api/defects/${item.id}/accept-repair`, 'POST', {
+              expectedVersion: item.version,
+            })
+          }
+        >
+          Принять устранение
+        </Button>
+      ) : null}
+      {hasCapability(user.role, 'REJECT_DEFECT_REPAIR') && item.status === 'PENDING_INSPECTION' ? (
+        <ReasonAction
+          label="Вернуть на доработку"
+          title="Вернуть устранение на доработку"
+          description="Укажите, что нужно исправить."
+          fieldLabel="Причина возврата"
+          confirmLabel="Вернуть"
+          onConfirm={(reason) =>
+            void run(`/api/defects/${item.id}/reject-repair`, 'POST', {
+              expectedVersion: item.version,
+              reason,
+            })
+          }
+        />
+      ) : null}
       {hasCapability(user.role, 'COMPLETE_DEFECT') &&
       item.status === 'IN_PROGRESS' &&
+      item.liableOrganizations.length === 0 &&
       act.status !== 'NEW' ? (
         <Button
           type="button"
@@ -831,6 +877,59 @@ function ProposalEditor({
           setValidationError(null);
         }}
       />
+    </>
+  );
+}
+
+function ReasonAction({
+  label,
+  title,
+  description,
+  fieldLabel,
+  confirmLabel,
+  onConfirm,
+}: {
+  label: string;
+  title: string;
+  description: string;
+  fieldLabel: string;
+  confirmLabel: string;
+  onConfirm: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState('');
+  return (
+    <>
+      <Button type="button" variant="outline" onClick={() => setOpen(true)}>
+        {label}
+      </Button>
+      <AlertDialog open={open} onOpenChange={setOpen}>
+        <AlertDialogContent className="max-w-[calc(100vw-2rem)]">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{title}</AlertDialogTitle>
+            <AlertDialogDescription>{description}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <Input
+            value={value}
+            onChange={(event) => setValue(event.target.value)}
+            placeholder={fieldLabel}
+            aria-label={fieldLabel}
+          />
+          <AlertDialogFooter className="flex-col gap-2 sm:flex-row">
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!value.trim()) {
+                  return;
+                }
+                onConfirm(value.trim());
+              }}
+            >
+              {confirmLabel}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

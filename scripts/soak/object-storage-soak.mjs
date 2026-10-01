@@ -116,6 +116,7 @@ export function parseArgs(argv) {
     restartContainer: '',
     volume: '',
     container: '',
+    intervalMs: 0,
     ...defaultBudget,
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -143,6 +144,7 @@ export function parseArgs(argv) {
     else if (arg === '--min-free-disk-bytes') values.minFreeDiskBytes = Number(take());
     else if (arg === '--retention-batch-size') values.retentionBatchSize = Number(take());
     else if (arg === '--emergency-stop-percent') values.emergencyStopPercent = Number(take());
+    else if (arg === '--interval-ms') values.intervalMs = Number(take());
   }
   if (!Number.isFinite(values.durationSeconds) || values.durationSeconds < 1) {
     throw new Error('duration must be a positive number of seconds');
@@ -285,6 +287,7 @@ export async function runSoak(options, env = process.env, hooks = {}) {
     containerRestarts: 0,
     healthFailures: 0,
     failureNames: {},
+    failureSamples: [],
     backupRestoreMismatches: 0,
     maxRetainedBytes: options.maxRetainedBytes,
     maxLiveObjects: options.maxLiveObjects,
@@ -363,9 +366,18 @@ export async function runSoak(options, env = process.env, hooks = {}) {
       metrics.latenciesMs.push(Date.now() - began);
       return result;
     } catch (error) {
-      metrics.operationsFailed += 1;
-      const name = error?.name || 'Error';
-      metrics.failureNames[name] = (metrics.failureNames[name] ?? 0) + 1;
+      if (!paused) {
+        metrics.operationsFailed += 1;
+        const name = error?.name || 'Error';
+        metrics.failureNames[name] = (metrics.failureNames[name] ?? 0) + 1;
+        if (metrics.failureSamples.length < 8) {
+          metrics.failureSamples.push({
+            name,
+            code: error?.Code || error?.code || error?.$metadata?.httpStatusCode || '',
+            message: String(error?.message || error || '').slice(0, 180),
+          });
+        }
+      }
       throw error;
     }
   }
@@ -380,7 +392,8 @@ export async function runSoak(options, env = process.env, hooks = {}) {
     const key = `${prefix}${sequence.toString(16)}`;
     const payload = Buffer.alloc(size, sequence % 251);
     const digest = createHash('sha256').update(payload).digest('hex');
-    if (size >= options.multipartThreshold && random() < 0.15) {
+    const minimumPartBytes = 5 * 1024 * 1024;
+    if (size >= minimumPartBytes && size >= options.multipartThreshold && random() < 0.15) {
       incompleteMultipart += 1;
       currentBudget();
       const created = await timed(() =>
@@ -398,7 +411,7 @@ export async function runSoak(options, env = process.env, hooks = {}) {
       incompleteMultipart = Math.max(0, incompleteMultipart - 1);
       return;
     }
-    if (size >= options.multipartThreshold) {
+    if (size >= minimumPartBytes && size >= options.multipartThreshold) {
       await timed(() =>
         new Upload({
           client,
@@ -408,7 +421,7 @@ export async function runSoak(options, env = process.env, hooks = {}) {
             Body: payload,
             ContentType: 'application/octet-stream',
           },
-          partSize: options.multipartThreshold,
+          partSize: Math.max(options.multipartThreshold, minimumPartBytes),
         }).done(),
       );
     } else {
@@ -488,6 +501,9 @@ export async function runSoak(options, env = process.env, hooks = {}) {
         await oneOperation(current);
       } catch {
         if (!paused) metrics.unexplainedPermanentFailures += 1;
+      }
+      if (options.intervalMs > 0) {
+        await new Promise((resolveDelay) => setTimeout(resolveDelay, options.intervalMs));
       }
     }
   }

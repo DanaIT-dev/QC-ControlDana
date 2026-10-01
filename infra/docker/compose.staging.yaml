@@ -234,24 +234,21 @@ services:
           memory: 512M
 
   object-storage:
-    image: rustfs/rustfs:1.0.0@sha256:8cc9801755448b71a786705ce76692c77e14936cccd87cf2fc31842e58f4d1ff
+    image: chrislusf/seaweedfs:4.48@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d
     <<: *hardening
-    cap_drop:
-      - ALL
+    entrypoint: ['/bin/sh', '/opt/sgr/seaweed-entrypoint.sh']
     pids_limit: 512
     environment:
-      RUSTFS_ACCESS_KEY_FILE: /run/secrets/object_storage_access_key
-      RUSTFS_SECRET_KEY_FILE: /run/secrets/object_storage_secret_key
-      RUSTFS_VOLUMES: /data
-      RUSTFS_ADDRESS: 0.0.0.0:9000
-      RUSTFS_CONSOLE_ENABLE: 'false'
+      S3_ACCESS_KEY_FILE: /run/secrets/object_storage_access_key
+      S3_SECRET_KEY_FILE: /run/secrets/object_storage_secret_key
     secrets:
       - object_storage_access_key
       - object_storage_secret_key
     volumes:
-      - sgr_staging_object_storage:/data
+      - sgr_staging_seaweedfs:/data
+      - ./seaweed/entrypoint.sh:/opt/sgr/seaweed-entrypoint.sh:ro
     healthcheck:
-      test: ['CMD-SHELL', 'curl -fsS http://127.0.0.1:9000/health || exit 1']
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:9333/cluster/status']
       interval: 10s
       timeout: 5s
       retries: 10
@@ -262,6 +259,7 @@ services:
         limits:
           cpus: '1.00'
           memory: 1G
+          pids: 512
 
   clamav:
     image: clamav/clamav:1.5.4@sha256:ebec5bc138401b36ae987caa1a3fa3c3b2a21ed3d51f0bfa5852825e663e67b0
@@ -283,6 +281,7 @@ services:
         limits:
           cpus: '1.00'
           memory: 2G
+          pids: 256
 
 secrets:
   postgres_password:
@@ -303,8 +302,10 @@ networks:
 volumes:
   sgr_staging_postgres:
   sgr_staging_redis:
+  sgr_staging_seaweedfs:
+  # Former RustFS volume. Not mounted. Do not delete it.
   sgr_staging_object_storage:
-  # Legacy MinIO volume. Not mounted. Do not delete it in this change.
+  # Legacy MinIO volume. Not mounted. Do not delete it.
   sgr_staging_minio:
   sgr_staging_clamav:
   sgr_staging_caddy_data:

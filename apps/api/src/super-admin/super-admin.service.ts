@@ -17,14 +17,14 @@ import {
   StaleWriteError,
 } from '@sgr-registry/domain';
 import { createPendingUserViaDefiner, type Prisma } from '@sgr-registry/database';
-import type { AuthenticatedUser } from '../auth/authenticated-user';
-import { generateTemporaryPassword } from '../auth/crypto';
-import { Argon2PasswordHasher } from '../auth/password-hasher';
-import { PrismaService } from '../auth/prisma.tokens';
-import { RedisSessionStore } from '../auth/redis-session.store';
-import { toJsonValue, writeAuditLog } from '../common/audit-writer';
-import { isPrismaUniqueConflict, parseCommandBody } from '../common/command-body';
-import { actorContext } from '../common/request-context';
+import type { AuthenticatedUser } from '../auth/authenticated-user.js';
+import { generateTemporaryPassword } from '../auth/crypto.js';
+import { Argon2PasswordHasher } from '../auth/password-hasher.js';
+import { PrismaService } from '../auth/prisma.tokens.js';
+import { RedisSessionStore } from '../auth/redis-session.store.js';
+import { toJsonValue, writeAuditLog } from '../common/audit-writer.js';
+import { isPrismaUniqueConflict, parseCommandBody } from '../common/command-body.js';
+import { actorContext } from '../common/request-context.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 

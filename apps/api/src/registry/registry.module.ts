@@ -1,13 +1,13 @@
 import { Module } from '@nestjs/common';
-import { AuthModule } from '../auth/auth.module';
-import { PrismaModule } from '../auth/prisma.module';
-import { OperationsModule } from '../operations/operations.module';
-import { ActsController } from './acts.controller';
-import { RegistryController } from './registry.controller';
-import { RegistryService } from './registry.service';
-import { ActChatService } from './act-chat.service';
-import { ActChatRateLimitGuard } from './act-chat-rate-limit.guard';
-import { ActStartRateLimitGuard } from './act-start-rate-limit.guard';
+import { AuthModule } from '../auth/auth.module.js';
+import { PrismaModule } from '../auth/prisma.module.js';
+import { OperationsModule } from '../operations/operations.module.js';
+import { ActsController } from './acts.controller.js';
+import { RegistryController } from './registry.controller.js';
+import { RegistryService } from './registry.service.js';
+import { ActChatService } from './act-chat.service.js';
+import { ActChatRateLimitGuard } from './act-chat-rate-limit.guard.js';
+import { ActStartRateLimitGuard } from './act-start-rate-limit.guard.js';
 
 @Module({
   imports: [PrismaModule, AuthModule, OperationsModule],

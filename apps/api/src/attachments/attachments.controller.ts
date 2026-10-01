@@ -12,16 +12,16 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { AuthenticationGuard } from '../auth/authentication.guard';
-import { BrowserOriginGuard } from '../auth/browser-origin.guard';
-import { CsrfGuard } from '../auth/csrf.guard';
-import { CurrentUser } from '../auth/current-user.decorator';
-import type { AuthenticatedUser } from '../auth/authenticated-user';
-import { CapabilityGuard, RequireCapability } from '../common/capability.guard';
+import { AuthenticationGuard } from '../auth/authentication.guard.js';
+import { BrowserOriginGuard } from '../auth/browser-origin.guard.js';
+import { CsrfGuard } from '../auth/csrf.guard.js';
+import { CurrentUser } from '../auth/current-user.decorator.js';
+import type { AuthenticatedUser } from '../auth/authenticated-user.js';
+import { CapabilityGuard, RequireCapability } from '../common/capability.guard.js';
 import { buildContentDisposition, ValidationError } from '@sgr-registry/domain';
 import '@fastify/multipart';
-import { SkipRlsTransaction } from '../auth/skip-rls-transaction';
-import { AttachmentsService } from './attachments.service';
+import { SkipRlsTransaction } from '../auth/skip-rls-transaction.js';
+import { AttachmentsService } from './attachments.service.js';
 
 @Controller()
 @UseGuards(AuthenticationGuard, CapabilityGuard)

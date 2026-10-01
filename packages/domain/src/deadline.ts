@@ -75,7 +75,7 @@ export function effectiveDeadlineOf(input: {
 }
 
 export function deadlineStateOf(input: {
-  status: 'IN_PROGRESS' | 'COMPLETED';
+  status: 'IN_PROGRESS' | 'PENDING_INSPECTION' | 'COMPLETED';
   claimDeadline: Date | null;
   plannedDeadline: Date | null;
   deadlineWarningDays: number;

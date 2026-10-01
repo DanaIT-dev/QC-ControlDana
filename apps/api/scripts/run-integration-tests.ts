@@ -6,7 +6,7 @@ import { applyTestDatabaseEnv } from '../../../packages/database/src/test-env';
 import { assertSafeTestDatabaseUrl } from '../../../packages/database/src/test-database';
 import { assertSafeTestBucket } from '../../../packages/database/src/test-bucket';
 
-const repoRoot = resolve(__dirname, '../../..');
+const repoRoot = resolve(import.meta.dirname, '../../..');
 const envFile = existsSync(resolve(repoRoot, '.env'))
   ? resolve(repoRoot, '.env')
   : resolve(repoRoot, '.env.example');
@@ -54,7 +54,7 @@ const child = spawn(
   'pnpm',
   ['exec', 'vitest', 'run', '--config', 'vitest.integration.config.mts', ...extraArgs],
   {
-    cwd: resolve(__dirname, '..'),
+    cwd: resolve(import.meta.dirname, '..'),
     stdio: 'inherit',
     env: process.env,
   },

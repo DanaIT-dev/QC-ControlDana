@@ -18,10 +18,10 @@ import {
 } from '@sgr-registry/jobs';
 import type { Queue } from 'bullmq';
 import type { FastifyRequest } from 'fastify';
-import Redis from 'ioredis';
-import type { AuthenticatedUser } from '../auth/authenticated-user';
-import { PrismaService } from '../auth/prisma.tokens';
-import { REDIS_CLIENT } from '../auth/redis.constants';
+import { Redis } from 'ioredis';
+import type { AuthenticatedUser } from '../auth/authenticated-user.js';
+import { PrismaService } from '../auth/prisma.tokens.js';
+import { REDIS_CLIENT } from '../auth/redis.constants.js';
 
 const SECRET_PATTERN =
   /password|passwordHash|token|cookie|csrf|DATABASE_URL|REDIS_URL|redis:\/\/|postgres(ql)?:\/\/|minio|secret|acl|stack|at \s+\S+:\d+/i;

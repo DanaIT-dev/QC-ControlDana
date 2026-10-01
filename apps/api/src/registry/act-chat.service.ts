@@ -31,12 +31,12 @@ import {
   BUSINESS_STAFF_ROLES,
 } from '@sgr-registry/domain';
 import type { FastifyRequest } from 'fastify';
-import type { AuthenticatedUser } from '../auth/authenticated-user';
-import { PrismaService } from '../auth/prisma.tokens';
-import { toJsonValue, writeAuditLog } from '../common/audit-writer';
-import { parseCommandBody } from '../common/command-body';
-import { actorContext } from '../common/request-context';
-import { RegistryAccessScope } from './registry-access-scope';
+import type { AuthenticatedUser } from '../auth/authenticated-user.js';
+import { PrismaService } from '../auth/prisma.tokens.js';
+import { toJsonValue, writeAuditLog } from '../common/audit-writer.js';
+import { parseCommandBody } from '../common/command-body.js';
+import { actorContext } from '../common/request-context.js';
+import { resolveRegistryAccessScope } from './registry-access-scope.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -336,7 +336,7 @@ export class ActChatService {
       throw new NotFoundException('Запись не найдена');
     }
     const act = await this.prisma.client.act.findFirst({
-      where: new RegistryAccessScope(user).actVisibleWhere(actId),
+      where: (await resolveRegistryAccessScope(this.prisma.client, user)).actVisibleWhere(actId),
       select: { id: true, objectId: true, officialNumber: true, sourceActNumberRaw: true },
     });
     if (!act) {

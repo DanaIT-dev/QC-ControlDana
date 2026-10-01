@@ -5,6 +5,7 @@ import {
   assignableRolesFor,
   canEditUserProfile,
   canMutateManagedUser,
+  hasCapability,
   isOversightRole,
   parsePersonNameForForm,
   parsePersonNameInput,
@@ -415,7 +416,17 @@ function UserActions({
   const canChangeRole = canMutateManagedUser(actor, user) && assignableRoles.length > 0;
   const canArchiveRestore = canManage && canMutateManagedUser(actor, user);
   const canResetPassword = canManage && canMutateManagedUser(actor, user);
-  if (!canEdit && !canChangeRole && !canArchiveRestore && !canResetPassword) {
+  const canViewMemberships =
+    hasCapability(actor.role, 'MANAGE_USERS') ||
+    hasCapability(actor.role, 'VIEW_ALL_BUSINESS_DATA');
+  const [membershipOpen, setMembershipOpen] = useState(false);
+  if (
+    !canEdit &&
+    !canChangeRole &&
+    !canArchiveRestore &&
+    !canResetPassword &&
+    !canViewMemberships
+  ) {
     return null;
   }
   return (
@@ -453,6 +464,11 @@ function UserActions({
               }
             >
               Восстановить
+            </DropdownMenuItem>
+          ) : null}
+          {canViewMemberships ? (
+            <DropdownMenuItem onSelect={() => setMembershipOpen(true)}>
+              Организации
             </DropdownMenuItem>
           ) : null}
           {canResetPassword ? (
@@ -502,7 +518,134 @@ function UserActions({
           }}
         />
       ) : null}
+      {canViewMemberships ? (
+        <MembershipDialog
+          userId={user.id}
+          csrfToken={csrfToken}
+          canAssign={hasCapability(actor.role, 'MANAGE_USERS')}
+          open={membershipOpen}
+          onOpenChange={setMembershipOpen}
+        />
+      ) : null}
     </>
+  );
+}
+
+function MembershipDialog({
+  userId,
+  csrfToken,
+  canAssign,
+  open,
+  onOpenChange,
+}: {
+  userId: string;
+  csrfToken: string;
+  canAssign: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [organizationId, setOrganizationId] = useState('');
+  const memberships = useQuery({
+    queryKey: ['user-organization-memberships', userId],
+    enabled: open,
+    queryFn: async () => {
+      const response = await fetch(`/api/users/${userId}/organization-memberships`, {
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        throw new Error('memberships');
+      }
+      return (await response.json()) as {
+        canAssign: boolean;
+        memberships: Array<{
+          id: string;
+          organizationName: string;
+          active: boolean;
+        }>;
+        organizations: Array<{ id: string; name: string }>;
+      };
+    },
+  });
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Организации пользователя</DialogTitle>
+          <DialogDescription>
+            Подрядчик видит только дефекты организаций с активной связью. Совпадение имени или почты
+            доступ не даёт.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-3">
+          {(memberships.data?.memberships ?? []).map((item) => (
+            <div key={item.id} className="flex flex-wrap items-center justify-between gap-2">
+              <span>
+                {item.organizationName}
+                {item.active ? '' : ' (отозвана)'}
+              </span>
+              {canAssign && item.active ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() =>
+                    void commandFetch(
+                      `/api/users/${userId}/organization-memberships/${item.id}/revoke`,
+                      { method: 'POST', csrfToken },
+                    ).then(() => memberships.refetch())
+                  }
+                >
+                  Отозвать
+                </Button>
+              ) : null}
+            </div>
+          ))}
+          {memberships.data && memberships.data.memberships.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Активных связей нет. Администратор назначает организацию здесь.
+            </p>
+          ) : null}
+          {canAssign ? (
+            <div className="grid gap-2">
+              <Label htmlFor="membership-organization">Организация</Label>
+              <Select value={organizationId} onValueChange={setOrganizationId}>
+                <SelectTrigger id="membership-organization">
+                  <SelectValue placeholder="Выберите организацию" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(memberships.data?.organizations ?? []).map((organization) => (
+                    <SelectItem key={organization.id} value={organization.id}>
+                      {organization.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Просмотр без права изменения.</p>
+          )}
+        </div>
+        <DialogFooter className="flex-col gap-2 sm:flex-row">
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            Закрыть
+          </Button>
+          {canAssign ? (
+            <Button
+              type="button"
+              disabled={!organizationId}
+              onClick={() =>
+                void commandFetch(`/api/users/${userId}/organization-memberships`, {
+                  method: 'POST',
+                  csrfToken,
+                  body: { organizationId },
+                }).then(() => memberships.refetch())
+              }
+            >
+              Назначить
+            </Button>
+          ) : null}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

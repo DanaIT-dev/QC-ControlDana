@@ -8,6 +8,7 @@ import {
 import {
   createUserRequestSchema,
   historyQuerySchema,
+  assignOrganizationMembershipRequestSchema,
   patchUserProfileRequestSchema,
   patchUserRequestSchema,
   usersListQuerySchema,
@@ -43,20 +44,20 @@ import {
   type PrismaClient,
 } from '@sgr-registry/database';
 import type { FastifyRequest } from 'fastify';
-import type { AuthenticatedUser } from '../auth/authenticated-user';
-import { generateTemporaryPassword } from '../auth/crypto';
-import { Argon2PasswordHasher } from '../auth/password-hasher';
-import { AUTH_PRISMA_CLIENT, PrismaService } from '../auth/prisma.tokens';
-import { RedisSessionStore } from '../auth/redis-session.store';
-import { loadActorNamePartsByUserId } from '../common/actor-name-parts';
-import { toJsonValue, writeAuditLog } from '../common/audit-writer';
-import { isPrismaUniqueConflict, parseCommandBody } from '../common/command-body';
-import { actorContext } from '../common/request-context';
+import type { AuthenticatedUser } from '../auth/authenticated-user.js';
+import { generateTemporaryPassword } from '../auth/crypto.js';
+import { Argon2PasswordHasher } from '../auth/password-hasher.js';
+import { AUTH_PRISMA_CLIENT, PrismaService } from '../auth/prisma.tokens.js';
+import { RedisSessionStore } from '../auth/redis-session.store.js';
+import { loadActorNamePartsByUserId } from '../common/actor-name-parts.js';
+import { toJsonValue, writeAuditLog } from '../common/audit-writer.js';
+import { isPrismaUniqueConflict, parseCommandBody } from '../common/command-body.js';
+import { actorContext } from '../common/request-context.js';
 import {
   decodeHistoryCursor,
   encodeHistoryCursor,
   historyWhereAfter,
-} from '../common/history-cursor';
+} from '../common/history-cursor.js';
 
 const USER_SELECT = {
   id: true,
@@ -653,6 +654,148 @@ export class UsersService {
       ),
       nextCursor: hasMore ? encodeHistoryCursor(page[page.length - 1]!) : null,
     };
+  }
+  async listOrganizationMemberships(actor: AuthenticatedUser, userId: string) {
+    assertUserId(userId);
+    const target = await this.prisma.client.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    });
+    if (!target) {
+      throw new NotFoundException('Запись не найдена');
+    }
+    const memberships = await this.prisma.client.userOrganizationMembership.findMany({
+      where: { userId },
+      orderBy: [{ revokedAt: 'asc' }, { assignedAt: 'desc' }],
+      select: {
+        id: true,
+        organizationId: true,
+        assignedAt: true,
+        revokedAt: true,
+        organization: { select: { officialName: true } },
+      },
+    });
+    const canAssign = hasCapability(actor.role, 'MANAGE_USERS');
+    const organizations = canAssign
+      ? await this.prisma.client.organization.findMany({
+          where: { active: true, roles: { some: { role: 'LIABLE_CONTRACTOR' } } },
+          select: { id: true, officialName: true },
+          orderBy: { officialName: 'asc' },
+        })
+      : [];
+    return {
+      canAssign,
+      memberships: memberships.map((row) => ({
+        id: row.id,
+        organizationId: row.organizationId,
+        organizationName: row.organization.officialName,
+        assignedAt: row.assignedAt.toISOString(),
+        revokedAt: row.revokedAt?.toISOString() ?? null,
+        active: row.revokedAt == null,
+      })),
+      organizations: organizations.map((row) => ({ id: row.id, name: row.officialName })),
+    };
+  }
+
+  async assignOrganizationMembership(
+    actor: AuthenticatedUser,
+    userId: string,
+    body: unknown,
+    request: FastifyRequest,
+  ) {
+    if (!hasCapability(actor.role, 'MANAGE_USERS')) {
+      throw new NotFoundException('Запись не найдена');
+    }
+    const input = parseCommandBody(assignOrganizationMembershipRequestSchema, body);
+    assertUserId(userId);
+    const ctx = actorContext(actor, request);
+    return this.prisma.client.$transaction(async (tx) => {
+      const target = await tx.user.findUnique({ where: { id: userId }, select: { id: true } });
+      if (!target) {
+        throw new NotFoundException('Запись не найдена');
+      }
+      const organization = await tx.organization.findUnique({
+        where: { id: input.organizationId },
+        select: { id: true, active: true },
+      });
+      if (!organization?.active) {
+        throw new ValidationError('organizationId', 'Можно назначить только активную организацию');
+      }
+      const existing = await tx.userOrganizationMembership.findFirst({
+        where: { userId, organizationId: input.organizationId, revokedAt: null },
+      });
+      if (existing) {
+        return { id: existing.id, active: true };
+      }
+      const created = await tx.userOrganizationMembership.create({
+        data: {
+          userId,
+          organizationId: input.organizationId,
+          assignedByUserId: actor.id,
+        },
+      });
+      await writeAuditLog(tx, {
+        ...ctx,
+        action: 'USER_ORGANIZATION_MEMBERSHIP_GRANTED',
+        entityType: 'USER',
+        entityId: userId,
+        newValue: toJsonValue({
+          membershipId: created.id,
+          organizationId: input.organizationId,
+        }),
+      });
+      return { id: created.id, active: true };
+    });
+  }
+
+  async revokeOrganizationMembership(
+    actor: AuthenticatedUser,
+    userId: string,
+    membershipId: string,
+    request: FastifyRequest,
+  ) {
+    if (!hasCapability(actor.role, 'MANAGE_USERS')) {
+      throw new NotFoundException('Запись не найдена');
+    }
+    assertUserId(userId);
+    assertUserId(membershipId);
+    const ctx = actorContext(actor, request);
+    return this.prisma.client.$transaction(async (tx) => {
+      const current = await tx.userOrganizationMembership.findFirst({
+        where: { id: membershipId, userId },
+      });
+      if (!current) {
+        throw new NotFoundException('Запись не найдена');
+      }
+      if (current.revokedAt) {
+        return { id: current.id, active: false };
+      }
+      await tx.userOrganizationMembership.update({
+        where: { id: current.id },
+        data: {
+          revokedAt: new Date(),
+          revokedByUserId: actor.id,
+          version: { increment: 1 },
+        },
+      });
+      await writeAuditLog(tx, {
+        ...ctx,
+        action: 'USER_ORGANIZATION_MEMBERSHIP_REVOKED',
+        entityType: 'USER',
+        entityId: userId,
+        oldValue: toJsonValue({
+          membershipId: current.id,
+          organizationId: current.organizationId,
+          active: true,
+        }),
+        newValue: toJsonValue({
+          membershipId: current.id,
+          organizationId: current.organizationId,
+          active: false,
+        }),
+      });
+      return { id: current.id, active: false };
+    });
   }
 }
 

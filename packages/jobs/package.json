@@ -2,6 +2,7 @@
   "name": "@sgr-registry/jobs",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -15,8 +16,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@nestjs/bullmq": "^11.0.5",
-    "@nestjs/common": "^11.2.3",
+    "@nestjs/bullmq": "^12.0.0",
+    "@nestjs/common": "^12.1.2",
     "@sgr-registry/config": "workspace:*",
     "@sgr-registry/contracts": "workspace:*",
     "@sgr-registry/database": "workspace:*",

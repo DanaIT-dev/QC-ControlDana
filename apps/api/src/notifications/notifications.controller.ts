@@ -12,14 +12,14 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { FastifyRequest } from 'fastify';
-import type { AuthenticatedUser } from '../auth/authenticated-user';
-import { AuthenticationGuard } from '../auth/authentication.guard';
-import { BrowserOriginGuard } from '../auth/browser-origin.guard';
-import { CsrfGuard } from '../auth/csrf.guard';
-import { CurrentUser } from '../auth/current-user.decorator';
-import { CapabilityGuard, RequireCapability } from '../common/capability.guard';
-import { NotificationMutationRateLimitGuard } from './notification-rate-limit.guard';
-import { NotificationsService } from './notifications.service';
+import type { AuthenticatedUser } from '../auth/authenticated-user.js';
+import { AuthenticationGuard } from '../auth/authentication.guard.js';
+import { BrowserOriginGuard } from '../auth/browser-origin.guard.js';
+import { CsrfGuard } from '../auth/csrf.guard.js';
+import { CurrentUser } from '../auth/current-user.decorator.js';
+import { CapabilityGuard, RequireCapability } from '../common/capability.guard.js';
+import { NotificationMutationRateLimitGuard } from './notification-rate-limit.guard.js';
+import { NotificationsService } from './notifications.service.js';
 
 @Controller('notifications')
 @UseGuards(AuthenticationGuard, CapabilityGuard)

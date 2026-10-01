@@ -414,6 +414,30 @@ async function seed(): Promise<void> {
           workTypeCodes: ['FACADE'],
         });
 
+        const demoContractor = seededUsers.find(
+          (user) => user.email === 'igor.panteleev@example.sgr.local',
+        );
+        if (!demoContractor) {
+          throw new Error('Demo contractor was not seeded');
+        }
+        // Explicit e2e fixture. The development contractor is not linked by name or email.
+        const existingMembership = await tx.userOrganizationMembership.findFirst({
+          where: {
+            userId: demoContractor.id,
+            organizationId: liableHeating.id,
+            revokedAt: null,
+          },
+        });
+        if (!existingMembership) {
+          await tx.userOrganizationMembership.create({
+            data: {
+              userId: demoContractor.id,
+              organizationId: liableHeating.id,
+              assignedByUserId: demoContractor.id,
+            },
+          });
+        }
+
         await seedDemoRegistry(tx, {
           engineerNorth,
           engineerRiver,

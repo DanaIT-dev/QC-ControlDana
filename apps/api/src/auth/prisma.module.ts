@@ -2,8 +2,8 @@ import { Global, Module } from '@nestjs/common';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { loadConfig } from '@sgr-registry/config';
 import { getPrismaClient } from '@sgr-registry/database';
-import { AUTH_PRISMA_CLIENT, PrismaService, PRISMA_CLIENT } from './prisma.tokens';
-import { RlsContextInterceptor } from './rls-context.interceptor';
+import { AUTH_PRISMA_CLIENT, PrismaService, PRISMA_CLIENT } from './prisma.tokens.js';
+import { RlsContextInterceptor } from './rls-context.interceptor.js';
 
 @Global()
 @Module({

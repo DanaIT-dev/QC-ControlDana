@@ -25,9 +25,14 @@ import {
   canViewSystemSettings,
   canManageSystemSettings,
   cancelAct,
+  acceptDefectRepair,
+  assertDirectCompletionAllowed,
   completeDefectItem,
   computeActStatus,
   createDefectItem,
+  InvalidTransitionError,
+  rejectDefectRepair,
+  submitDefectForInspection,
   formatOfficialActNumber,
   hasCapability,
   isOversightRole,
@@ -90,6 +95,27 @@ describe('DefectItem lifecycle', () => {
     expect(completed.status).toBe('COMPLETED');
     expect(completed.readyAt).toEqual(now);
   });
+
+  it('moves a contractor defect through inspection and back to work', () => {
+    const item = createDefectItem({ id: 'di-1', actId: 'act-1' });
+    expect(() => submitDefectForInspection(item, { comment: '   ' })).toThrow(
+      InvalidTransitionError,
+    );
+    const submitted = submitDefectForInspection(item, { comment: 'Шов заделан' });
+    expect(submitted.status).toBe('PENDING_INSPECTION');
+    expect(submitDefectForInspection(submitted, { comment: 'ещё раз' }).status).toBe(
+      'PENDING_INSPECTION',
+    );
+    expect(() => acceptDefectRepair(item)).toThrow(InvalidTransitionError);
+    const returned = rejectDefectRepair(submitted, { reason: 'Осталась щель' });
+    expect(returned.status).toBe('IN_PROGRESS');
+    expect(() => rejectDefectRepair(submitted, { reason: ' ' })).toThrow(InvalidTransitionError);
+    const again = submitDefectForInspection(returned, { comment: 'Щель закрыта' });
+    expect(acceptDefectRepair(again).status).toBe('COMPLETED');
+    expect(acceptDefectRepair({ ...again, status: 'COMPLETED' }).status).toBe('COMPLETED');
+    expect(() => assertDirectCompletionAllowed(true)).toThrow(InvalidTransitionError);
+    expect(() => assertDirectCompletionAllowed(false)).not.toThrow();
+  });
 });
 
 describe('Act status computation', () => {
@@ -101,6 +127,12 @@ describe('Act status computation', () => {
     );
     expect(computeActStatus([{ status: 'COMPLETED', active: true }], { startedAt: null })).toBe(
       'NEW',
+    );
+  });
+
+  it('keeps Act IN_PROGRESS while a contractor defect waits for inspection', () => {
+    expect(computeActStatus([{ status: 'PENDING_INSPECTION', active: true }], started)).toBe(
+      'IN_PROGRESS',
     );
   });
 
@@ -372,6 +404,8 @@ describe('capabilities', () => {
       'EDIT_THIRD_PARTY_DEADLINE',
       'COMPLETE_DEFECT',
       'REOPEN_DEFECT',
+      'ACCEPT_DEFECT_REPAIR',
+      'REJECT_DEFECT_REPAIR',
       'MANAGE_PROPOSALS',
       'VIEW_PROPOSAL_A',
       'VIEW_HISTORY',
@@ -410,6 +444,8 @@ describe('capabilities', () => {
       'EDIT_THIRD_PARTY_DEADLINE',
       'COMPLETE_DEFECT',
       'REOPEN_DEFECT',
+      'ACCEPT_DEFECT_REPAIR',
+      'REJECT_DEFECT_REPAIR',
       'VIEW_PROPOSAL_A',
       'VIEW_ASSIGNED_HISTORY',
       'VIEW_ACT_CHAT',
@@ -423,6 +459,11 @@ describe('capabilities', () => {
       'CHANGE_OWN_PASSWORD',
       'VIEW_OWN_PROFILE',
     ]);
+    expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).toContain('VIEW_ORGANIZATION_ACTS');
+    expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).toContain('SUBMIT_DEFECT_FOR_INSPECTION');
+    expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('VIEW_ALL_ACTS');
+    expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('COMPLETE_DEFECT');
+    expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('ACCEPT_DEFECT_REPAIR');
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).toContain('EDIT_THIRD_PARTY_DEADLINE');
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('MANAGE_REFERENCE_DATA');
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('VIEW_REFERENCE_DATA');
@@ -574,7 +615,7 @@ describe('registry access and proposal shaping', () => {
   it('scopes responsible engineers to assigned objects and hides B/C', () => {
     expect(registryAccessMode('ADMIN')).toBe('all_uncancelled');
     expect(registryAccessMode('SGR_MANAGER')).toBe('all_uncancelled');
-    expect(registryAccessMode('CONTRACTOR_ENGINEER')).toBe('all_uncancelled');
+    expect(registryAccessMode('CONTRACTOR_ENGINEER')).toBe('organization_liable');
     expect(registryAccessMode('SUPER_ADMIN')).toBe('all');
     expect(registryAccessMode('RESPONSIBLE_ENGINEER')).toBe('object_assigned');
     expect(isObjectScopedRole('RESPONSIBLE_ENGINEER')).toBe(true);

@@ -280,6 +280,40 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
                   />
                   <Meta label="Дата готовности" value={formatTimestamp(item.readyAt)} />
                   <Meta
+                    label="Подрядная организация"
+                    value={
+                      item.liableOrganizations
+                        .map((organization) => organization.name)
+                        .join(', ') || '—'
+                    }
+                  />
+                  <Meta
+                    label="Передан на проверку"
+                    value={
+                      item.submittedForInspectionAt
+                        ? `${formatTimestamp(item.submittedForInspectionAt)}${item.submittedByName ? ` · ${item.submittedByName}` : ''}`
+                        : '—'
+                    }
+                  />
+                  <Meta label="Комментарий подрядчика" value={item.submissionComment ?? '—'} />
+                  <Meta
+                    label="Последнее отклонение"
+                    value={
+                      item.rejectedAt
+                        ? `${formatTimestamp(item.rejectedAt)}${item.rejectedByName ? ` · ${item.rejectedByName}` : ''}`
+                        : '—'
+                    }
+                  />
+                  <Meta label="Причина отклонения" value={item.rejectionReason ?? '—'} />
+                  <Meta
+                    label="Устранение принято"
+                    value={
+                      item.acceptedAt
+                        ? `${formatTimestamp(item.acceptedAt)}${item.acceptedByName ? ` · ${item.acceptedByName}` : ''}`
+                        : '—'
+                    }
+                  />
+                  <Meta
                     label="Предложение А"
                     value={<ProposalValue proposal={item.proposalA} layout="block" />}
                   />

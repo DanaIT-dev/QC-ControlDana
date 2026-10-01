@@ -8,7 +8,7 @@ import {
 import { isOversightRole } from '@sgr-registry/domain';
 import type { FastifyRequest } from 'fastify';
 import type { Observable } from 'rxjs';
-import type { AuthenticatedUser } from '../auth/authenticated-user';
+import type { AuthenticatedUser } from '../auth/authenticated-user.js';
 
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}';
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);

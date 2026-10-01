@@ -9,7 +9,6 @@ import {
   DEFAULT_NOTIFICATION_PAGE_SIZE,
   StaleWriteError,
   formatDailyEvaluationTime,
-  hasCapability,
   notificationTitle,
   parseDailyEvaluationTime,
   parseNotificationListQuery,
@@ -17,12 +16,12 @@ import {
   validateNotificationSettings,
 } from '@sgr-registry/domain';
 import type { FastifyRequest } from 'fastify';
-import type { AuthenticatedUser } from '../auth/authenticated-user';
-import { PrismaService } from '../auth/prisma.tokens';
-import { parseCommandBody } from '../common/command-body';
-import { actorContext } from '../common/request-context';
-import { toJsonValue, writeAuditLog } from '../common/audit-writer';
-import { RegistryAccessScope } from '../registry/registry-access-scope';
+import type { AuthenticatedUser } from '../auth/authenticated-user.js';
+import { PrismaService } from '../auth/prisma.tokens.js';
+import { parseCommandBody } from '../common/command-body.js';
+import { actorContext } from '../common/request-context.js';
+import { toJsonValue, writeAuditLog } from '../common/audit-writer.js';
+import { resolveRegistryAccessScope } from '../registry/registry-access-scope.js';
 
 @Injectable()
 export class NotificationsService {
@@ -40,7 +39,7 @@ export class NotificationsService {
     const page = parsed.page ?? 1;
     const pageSize = parsed.pageSize ?? DEFAULT_NOTIFICATION_PAGE_SIZE;
     const unreadOnly = parsed.filter === 'unread';
-    const scope = this.recipientWhere(user);
+    const scope = await this.recipientWhere(user);
     const where = {
       ...scope,
       ...(unreadOnly ? { readAt: null } : {}),
@@ -83,14 +82,14 @@ export class NotificationsService {
 
   async unreadCount(user: AuthenticatedUser): Promise<UnreadCountResponse> {
     const count = await this.prisma.notificationRecipient.count({
-      where: { ...this.recipientWhere(user), readAt: null },
+      where: { ...(await this.recipientWhere(user)), readAt: null },
     });
     return shapeUnreadCount(count);
   }
 
   async markRead(user: AuthenticatedUser, id: string): Promise<{ ok: true }> {
     const row = await this.prisma.notificationRecipient.findFirst({
-      where: { id, ...this.recipientWhere(user) },
+      where: { id, ...(await this.recipientWhere(user)) },
     });
     if (!row) {
       throw new NotFoundException('Запись не найдена');
@@ -113,7 +112,7 @@ export class NotificationsService {
 
   async readAll(user: AuthenticatedUser): Promise<{ ok: true; count: number }> {
     const result = await this.prisma.notificationRecipient.updateMany({
-      where: { ...this.recipientWhere(user), readAt: null },
+      where: { ...(await this.recipientWhere(user)), readAt: null },
       data: { readAt: new Date() },
     });
     if (result.count > 0) {
@@ -196,11 +195,8 @@ export class NotificationsService {
     return this.settings();
   }
 
-  private recipientWhere(user: AuthenticatedUser) {
-    if (hasCapability(user.role, 'VIEW_ALL_BUSINESS_DATA')) {
-      return { revokedAt: null };
-    }
-    const scope = new RegistryAccessScope(user);
+  private async recipientWhere(user: AuthenticatedUser) {
+    const scope = await resolveRegistryAccessScope(this.prisma, user);
     return {
       userId: user.id,
       revokedAt: null,
@@ -212,10 +208,7 @@ export class NotificationsService {
               { defectItem: scope.defectItemWhere() },
               {
                 defectItemId: null,
-                act: {
-                  status: { not: 'CANCELLED' as const },
-                  ...(scope.objectScoped ? { propertyObject: scope.assignedObjectWhere() } : {}),
-                },
+                act: scope.visibleActRelationWhere(),
               },
               {
                 type: 'ORGANIZATION_DETAILS_INCOMPLETE',

@@ -4,8 +4,8 @@ import { isScanTerminal, shouldFailScan } from '@sgr-registry/domain';
 import { notifyAttachmentScan, OutboxWriter, toJsonValue, writeAuditLog } from '@sgr-registry/jobs';
 import type { Job } from 'bullmq';
 import { Readable } from 'node:stream';
-import { ClamdClient } from './clamd.client';
-import { ObjectStore } from './object-store';
+import { ClamdClient } from './clamd.client.js';
+import { ObjectStore } from './object-store.js';
 
 export const ATTACHMENT_SCAN_JOB = 'attachment.scan';
 export const ATTACHMENT_RECOVERY_JOB = 'attachment.recover';
@@ -120,11 +120,16 @@ async function scanAttachment(
         finishScan(deps, attachment, {
           type: 'ATTACHMENT_SCAN_FAILED',
           action: 'ATTACHMENT_SCAN_FAILED',
-          data: { status: 'SCAN_FAILED', failureCode: 'SCANNER_UNAVAILABLE' },
+          data: {
+            status: 'SCAN_FAILED',
+            failureCode: 'SCANNER_UNAVAILABLE',
+            objectKey: null,
+          },
           audit: { status: 'SCAN_FAILED' },
         }),
       );
       await deps.outboxWriter.enqueue(failedIds);
+      await deps.store.deleteExact(attachment.objectKey);
       return;
     }
     await inWorkerTx(() =>

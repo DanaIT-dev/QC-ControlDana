@@ -10,6 +10,7 @@ import type { DeadlineState } from '@sgr-registry/contracts';
 
 export const DEFECT_ITEM_STATUS_LABELS: Record<DefectItemStatus, string> = {
   IN_PROGRESS: 'В работе',
+  PENDING_INSPECTION: 'На проверке',
   COMPLETED: 'Исполнено',
 };
 

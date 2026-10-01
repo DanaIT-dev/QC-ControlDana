@@ -9,7 +9,7 @@ const pins = JSON.parse(readFileSync(resolve(root, 'infra/docker/image-pins.json
 const image = pins.images['object-storage'];
 const digest = image?.platforms?.['linux/amd64'] ?? null;
 const report = {
-  provider: 'rustfs',
+  provider: image?.repository?.includes('seaweedfs') ? 'seaweedfs' : 'unknown',
   repository: image?.repository ?? null,
   version: image?.version ?? null,
   manifestList: image?.manifestList ?? null,

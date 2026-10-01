@@ -40,8 +40,8 @@ import {
   type SmtpErrorCode,
 } from '@sgr-registry/domain';
 import nodemailer from 'nodemailer';
-import Redis from 'ioredis';
-import { writeAuditLog, toJsonValue } from './audit-writer';
+import { Redis } from 'ioredis';
+import { writeAuditLog, toJsonValue } from './audit-writer.js';
 
 type OutboxPayload = {
   type: NotificationType;
@@ -279,7 +279,16 @@ export class NotificationDispatcher {
         await this.markProcessed(claimed.id);
         return { deliveryIds: [] };
       }
-      if (payload.kind && payload.cycle !== undefined && payload.deadline !== undefined) {
+      const clockBound =
+        payload.type.startsWith('SLA_') ||
+        payload.type === 'EFFECTIVE_DEADLINE_CHANGED' ||
+        payload.type === 'THIRD_PARTY_DEADLINE_CHANGED';
+      if (
+        clockBound &&
+        payload.kind &&
+        payload.cycle !== undefined &&
+        payload.deadline !== undefined
+      ) {
         if (!payload.defectItemId) {
           await this.markProcessed(claimed.id);
           return { deliveryIds: [] };
@@ -400,8 +409,7 @@ export class NotificationDispatcher {
       const settings = await this.prisma.systemSettings.findUnique({ where: { id: 'default' } });
       const warningDays = settings?.deadlineWarningDays ?? 3;
       const thresholds = settings?.escalationDays?.length ? settings.escalationDays : [0, 3, 7, 14];
-      const [contractorPool, managers, admins, orgManagers] = await Promise.all([
-        this.activeIds('CONTRACTOR_ENGINEER'),
+      const [managers, admins, orgManagers] = await Promise.all([
         this.activeIds('SGR_MANAGER'),
         this.activeIds('ADMIN'),
         this.activeIds('MANAGER'),
@@ -409,7 +417,6 @@ export class NotificationDispatcher {
       return {
         warningDays,
         thresholds,
-        contractorPool,
         managers,
         admins: [...admins, ...orgManagers],
       };
@@ -420,7 +427,7 @@ export class NotificationDispatcher {
       const batch = await this.runDb(async () => {
         const items = await this.prisma.defectItem.findMany({
           where: {
-            status: 'IN_PROGRESS',
+            status: { in: ['IN_PROGRESS', 'PENDING_INSPECTION'] },
             act: {
               status: { notIn: ['CANCELLED', 'IMPORTED_UNSPECIFIED'] },
               startedAt: { not: null },
@@ -429,8 +436,27 @@ export class NotificationDispatcher {
           },
           orderBy: { id: 'asc' },
           take: 100,
-          include: { responsibleEngineers: true },
+          include: {
+            responsibleEngineers: true,
+            liableOrganizations: { select: { organizationId: true } },
+          },
         });
+        const organizationIds = [
+          ...new Set(
+            items.flatMap((item) => item.liableOrganizations.map((row) => row.organizationId)),
+          ),
+        ];
+        const memberships =
+          organizationIds.length === 0
+            ? []
+            : await this.prisma.userOrganizationMembership.findMany({
+                where: {
+                  organizationId: { in: organizationIds },
+                  revokedAt: null,
+                  user: { role: 'CONTRACTOR_ENGINEER', status: 'ACTIVE' },
+                },
+                select: { userId: true, organizationId: true },
+              });
         const outboxIds: string[] = [];
         for (const item of items) {
           processed += 1;
@@ -444,10 +470,18 @@ export class NotificationDispatcher {
               continue;
             }
             const assigned = item.responsibleEngineers.map((row) => row.userId);
+            const orgIds = new Set(item.liableOrganizations.map((row) => row.organizationId));
+            const contractors = [
+              ...new Set(
+                memberships
+                  .filter((row) => orgIds.has(row.organizationId))
+                  .map((row) => row.userId),
+              ),
+            ];
             if (clock.state === 'WARNING') {
               const id = await this.enqueueSla(item, clock, 'SLA_WARNING', null, businessDate, {
                 assigned,
-                contractors: prelude.contractorPool,
+                contractors,
                 managers: prelude.managers,
                 admins: prelude.admins,
               });
@@ -460,7 +494,7 @@ export class NotificationDispatcher {
               const type = threshold === 0 ? 'SLA_DUE_TODAY' : 'SLA_OVERDUE';
               const id = await this.enqueueSla(item, clock, type, threshold, businessDate, {
                 assigned,
-                contractors: prelude.contractorPool,
+                contractors,
                 managers: prelude.managers,
                 admins: prelude.admins,
               });
@@ -574,7 +608,7 @@ export class NotificationDispatcher {
   private async ensureClocks(
     item: {
       id: string;
-      status: 'IN_PROGRESS' | 'COMPLETED';
+      status: 'IN_PROGRESS' | 'PENDING_INSPECTION' | 'COMPLETED';
       claimDeadline: Date | null;
       plannedDeadline: Date | null;
       thirdPartyDeadline: Date | null;
@@ -588,7 +622,11 @@ export class NotificationDispatcher {
 
   private async resolveRecipients(payload: OutboxPayload): Promise<string[]> {
     const users = await this.prisma.user.findMany({
-      where: { id: { in: payload.extraRecipientIds ?? [] }, status: 'ACTIVE' },
+      where: {
+        id: { in: payload.extraRecipientIds ?? [] },
+        status: 'ACTIVE',
+        role: { not: 'SUPER_ADMIN' },
+      },
       select: { id: true },
     });
     return suppressActorRecipients(

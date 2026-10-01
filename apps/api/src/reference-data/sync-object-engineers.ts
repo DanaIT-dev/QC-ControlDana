@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Prisma } from '@sgr-registry/database';
 import { ASSIGNABLE_ENGINEER_ROLE, ValidationError, assertUniqueIds } from '@sgr-registry/domain';
-import { toJsonValue, writeAuditLog, type AuditWriteInput } from '../common/audit-writer';
+import { toJsonValue, writeAuditLog, type AuditWriteInput } from '../common/audit-writer.js';
 
 type AssignmentAuditContext = Pick<AuditWriteInput, 'actor' | 'requestId' | 'ipAddress'>;
 

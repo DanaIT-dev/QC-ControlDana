@@ -205,6 +205,12 @@ describe('PostgreSQL RLS', () => {
     });
     proposalAId = proposalA.id;
     proposalBId = proposalB.id;
+    await owner.defectItemLiableOrganization.create({
+      data: { defectItemId: defectId, organizationId: org.id },
+    });
+    await owner.userOrganizationMembership.create({
+      data: { userId: contractorId, organizationId: org.id, assignedByUserId: adminId },
+    });
     await owner.auditLog.create({
       data: {
         action: 'ACT_CREATED',
@@ -227,7 +233,13 @@ describe('PostgreSQL RLS', () => {
     }
     const defectIds = ids(defectId, otherDefectId);
     if (defectIds.length > 0) {
+      await owner.defectItemLiableOrganization.deleteMany({
+        where: { defectItemId: { in: defectIds } },
+      });
       await owner.defectItem.deleteMany({ where: { id: { in: defectIds } } });
+    }
+    if (contractorId) {
+      await owner.userOrganizationMembership.deleteMany({ where: { userId: contractorId } });
     }
     const actIds = ids(actId, otherActId);
     if (actIds.length > 0) {

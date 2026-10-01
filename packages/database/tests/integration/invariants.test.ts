@@ -29,6 +29,7 @@ async function cleanup(): Promise<void> {
   await prisma.organizationWorkType.deleteMany();
   await prisma.organizationRoleAssignment.deleteMany();
   await prisma.propertyObjectEngineer.deleteMany();
+  await prisma.userOrganizationMembership.deleteMany();
   await prisma.organization.deleteMany();
   await prisma.propertyObject.deleteMany();
   await prisma.user.deleteMany();

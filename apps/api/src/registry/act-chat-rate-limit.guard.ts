@@ -7,10 +7,10 @@ import {
   Injectable,
 } from '@nestjs/common';
 import type { FastifyRequest } from 'fastify';
-import type Redis from 'ioredis';
+import type { Redis } from 'ioredis';
 import { loadConfig } from '@sgr-registry/config';
-import type { AuthenticatedUser } from '../auth/authenticated-user';
-import { REDIS_CLIENT } from '../auth/redis.constants';
+import type { AuthenticatedUser } from '../auth/authenticated-user.js';
+import { REDIS_CLIENT } from '../auth/redis.constants.js';
 
 @Injectable()
 export class ActChatRateLimitGuard implements CanActivate {

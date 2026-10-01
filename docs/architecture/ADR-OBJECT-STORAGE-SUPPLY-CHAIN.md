@@ -1,6 +1,8 @@
 # ADR: Object storage supply chain
 
-Status: accepted as a release block. Date: 2026-10-01.
+Status: RustFS remains a release block and is not used for the internal pilot. Date: 2026-10-01.
+
+Pilot decision: development, test, staging, and production compose use official SeaweedFS 4.48, digest `sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d`. The S3 adapter is unchanged. Existing attachment rows were zero, so no user-file copy was required. The RustFS volume stays on disk and is not mounted. Production compose does not publish object storage. Production readiness stays blocked.
 
 ## Context
 

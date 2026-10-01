@@ -14,7 +14,7 @@
 - `packages/contracts` — общие DTO и перечисления без зависимости от UI.
 - `packages/typescript-config`, `packages/eslint-config` — общее качество кода.
 
-Локальная инфраструктура в `infra/docker/compose.yaml`: PostgreSQL 18, Redis 7 с ACL, объектное хранилище RustFS, ClamAV, Mailpit. Production-манифест `infra/docker/compose.production.yaml` публикует только reverse proxy; PostgreSQL, Redis, объектное хранилище и ClamAV остаются во внутренней сети.
+Локальная инфраструктура в `infra/docker/compose.yaml`: PostgreSQL 18, Redis 7 с ACL, объектное хранилище SeaweedFS, ClamAV, Mailpit. Production-манифест `infra/docker/compose.production.yaml` публикует только reverse proxy; PostgreSQL, Redis, объектное хранилище и ClamAV остаются во внутренней сети.
 
 ## Границы модулей и зависимости
 

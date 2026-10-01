@@ -319,8 +319,8 @@ describe('registry integration', () => {
     await disconnectPrismaClient();
   });
 
-  it('lets ADMIN, SGR_MANAGER and CONTRACTOR_ENGINEER see every uncancelled fixture row', async () => {
-    for (const account of [admin, manager, contractor]) {
+  it('lets ADMIN and SGR_MANAGER see every uncancelled fixture row', async () => {
+    for (const account of [admin, manager]) {
       const cookie = await login(account.email);
       const response = await authedGet(cookie, '/api/registry/defects?pageSize=200');
       expect(response.statusCode).toBe(200);
@@ -331,6 +331,52 @@ describe('registry integration', () => {
       expect(ids).toContain(foreignActId);
       expect(ids).not.toContain(cancelledActId);
     }
+  });
+
+  it('shows a contractor only acts of an active organization membership', async () => {
+    const emptyCookie = await login(contractor.email);
+    const empty = await authedGet(emptyCookie, '/api/registry/defects?pageSize=200');
+    expect(empty.statusCode).toBe(200);
+    const emptyIds = (empty.json() as { items: Array<{ actId: string }> }).items.map(
+      (item) => item.actId,
+    );
+    expect(emptyIds).not.toContain(sharedActId);
+    expect(emptyIds).not.toContain(splitActId);
+    expect(emptyIds).not.toContain(foreignActId);
+    expect((await authedGet(emptyCookie, `/api/acts/${sharedActId}`)).statusCode).toBe(404);
+
+    const membership = await prisma.userOrganizationMembership.create({
+      data: {
+        userId: contractor.id,
+        organizationId: liableA.id,
+        assignedByUserId: admin.id,
+      },
+    });
+    const scopedCookie = await login(contractor.email);
+    const scoped = await authedGet(scopedCookie, '/api/registry/defects?pageSize=200');
+    const scopedIds = (scoped.json() as { items: Array<{ actId: string }> }).items.map(
+      (item) => item.actId,
+    );
+    expect(scopedIds).toContain(sharedActId);
+    expect(scopedIds).toContain(splitActId);
+    expect(scopedIds).not.toContain(foreignActId);
+    expect(scopedIds).not.toContain(cancelledActId);
+    expect((await authedGet(scopedCookie, `/api/acts/${foreignActId}`)).statusCode).toBe(404);
+    const foreignBody = JSON.stringify(
+      (await authedGet(scopedCookie, `/api/acts/${foreignActId}`)).json(),
+    );
+    expect(foreignBody).not.toContain(foreignActId);
+
+    await prisma.userOrganizationMembership.update({
+      where: { id: membership.id },
+      data: { revokedAt: new Date(), revokedByUserId: admin.id },
+    });
+    const revokedCookie = await login(contractor.email);
+    const revoked = await authedGet(revokedCookie, '/api/registry/defects?pageSize=200');
+    const revokedIds = (revoked.json() as { items: Array<{ actId: string }> }).items.map(
+      (item) => item.actId,
+    );
+    expect(revokedIds).not.toContain(sharedActId);
   });
 
   it('lets SUPER_ADMIN see cancelled acts and foreign objects', async () => {

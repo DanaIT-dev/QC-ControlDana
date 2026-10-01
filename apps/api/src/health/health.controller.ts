@@ -1,7 +1,7 @@
 import { Controller, Get, Inject, Res } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
 import type { HealthResponse, ReadyResponse } from '@sgr-registry/contracts';
-import { HealthService } from './health.service';
+import { HealthService } from './health.service.js';
 
 @Controller()
 export class HealthController {

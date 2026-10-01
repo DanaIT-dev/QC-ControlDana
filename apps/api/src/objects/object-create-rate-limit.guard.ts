@@ -8,9 +8,9 @@ import {
 } from '@nestjs/common';
 import type { FastifyRequest } from 'fastify';
 import { loadConfig } from '@sgr-registry/config';
-import type { AuthenticatedUser } from '../auth/authenticated-user';
-import { REDIS_CLIENT } from '../auth/redis.constants';
-import type Redis from 'ioredis';
+import type { AuthenticatedUser } from '../auth/authenticated-user.js';
+import { REDIS_CLIENT } from '../auth/redis.constants.js';
+import type { Redis } from 'ioredis';
 
 @Injectable()
 export class ObjectCreateRateLimitGuard implements CanActivate {

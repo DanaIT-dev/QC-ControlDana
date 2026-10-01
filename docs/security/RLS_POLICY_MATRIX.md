@@ -64,7 +64,7 @@ Verified context: HMAC-SHA256 (`RLS_CONTEXT_SECRET`), `SECURITY DEFINER` `sgr_se
 
 ### CONTRACTOR_ENGINEER
 
-SELECT актов/дефектов как VIEW_ALL_ACTS. MANAGE_PROPOSALS A/B/C. История: нет SELECT `audit_logs` (API `403` + прямой SQL пустой). THIRD_PARTY сроки и THIRD_PARTY/proposal вложения по GRANT/WITH CHECK. Чат акта: нет GRANT/политики доступа, SELECT пуст, API `403`. Уведомления `ACT_CHAT_MENTION` не читаются (`sgr_can_access_act_chat`).
+SELECT актов, дефектов, объектов, вложений и THIRD_PARTY SLA только через активную `user_organization_memberships` и `defect_item_liable_organizations` (`sgr_contractor_can_see_*`). Роль сама по себе строки не открывает. Membership пишет только `ADMIN`/`MANAGER`; подрядчик читает свои строки и не меняет их. История: нет SELECT `audit_logs`. Чат акта недоступен. Уведомления `ACT_CHAT_MENTION` не читаются.
 
 ## Контекст и изоляция пула
 

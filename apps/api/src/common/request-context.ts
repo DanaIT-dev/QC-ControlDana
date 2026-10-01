@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 import type { FastifyRequest } from 'fastify';
 import { loadConfig } from '@sgr-registry/config';
-import { clientIp } from '../auth/request-meta';
-import type { AuthenticatedUser } from '../auth/authenticated-user';
+import { clientIp } from '../auth/request-meta.js';
+import type { AuthenticatedUser } from '../auth/authenticated-user.js';
 
 export function requestIdOf(request: FastifyRequest): string | null {
   const fromRequest = (request as FastifyRequest & { requestId?: string }).requestId;

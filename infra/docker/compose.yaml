@@ -49,29 +49,29 @@ services:
     restart: unless-stopped
 
   object-storage:
-    image: rustfs/rustfs:1.0.0@sha256:8cc9801755448b71a786705ce76692c77e14936cccd87cf2fc31842e58f4d1ff
+    # Official SeaweedFS 4.48. Manifest list includes linux/amd64. The image
+    # entrypoint starts as root only long enough to chown /data, then su-exec
+    # drops the server to uid 1000. cap_drop ALL blocks that drop, so it is omitted.
+    image: chrislusf/seaweedfs:4.48@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d
     container_name: sgr-registry-object-storage
+    entrypoint: ['/bin/sh', '/opt/sgr/seaweed-entrypoint.sh']
     environment:
-      RUSTFS_ACCESS_KEY: ${S3_ACCESS_KEY_ID:-${S3_ACCESS_KEY:-sgr_minio_admin}}
-      RUSTFS_SECRET_KEY: ${S3_SECRET_ACCESS_KEY:-${S3_SECRET_KEY:-sgr_minio_dev_password}}
-      RUSTFS_VOLUMES: /data
-      RUSTFS_ADDRESS: 0.0.0.0:9000
-      RUSTFS_CONSOLE_ENABLE: 'false'
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-${S3_ACCESS_KEY:-sgr_minio_admin}}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-${S3_SECRET_KEY:-sgr_minio_dev_password}}
     ports:
       - '127.0.0.1:${S3_API_PORT:-9000}:9000'
     volumes:
-      - sgr_registry_object_storage:/data
+      - sgr_registry_seaweedfs:/data
+      - ./seaweed/entrypoint.sh:/opt/sgr/seaweed-entrypoint.sh:ro
     healthcheck:
-      test: ['CMD-SHELL', 'curl -fsS http://127.0.0.1:9000/health || exit 1']
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:9333/cluster/status']
       interval: 10s
       timeout: 5s
       retries: 10
-      start_period: 10s
+      start_period: 15s
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
-    cap_drop:
-      - ALL
     pids_limit: 512
     mem_limit: 1g
 
@@ -121,7 +121,9 @@ secrets:
 volumes:
   sgr_registry_pgdata:
   sgr_registry_redis:
+  sgr_registry_seaweedfs:
+  # Former RustFS volume. Not mounted. Do not delete it.
   sgr_registry_object_storage:
-  # Legacy MinIO volume. Not mounted. Do not delete it in this change.
+  # Legacy MinIO volume. Not mounted. Do not delete it.
   sgr_registry_minio:
   sgr_registry_clamav:

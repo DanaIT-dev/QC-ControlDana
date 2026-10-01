@@ -132,6 +132,14 @@ export interface ActDetailDefectItem {
   deadlineStateLabel: string;
   readyAt: string | null;
   thirdPartyDeadline: string | null;
+  submittedForInspectionAt: string | null;
+  submittedByName: string | null;
+  submissionComment: string | null;
+  rejectedAt: string | null;
+  rejectedByName: string | null;
+  rejectionReason: string | null;
+  acceptedAt: string | null;
+  acceptedByName: string | null;
   notes: string | null;
   proposalA: RegistryProposalDto | null;
   proposalsBC?: RegistryProposalDto[];

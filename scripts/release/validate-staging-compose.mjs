@@ -27,6 +27,7 @@ export function validateStagingCompose(yaml) {
       (line) =>
         !line.includes('./Caddyfile.staging') &&
         !line.includes('./redis/acl-entrypoint.sh') &&
+        !line.includes('./seaweed/entrypoint.sh') &&
         !line.includes('./secrets/'),
     );
   if (sourceMount.length > 0) {

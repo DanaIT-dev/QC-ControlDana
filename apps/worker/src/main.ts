@@ -1,5 +1,5 @@
 import { loadConfig, MissingConfigurationError } from '@sgr-registry/config';
-import { startWorkerRuntime } from './runtime';
+import { startWorkerRuntime } from './runtime.js';
 
 async function bootstrap(): Promise<void> {
   try {

@@ -9,8 +9,8 @@ import {
   type OrganizationDetailsInput,
 } from '@sgr-registry/domain';
 import type { OrganizationRole } from '@sgr-registry/contracts';
-import { writeDomainOutbox } from './defect-outbox';
-import type { OutboxWriter } from './outbox.writer';
+import { writeDomainOutbox } from './defect-outbox.js';
+import type { OutboxWriter } from './outbox.writer.js';
 
 type OutboxTx = Prisma.TransactionClient;
 

@@ -9,7 +9,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import { satisfiesAnyCapability, type Capability } from '@sgr-registry/domain';
 import type { FastifyRequest } from 'fastify';
-import type { AuthenticatedUser } from '../auth/authenticated-user';
+import type { AuthenticatedUser } from '../auth/authenticated-user.js';
 
 export const CAPABILITY_KEY = 'sgr:capability';
 

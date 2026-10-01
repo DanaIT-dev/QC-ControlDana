@@ -12,13 +12,13 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { FastifyRequest } from 'fastify';
-import type { AuthenticatedUser } from '../auth/authenticated-user';
-import { AuthenticationGuard } from '../auth/authentication.guard';
-import { BrowserOriginGuard } from '../auth/browser-origin.guard';
-import { CsrfGuard } from '../auth/csrf.guard';
-import { CurrentUser } from '../auth/current-user.decorator';
-import { CapabilityGuard, RequireCapability } from '../common/capability.guard';
-import { UsersService } from './users.service';
+import type { AuthenticatedUser } from '../auth/authenticated-user.js';
+import { AuthenticationGuard } from '../auth/authentication.guard.js';
+import { BrowserOriginGuard } from '../auth/browser-origin.guard.js';
+import { CsrfGuard } from '../auth/csrf.guard.js';
+import { CurrentUser } from '../auth/current-user.decorator.js';
+import { CapabilityGuard, RequireCapability } from '../common/capability.guard.js';
+import { UsersService } from './users.service.js';
 
 @Controller('users')
 @UseGuards(AuthenticationGuard, CapabilityGuard)
@@ -104,6 +104,38 @@ export class UsersController {
     @Req() request: FastifyRequest,
   ) {
     return this.usersService.resetPassword(user, userId, body, request);
+  }
+
+  @Get(':userId/organization-memberships')
+  @RequireCapability('MANAGE_USERS', 'VIEW_ALL_BUSINESS_DATA')
+  organizationMemberships(@CurrentUser() user: AuthenticatedUser, @Param('userId') userId: string) {
+    return this.usersService.listOrganizationMemberships(user, userId);
+  }
+
+  @Post(':userId/organization-memberships')
+  @HttpCode(201)
+  @RequireCapability('MANAGE_USERS')
+  @UseGuards(BrowserOriginGuard, CsrfGuard)
+  assignOrganizationMembership(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('userId') userId: string,
+    @Body() body: unknown,
+    @Req() request: FastifyRequest,
+  ) {
+    return this.usersService.assignOrganizationMembership(user, userId, body, request);
+  }
+
+  @Post(':userId/organization-memberships/:membershipId/revoke')
+  @HttpCode(200)
+  @RequireCapability('MANAGE_USERS')
+  @UseGuards(BrowserOriginGuard, CsrfGuard)
+  revokeOrganizationMembership(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('userId') userId: string,
+    @Param('membershipId') membershipId: string,
+    @Req() request: FastifyRequest,
+  ) {
+    return this.usersService.revokeOrganizationMembership(user, userId, membershipId, request);
   }
 
   @Get(':userId/history')

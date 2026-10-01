@@ -8,8 +8,8 @@ import {
 import { Reflector } from '@nestjs/core';
 import type { UserRole } from '@sgr-registry/contracts';
 import type { FastifyRequest } from 'fastify';
-import type { AuthenticatedUser } from './authenticated-user';
-import { ROLES_KEY } from './roles.decorator';
+import type { AuthenticatedUser } from './authenticated-user.js';
+import { ROLES_KEY } from './roles.decorator.js';
 
 @Injectable()
 export class RolesGuard implements CanActivate {

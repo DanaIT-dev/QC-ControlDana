@@ -32,11 +32,11 @@ import {
   type Prisma,
 } from '@sgr-registry/database';
 import type { FastifyRequest } from 'fastify';
-import type { AuthenticatedUser } from '../auth/authenticated-user';
-import { PrismaService } from '../auth/prisma.tokens';
-import { parseCommandBody } from '../common/command-body';
-import { actorContext } from '../common/request-context';
-import { RegistryAccessScope } from '../registry/registry-access-scope';
+import type { AuthenticatedUser } from '../auth/authenticated-user.js';
+import { PrismaService } from '../auth/prisma.tokens.js';
+import { parseCommandBody } from '../common/command-body.js';
+import { actorContext } from '../common/request-context.js';
+import { resolveRegistryAccessScope } from '../registry/registry-access-scope.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -83,7 +83,7 @@ export class ObjectsService {
       : canEdit
         ? (query.status ?? 'ACTIVE')
         : 'ACTIVE';
-    const scope = new RegistryAccessScope(user);
+    const scope = await resolveRegistryAccessScope(this.prisma.client, user);
     const where: Prisma.PropertyObjectWhereInput = {
       AND: [
         ...(statusFilter === 'ACTIVE'

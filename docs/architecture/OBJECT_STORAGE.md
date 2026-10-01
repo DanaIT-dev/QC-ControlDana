@@ -1,14 +1,13 @@
 # Объектное хранилище
 
-Активный сервер — RustFS 1.0.0, образ `rustfs/rustfs:1.0.0`.
+Активный сервер для development и staging — официальный SeaweedFS 4.48, образ `chrislusf/seaweedfs:4.48`.
 
 ```text
-manifest list: sha256:8cc9801755448b71a786705ce76692c77e14936cccd87cf2fc31842e58f4d1ff
-linux/amd64:   sha256:ba0a1b53e36f321c0d46f3867104abef169f7bc59c467c664ddac87e7ddc9a8b
-linux/arm64:   sha256:42edb61d588775f9431ff436216d14392d2234d4eb2ed68321569fbf7245b36b
+manifest list: sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d
+linux/amd64:   sha256:aba492e2a4e4c90bff795745e8e660affa1f09e7650f5981bd7bccd1a06cd931
 ```
 
-Источник: `https://github.com/rustfs/rustfs`, релиз `1.0.0` от 2026-09-16. Лицензия исходников — Apache-2.0. Образ запускается пользователем `rustfs` (uid 10001). Консоль не публикуется. Compose задаёт `RUSTFS_CONSOLE_ENABLE=false`.
+Источник: `https://github.com/seaweedfs/seaweedfs`, релиз `4.48`. Лицензия — Apache-2.0. Сервер после старта работает как uid 1000. Наружу публикуется только S3-порт. Порты master, filer и admin не публикуются. RustFS 1.0.0 в пилот не допускается. Development, staging и production compose используют SeaweedFS. Production не публикует object storage наружу и не считается production-ready.
 
 Клиент приложения — один адаптер `packages/database/src/object-storage.ts` на AWS SDK v3 (`@aws-sdk/client-s3`, `@aws-sdk/lib-storage`). API и worker реэкспортируют его. Отдельного MinIO SDK нет.
 
@@ -22,11 +21,11 @@ linux/arm64:   sha256:42edb61d588775f9431ff436216d14392d2234d4eb2ed68321569fbf72
 
 ## Сеть и процесс
 
-Production и staging не публикуют порт хранилища и не публикуют консоль. Доступ есть только из внутренней сети compose. Локальный compose публикует API на `127.0.0.1`. Учётные данные production читаются из файлов секретов `RUSTFS_ACCESS_KEY_FILE` и `RUSTFS_SECRET_KEY_FILE`. В compose нет значения секрета.
+Staging не публикует порт хранилища. Доступ есть только из внутренней сети compose. Локальный compose публикует S3 на `127.0.0.1`. Учётные данные читаются из `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` или из файлов `S3_ACCESS_KEY_FILE` / `S3_SECRET_KEY_FILE`. В compose нет значения секрета.
 
-Контейнер: `no-new-privileges`, `cap_drop: ALL`, лимит процессов, лимит памяти, `restart: unless-stopped`, healthcheck `GET /health`. Официальный образ уже задаёт пользователя `rustfs`; uid в compose не переопределяется.
+Контейнер: `no-new-privileges`, лимит процессов, лимит памяти, `restart: unless-stopped`, healthcheck внутреннего master `GET /cluster/status`. `cap_drop: ALL` не задан: официальный entrypoint коротко работает от root, чтобы сменить владельца `/data`, и затем переводит сервер на uid 1000. Снятые capabilities ломают этот переход.
 
-Данные лежат в именованном volume. Старые volume `sgr_registry_minio`, `sgr_minio` и `sgr_staging_minio` остаются объявленными и не смонтированы.
+Данные development лежат в новом volume `sgr_registry_seaweedfs`. Volume RustFS `sgr_registry_object_storage` и legacy MinIO volume остаются объявленными и не смонтированы. Их нельзя удалять.
 
 ## Наблюдение
 
@@ -36,4 +35,4 @@ Alert `ObjectStorageUnavailable` смотрит `sgr_component_up{component="obj
 
 ## Телеметрия
 
-Entrypoint RustFS 1.0.0 пишет локальный журнал в каталог логов. Compose не задаёт внешний адрес телеметрии и не задаёт `RUSTFS_OBS_LOG_DIRECTORY` на URL.
+Команда SeaweedFS задаёт `-master.telemetry=false`. Внешний адрес телеметрии не передаётся.

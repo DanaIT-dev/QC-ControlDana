@@ -26,7 +26,7 @@ export SGR_WEB_IMAGE_DIGEST="sha256:$(docker image inspect "sgr-registry-web:$SG
 
 Целевая production-архитектура — `linux/amd64`. `linux/arm64` допустим только как второй вариант. Локальная проверка на arm64 не подтверждает amd64 production. Сборка `linux/amd64` на этой машине выполняется через buildx. Каталог digest: `infra/docker/image-pins.json`. В compose для образов с подтверждённым manifest list используется digest списка и `platform: ${SGR_PLATFORM:-linux/amd64}`. Manifest digest не равен platform digest. Git SHA не равен Docker digest. Локальный image id не равен digest в registry.
 
-Объектное хранилище — RustFS `1.0.0` с подтверждённым `linux/amd64` digest. Подписанный release candidate не опубликован. `multi-arch registry manifest` собственных образов: `NOT PUBLISHED`. Production deployment не начат.
+Объектное хранилище — SeaweedFS `4.48` с подтверждённым `linux/amd64` digest. Сервис не публикует порты. Подписанный release candidate не опубликован. `multi-arch registry manifest` собственных образов: `NOT PUBLISHED`. Production deployment не начат.
 
 Четыре разные операции не смешиваются: local single-platform validation, multi-platform build, registry manifest publication, production deployment. Подробности, SBOM, OpenVEX и security gate: `docs/security/SUPPLY_CHAIN.md`.
 

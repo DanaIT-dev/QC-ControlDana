@@ -2,7 +2,7 @@ import { ForbiddenException, Injectable } from '@nestjs/common';
 import { loadConfig } from '@sgr-registry/config';
 import type { FastifyRequest } from 'fastify';
 import { CanActivate, type ExecutionContext } from '@nestjs/common';
-import { isAllowedBrowserSource } from './request-meta';
+import { isAllowedBrowserSource } from './request-meta.js';
 
 function headerValue(value: string | string[] | undefined): string | undefined {
   const raw = Array.isArray(value) ? value[0] : value;

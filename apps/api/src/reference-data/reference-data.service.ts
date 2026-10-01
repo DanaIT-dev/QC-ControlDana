@@ -34,17 +34,17 @@ import {
 } from '@sgr-registry/database';
 import { notifyOrganizationIncomplete, OutboxWriter } from '@sgr-registry/jobs';
 import type { FastifyRequest } from 'fastify';
-import type { AuthenticatedUser } from '../auth/authenticated-user';
-import { PrismaService } from '../auth/prisma.tokens';
-import { toJsonValue, writeAuditLog } from '../common/audit-writer';
-import { isPrismaUniqueConflict, parseCommandBody } from '../common/command-body';
-import { actorContext } from '../common/request-context';
+import type { AuthenticatedUser } from '../auth/authenticated-user.js';
+import { PrismaService } from '../auth/prisma.tokens.js';
+import { toJsonValue, writeAuditLog } from '../common/audit-writer.js';
+import { isPrismaUniqueConflict, parseCommandBody } from '../common/command-body.js';
+import { actorContext } from '../common/request-context.js';
 import {
   decodeHistoryCursor,
   encodeHistoryCursor,
   historyWhereAfter,
-} from '../common/history-cursor';
-import { syncObjectEngineers } from './sync-object-engineers';
+} from '../common/history-cursor.js';
+import { syncObjectEngineers } from './sync-object-engineers.js';
 
 export type ReferenceKind = 'property-objects' | 'organizations' | 'work-types' | 'defect-types';
 

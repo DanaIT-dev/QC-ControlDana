@@ -19,6 +19,7 @@ import {
   personNameWriteFields,
 } from '@sgr-registry/domain';
 import FormData from 'form-data';
+import { createHash, randomUUID } from 'node:crypto';
 import { Readable } from 'node:stream';
 import Redis from 'ioredis';
 import { AppModule } from '../../src/app.module';
@@ -41,6 +42,7 @@ interface InjectResponse {
   statusCode: number;
   json: () => unknown;
   body: Buffer | string;
+  rawPayload: Buffer;
   headers: Record<string, string | string[] | undefined>;
   cookies: Array<{ name: string; value: string }>;
 }
@@ -104,6 +106,13 @@ function threatPdf(): Buffer {
 
 function eicarBytes(): Buffer {
   return Buffer.from('X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*');
+}
+
+function pngBytes(): Buffer {
+  return Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64',
+  );
 }
 
 async function upload(
@@ -258,6 +267,22 @@ describe('attachments integration', () => {
       },
     });
     assignedDefectId = assigned.id;
+    const liable = await prisma.organization.create({
+      data: {
+        officialName: `Подрядчик ${suffix}`,
+        postalAddress: 'addr',
+        email: `liable-${suffix}@example.sgr.local`,
+        phone: '1',
+        contactPerson: 'П',
+        roles: { create: [{ role: 'LIABLE_CONTRACTOR' }] },
+      },
+    });
+    await prisma.defectItemLiableOrganization.create({
+      data: { defectItemId: assigned.id, organizationId: liable.id },
+    });
+    await prisma.userOrganizationMembership.create({
+      data: { userId: contractor.id, organizationId: liable.id, assignedByUserId: admin.id },
+    });
     await prisma.defectItemEngineer.create({
       data: { defectItemId: assigned.id, userId: responsible.id },
     });
@@ -623,6 +648,102 @@ describe('attachments integration', () => {
       where: { entityId: id, action: 'ATTACHMENT_REJECTED' },
     });
     expect(JSON.stringify(audit)).not.toMatch(/objectKey|sgr_minio|rawScanner/);
+  });
+
+  it('publishes an image only after scan and checks the stored checksum', async () => {
+    const session = await login(admin.email);
+    const file = pngBytes();
+    const response = await upload(
+      session,
+      `/api/acts/${actId}/attachments`,
+      file,
+      'файл-проверка.png',
+      'image/png',
+      'OTHER',
+    );
+    expect(response.statusCode).toBe(202);
+    const id = String((response.json() as { id: string }).id);
+    const pending = await inject({
+      method: 'GET',
+      url: `/api/attachments/${id}/content`,
+      cookies: { [SESSION_COOKIE_NAME]: session.cookie },
+    });
+    expect(pending.statusCode).toBe(404);
+    const row = await waitStatus(id, 'READY');
+    expect(row.sha256).toBe(createHash('sha256').update(file).digest('hex'));
+    expect(row.originalFilename).toBe('файл-проверка.png');
+    const content = await inject({
+      method: 'GET',
+      url: `/api/attachments/${id}/content`,
+      cookies: { [SESSION_COOKIE_NAME]: session.cookie },
+    });
+    expect(content.statusCode).toBe(200);
+    expect(createHash('sha256').update(content.rawPayload).digest('hex')).toBe(row.sha256);
+  });
+
+  it('does not publish EICAR, malformed XML, a foreign id, or another contractor', async () => {
+    const session = await login(admin.email);
+    const eicar = await upload(
+      session,
+      `/api/acts/${actId}/attachments`,
+      eicarBytes(),
+      'eicar.pdf',
+      'application/pdf',
+      'ACT_DOCUMENT',
+    );
+    expect(eicar.statusCode).toBe(400);
+    const xml = await upload(
+      session,
+      `/api/acts/${actId}/attachments`,
+      Buffer.from('<?xml version="1.0"?><root/>'),
+      'bad.xml',
+      'application/xml',
+      'ACT_DOCUMENT',
+    );
+    expect(xml.statusCode).toBe(400);
+    const missing = randomUUID();
+    const hidden = await inject({
+      method: 'GET',
+      url: `/api/attachments/${missing}`,
+      cookies: { [SESSION_COOKIE_NAME]: session.cookie },
+    });
+    expect(hidden.statusCode).toBe(404);
+    expect(JSON.stringify(hidden.json())).not.toMatch(/objectKey|bucket|password|sgr_minio/);
+    const outsider = await createUser('CONTRACTOR_ENGINEER');
+    const outsiderSession = await login(outsider.email);
+    const denied = await inject({
+      method: 'GET',
+      url: `/api/acts/${actId}/attachments`,
+      cookies: { [SESSION_COOKIE_NAME]: outsiderSession.cookie },
+    });
+    expect(denied.statusCode).toBe(404);
+    expect(JSON.stringify(denied.json())).not.toContain(actId);
+  });
+
+  it('rejects an oversized file without publishing it', async () => {
+    const session = await login(admin.email);
+    const settings = await prisma.systemSettings.findUniqueOrThrow({ where: { id: 'default' } });
+    await prisma.systemSettings.update({
+      where: { id: 'default' },
+      data: { maxAttachmentBytes: 32 },
+    });
+    try {
+      const oversized = await upload(
+        session,
+        `/api/acts/${actId}/attachments`,
+        Buffer.concat([pdfBytes('oversized'), Buffer.alloc(64, 1)]),
+        'big.pdf',
+        'application/pdf',
+        'ACT_DOCUMENT',
+      );
+      expect(oversized.statusCode).toBe(413);
+      expect(JSON.stringify(oversized.json())).not.toMatch(/sgr_minio|S3_SECRET|accessKey/);
+    } finally {
+      await prisma.systemSettings.update({
+        where: { id: 'default' },
+        data: { maxAttachmentBytes: settings.maxAttachmentBytes },
+      });
+    }
   });
 
   it('enforces owner XOR in PostgreSQL', async () => {

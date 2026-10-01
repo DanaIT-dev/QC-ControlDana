@@ -64,6 +64,66 @@ export function completeDefectItem(
   };
 }
 
+export function submitDefectForInspection(
+  item: DefectItemState,
+  options: { comment: string },
+): DefectItemState {
+  if (item.status === 'PENDING_INSPECTION') {
+    return item;
+  }
+  if (!options.comment.trim()) {
+    throw new InvalidTransitionError(
+      'Для передачи на проверку нужен комментарий о выполненной работе',
+    );
+  }
+  if (item.status !== 'IN_PROGRESS') {
+    throw new InvalidTransitionError('Передать на проверку можно только дефект в работе');
+  }
+  return {
+    ...item,
+    status: 'PENDING_INSPECTION',
+  };
+}
+
+export function acceptDefectRepair(item: DefectItemState): DefectItemState {
+  if (item.status === 'COMPLETED') {
+    return item;
+  }
+  if (item.status !== 'PENDING_INSPECTION') {
+    throw new InvalidTransitionError('Принять устранение можно только после передачи на проверку');
+  }
+  return {
+    ...item,
+    status: 'COMPLETED',
+  };
+}
+
+export function rejectDefectRepair(
+  item: DefectItemState,
+  options: { reason: string },
+): DefectItemState {
+  if (!options.reason.trim()) {
+    throw new InvalidTransitionError('Для возврата на доработку нужна причина');
+  }
+  if (item.status !== 'PENDING_INSPECTION') {
+    throw new InvalidTransitionError(
+      'Вернуть на доработку можно только дефект, переданный на проверку',
+    );
+  }
+  return {
+    ...item,
+    status: 'IN_PROGRESS',
+  };
+}
+
+export function assertDirectCompletionAllowed(hasLiableOrganization: boolean): void {
+  if (hasLiableOrganization) {
+    throw new InvalidTransitionError(
+      'Для подрядного дефекта прямой переход в «Исполнено» запрещён',
+    );
+  }
+}
+
 export function reopenDefectItem(
   item: DefectItemState,
   options: { reason: string },

@@ -40,7 +40,7 @@ export interface SlaListItem {
   daysOffset: number | null;
   state: (typeof SLA_CLOCK_STATES)[number];
   escalationLevel: number | null;
-  status: 'IN_PROGRESS' | 'COMPLETED';
+  status: 'IN_PROGRESS' | 'PENDING_INSPECTION' | 'COMPLETED';
 }
 
 export interface SlaListResponse {

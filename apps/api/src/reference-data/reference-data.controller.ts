@@ -15,14 +15,14 @@ import {
 } from '@nestjs/common';
 import { canAccessReferenceKind } from '@sgr-registry/domain';
 import type { FastifyRequest } from 'fastify';
-import type { AuthenticatedUser } from '../auth/authenticated-user';
-import { AuthenticationGuard } from '../auth/authentication.guard';
-import { BrowserOriginGuard } from '../auth/browser-origin.guard';
-import { CsrfGuard } from '../auth/csrf.guard';
-import { CurrentUser } from '../auth/current-user.decorator';
-import { CapabilityGuard, RequireCapability } from '../common/capability.guard';
-import { DirectoryMutateRateLimitGuard } from './directory-mutate-rate-limit.guard';
-import { ReferenceDataService, type ReferenceKind } from './reference-data.service';
+import type { AuthenticatedUser } from '../auth/authenticated-user.js';
+import { AuthenticationGuard } from '../auth/authentication.guard.js';
+import { BrowserOriginGuard } from '../auth/browser-origin.guard.js';
+import { CsrfGuard } from '../auth/csrf.guard.js';
+import { CurrentUser } from '../auth/current-user.decorator.js';
+import { CapabilityGuard, RequireCapability } from '../common/capability.guard.js';
+import { DirectoryMutateRateLimitGuard } from './directory-mutate-rate-limit.guard.js';
+import { ReferenceDataService, type ReferenceKind } from './reference-data.service.js';
 
 @Controller('reference-data')
 @UseGuards(AuthenticationGuard, CapabilityGuard)

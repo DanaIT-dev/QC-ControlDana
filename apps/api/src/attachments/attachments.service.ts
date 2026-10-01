@@ -38,13 +38,13 @@ import {
   createAttachmentObjectKey,
   type AttachmentOwnerRef,
 } from '@sgr-registry/domain';
-import type { AuthenticatedUser } from '../auth/authenticated-user';
-import { PrismaService } from '../auth/prisma.tokens';
-import { writeAuditLog, toJsonValue } from '../common/audit-writer';
-import { actorContext } from '../common/request-context';
-import { RegistryAccessScope } from '../registry/registry-access-scope';
-import { ATTACHMENT_QUEUE, ATTACHMENT_SCAN_JOB } from './attachment.constants';
-import { ObjectStore } from './object-store';
+import type { AuthenticatedUser } from '../auth/authenticated-user.js';
+import { PrismaService } from '../auth/prisma.tokens.js';
+import { writeAuditLog, toJsonValue } from '../common/audit-writer.js';
+import { actorContext } from '../common/request-context.js';
+import { resolveRegistryAccessScope } from '../registry/registry-access-scope.js';
+import { ATTACHMENT_QUEUE, ATTACHMENT_SCAN_JOB } from './attachment.constants.js';
+import { ObjectStore } from './object-store.js';
 
 type MultipartFile = {
   filename: string;
@@ -393,6 +393,15 @@ export class AttachmentsService {
 
     try {
       const uploaded = this.store.putStream(objectKey, sink, detected.detectedMimeType);
+      const failed = new Promise<never>((_, reject) => {
+        const onError = (error: Error) => {
+          source.destroy();
+          hasher.destroy();
+          reject(error);
+        };
+        hasher.once('error', onError);
+        source.once('error', onError);
+      });
       hasher.write(first);
       if (source.readableEnded || source.destroyed) {
         hasher.end();
@@ -400,7 +409,7 @@ export class AttachmentsService {
         source.resume();
         source.pipe(hasher, { end: true });
       }
-      await uploaded;
+      await Promise.race([uploaded, failed]);
       const digest = hasher.hash.digest('hex');
       if (hasher.size <= 0) {
         throw new ValidationError('file', 'Пустой файл загружать нельзя');
@@ -579,7 +588,7 @@ export class AttachmentsService {
   }
 
   private async requireVisibleAct(user: AuthenticatedUser, actId: string) {
-    const scope = new RegistryAccessScope(user);
+    const scope = await resolveRegistryAccessScope(this.prisma.client, user);
     const act = await this.prisma.client.act.findFirst({ where: scope.actVisibleWhere(actId) });
     if (!act) throw new NotFoundException('Запись не найдена');
   }
@@ -588,7 +597,7 @@ export class AttachmentsService {
     user: AuthenticatedUser,
     defectItemId: string,
   ): Promise<AttachmentOwnerRef> {
-    const scope = new RegistryAccessScope(user);
+    const scope = await resolveRegistryAccessScope(this.prisma.client, user);
     const defect = await this.prisma.client.defectItem.findFirst({
       where: { id: defectItemId, AND: [scope.defectItemWhere()] },
       select: { id: true, actId: true },
@@ -601,7 +610,7 @@ export class AttachmentsService {
     user: AuthenticatedUser,
     proposalId: string,
   ): Promise<AttachmentOwnerRef> {
-    const scope = new RegistryAccessScope(user);
+    const scope = await resolveRegistryAccessScope(this.prisma.client, user);
     const proposal = await this.prisma.client.proposal.findFirst({
       where: { id: proposalId, defectItem: scope.defectItemWhere() },
       select: { id: true, slot: true, defectItemId: true, defectItem: { select: { actId: true } } },
@@ -625,7 +634,7 @@ export class AttachmentsService {
     if (user.role !== 'RESPONSIBLE_ENGINEER') {
       return new Set();
     }
-    const scope = new RegistryAccessScope(user);
+    const scope = await resolveRegistryAccessScope(this.prisma.client, user);
     const rows = await this.prisma.client.defectItem.findMany({
       where: actId ? scope.defectItemsOnActWhere(actId) : scope.defectItemWhere(),
       select: { id: true },
@@ -666,4 +675,4 @@ function ownerId(owner: AttachmentOwnerRef): string {
   return owner.proposalId;
 }
 
-export { ATTACHMENT_QUEUE, ATTACHMENT_SCAN_JOB } from './attachment.constants';
+export { ATTACHMENT_QUEUE, ATTACHMENT_SCAN_JOB } from './attachment.constants.js';

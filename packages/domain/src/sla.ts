@@ -17,7 +17,7 @@ export function calendarDiffDays(fromIso: string, toIso: string): number {
 }
 
 export function slaStateOf(input: {
-  status: 'IN_PROGRESS' | 'COMPLETED';
+  status: 'IN_PROGRESS' | 'PENDING_INSPECTION' | 'COMPLETED';
   deadline: Date | null;
   warningDays: number;
   now?: Date;

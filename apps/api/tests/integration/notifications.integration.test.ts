@@ -151,6 +151,7 @@ async function createActWithDefect(
   admin: { cookie: string; body: { csrfToken: string } },
   refs: Awaited<ReturnType<typeof catalogs>>,
   responsibleId: string,
+  options: { liableOrganizationIds?: string[] } = {},
 ) {
   await prisma.propertyObjectEngineer.createMany({
     data: [{ propertyObjectId: refs.object.id, userId: responsibleId }],
@@ -170,7 +171,7 @@ async function createActWithDefect(
           defectTypeId: refs.defectType.id,
           claimDetails: 'Описание',
           responsibleEngineerIds: [responsibleId],
-          liableOrganizationIds: [refs.liable.id],
+          liableOrganizationIds: options.liableOrganizationIds ?? [refs.liable.id],
           plannedDeadline: '2026-09-15',
         },
       ],
@@ -318,6 +319,15 @@ describe('notifications and SLA integration', () => {
       await prisma.act.deleteMany({ where: { id: { in: createdActIds } } });
     }
     if (createdUserIds.length > 0) {
+      await prisma.userOrganizationMembership.deleteMany({
+        where: {
+          OR: [
+            { userId: { in: createdUserIds } },
+            { assignedByUserId: { in: createdUserIds } },
+            { revokedByUserId: { in: createdUserIds } },
+          ],
+        },
+      });
       await prisma.propertyObjectEngineer.deleteMany({
         where: { userId: { in: createdUserIds } },
       });
@@ -482,6 +492,14 @@ describe('notifications and SLA integration', () => {
     const defect = await prisma.defectItem.findUniqueOrThrow({
       where: { id: created.defectItemId },
     });
+    const outsider = await createUser('CONTRACTOR_ENGINEER');
+    await prisma.userOrganizationMembership.create({
+      data: {
+        userId: contractor.id,
+        organizationId: refs.liable.id,
+        assignedByUserId: adminUser.id,
+      },
+    });
     await mutate(admin, {
       method: 'PATCH',
       url: `/api/defects/${created.defectItemId}/deadlines`,
@@ -500,6 +518,14 @@ describe('notifications and SLA integration', () => {
     });
     const body = list.json() as { items: Array<{ type: string }> };
     expect(body.items.some((item) => item.type === 'THIRD_PARTY_DEADLINE_CHANGED')).toBe(true);
+    const outsiderSession = await login(outsider.email);
+    const outsiderList = await inject({
+      method: 'GET',
+      url: '/api/notifications',
+      cookies: { [SESSION_COOKIE_NAME]: outsiderSession.cookie },
+    });
+    const outsiderItems = (outsiderList.json() as { items: Array<{ type: string }> }).items;
+    expect(outsiderItems.some((item) => item.type === 'THIRD_PARTY_DEADLINE_CHANGED')).toBe(false);
     const sla = await inject({
       method: 'GET',
       url: '/api/sla/summary',
@@ -514,7 +540,9 @@ describe('notifications and SLA integration', () => {
     const responsible = await createUser('RESPONSIBLE_ENGINEER');
     const admin = await login(adminUser.email);
     const refs = await catalogs();
-    const created = await createActWithDefect(admin, refs, responsible.id);
+    const created = await createActWithDefect(admin, refs, responsible.id, {
+      liableOrganizationIds: [],
+    });
     const before = await prisma.slaClock.findUniqueOrThrow({
       where: { defectItemId_kind: { defectItemId: created.defectItemId, kind: 'GENERAL' } },
     });
@@ -607,8 +635,10 @@ describe('notifications and SLA integration', () => {
     });
     const previousHost = process.env.SMTP_HOST;
     const previousPort = process.env.SMTP_PORT;
+    const previousTimeout = process.env.SMTP_TIMEOUT_MS;
     process.env.SMTP_HOST = '127.0.0.1';
     process.env.SMTP_PORT = '1';
+    process.env.SMTP_TIMEOUT_MS = '1000';
     await prisma.emailDelivery.update({
       where: { id: delivery.id },
       data: { status: 'FAILED', attempts: 7, nextAttemptAt: new Date() },
@@ -618,7 +648,12 @@ describe('notifications and SLA integration', () => {
     expect(dead.status).toBe('DEAD');
     process.env.SMTP_HOST = previousHost;
     process.env.SMTP_PORT = previousPort;
-  });
+    if (previousTimeout === undefined) {
+      delete process.env.SMTP_TIMEOUT_MS;
+    } else {
+      process.env.SMTP_TIMEOUT_MS = previousTimeout;
+    }
+  }, 180_000);
 
   it('enforces CSRF, ADMIN settings, stale 409, archived acts, injection safety and test queues', async () => {
     expect(resolveNotificationQueueName()).toBe('sgr-notifications-test');
@@ -697,5 +732,200 @@ describe('notifications and SLA integration', () => {
     });
     expect(deliveries).toBe(0);
     void created;
+  });
+
+  it('runs contractor inspection, notifies the right people, and hides foreign ids', async () => {
+    const adminUser = await createUser('ADMIN');
+    const manager = await createUser('SGR_MANAGER');
+    const contractor = await createUser('CONTRACTOR_ENGINEER');
+    const outsider = await createUser('CONTRACTOR_ENGINEER');
+    const responsible = await createUser('RESPONSIBLE_ENGINEER');
+    const existingSuperAdmin = await prisma.user.findFirst({
+      where: { role: 'SUPER_ADMIN', status: 'ACTIVE' },
+    });
+    const superAdmin = existingSuperAdmin ? existingSuperAdmin : await createUser('SUPER_ADMIN');
+    if (existingSuperAdmin) {
+      await prisma.user.update({
+        where: { id: existingSuperAdmin.id },
+        data: { mustChangePassword: false },
+      });
+      await upsertUserCredentials(prisma, {
+        userId: existingSuperAdmin.id,
+        passwordHash: await hashArgon2id(DEMO_PASSWORD, { memoryCost: 4096, timeCost: 1 }),
+      });
+    }
+    const admin = await login(adminUser.email);
+    const managerSession = await login(manager.email);
+    const contractorSession = await login(contractor.email);
+    const outsiderSession = await login(outsider.email);
+    const superSession = await login(superAdmin.email);
+    const refs = await catalogs();
+    const created = await createActWithDefect(admin, refs, responsible.id);
+    const assigned = await mutate(admin, {
+      method: 'POST',
+      url: `/api/users/${contractor.id}/organization-memberships`,
+      payload: { organizationId: refs.liable.id },
+    });
+    expect(assigned.statusCode).toBe(201);
+    expect(
+      (
+        await mutate(contractorSession, {
+          method: 'POST',
+          url: `/api/users/${contractor.id}/organization-memberships`,
+          payload: { organizationId: refs.liable.id },
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await mutate(superSession, {
+          method: 'POST',
+          url: `/api/users/${outsider.id}/organization-memberships`,
+          payload: { organizationId: refs.liable.id },
+        })
+      ).statusCode,
+    ).toBe(403);
+
+    const visible = await inject({
+      method: 'GET',
+      url: `/api/acts/${created.actId}`,
+      cookies: { [SESSION_COOKIE_NAME]: contractorSession.cookie },
+    });
+    expect(visible.statusCode).toBe(200);
+    const hidden = await inject({
+      method: 'GET',
+      url: `/api/acts/${created.actId}`,
+      cookies: { [SESSION_COOKIE_NAME]: outsiderSession.cookie },
+    });
+    expect(hidden.statusCode).toBe(404);
+    expect(JSON.stringify(hidden.json())).not.toContain(created.actId);
+
+    const defect = await prisma.defectItem.findUniqueOrThrow({
+      where: { id: created.defectItemId },
+    });
+    expect(
+      (
+        await mutate(managerSession, {
+          method: 'POST',
+          url: `/api/defects/${defect.id}/complete`,
+          payload: { expectedVersion: defect.version },
+        })
+      ).statusCode,
+    ).toBe(409);
+    expect(
+      (
+        await mutate(contractorSession, {
+          method: 'POST',
+          url: `/api/defects/${defect.id}/submit-for-inspection`,
+          payload: { expectedVersion: defect.version, comment: ' ' },
+        })
+      ).statusCode,
+    ).toBe(400);
+    const submitted = await mutate(contractorSession, {
+      method: 'POST',
+      url: `/api/defects/${defect.id}/submit-for-inspection`,
+      payload: { expectedVersion: defect.version, comment: 'Шов восстановлен' },
+    });
+    expect(submitted.statusCode).toBe(200);
+    const submittedBody = submitted.json() as { version: number; status: string };
+    expect(submittedBody.status).toBe('PENDING_INSPECTION');
+    const repeat = await mutate(contractorSession, {
+      method: 'POST',
+      url: `/api/defects/${defect.id}/submit-for-inspection`,
+      payload: { expectedVersion: submittedBody.version, comment: 'Шов восстановлен' },
+    });
+    expect(repeat.statusCode).toBe(200);
+    expect(
+      await prisma.auditLog.count({
+        where: { entityId: defect.id, action: 'DEFECT_SUBMITTED_FOR_INSPECTION' },
+      }),
+    ).toBe(1);
+    await drain();
+    const managerNotes = await inject({
+      method: 'GET',
+      url: '/api/notifications',
+      cookies: { [SESSION_COOKIE_NAME]: managerSession.cookie },
+    });
+    expect(
+      (managerNotes.json() as { items: Array<{ type: string }> }).items.some(
+        (item) => item.type === 'DEFECT_SUBMITTED_FOR_INSPECTION',
+      ),
+    ).toBe(true);
+    expect((await mailpitMessagesFor(manager.email)).length).toBeGreaterThanOrEqual(1);
+    expect(
+      await prisma.emailDelivery.count({
+        where: {
+          recipient: {
+            event: { type: 'DEFECT_SUBMITTED_FOR_INSPECTION', defectItemId: defect.id },
+            userId: manager.id,
+          },
+        },
+      }),
+    ).toBe(1);
+    const oversight = await inject({
+      method: 'GET',
+      url: '/api/notifications',
+      cookies: { [SESSION_COOKIE_NAME]: superSession.cookie },
+    });
+    expect(
+      (oversight.json() as { items: Array<{ type: string }> }).items.some(
+        (item) => item.type === 'DEFECT_SUBMITTED_FOR_INSPECTION',
+      ),
+    ).toBe(false);
+
+    const rejected = await mutate(managerSession, {
+      method: 'POST',
+      url: `/api/defects/${defect.id}/reject-repair`,
+      payload: { expectedVersion: submittedBody.version, reason: 'Осталась щель' },
+    });
+    expect(rejected.statusCode).toBe(200);
+    expect((rejected.json() as { status: string }).status).toBe('IN_PROGRESS');
+    await drain();
+    const contractorNotes = await inject({
+      method: 'GET',
+      url: '/api/notifications',
+      cookies: { [SESSION_COOKIE_NAME]: contractorSession.cookie },
+    });
+    expect(
+      (contractorNotes.json() as { items: Array<{ type: string }> }).items.some(
+        (item) => item.type === 'DEFECT_REPAIR_REJECTED',
+      ),
+    ).toBe(true);
+    expect((await mailpitMessagesFor(contractor.email)).length).toBeGreaterThanOrEqual(1);
+
+    const current = await prisma.defectItem.findUniqueOrThrow({ where: { id: defect.id } });
+    const resubmitted = await mutate(contractorSession, {
+      method: 'POST',
+      url: `/api/defects/${defect.id}/submit-for-inspection`,
+      payload: { expectedVersion: current.version, comment: 'Щель закрыта' },
+    });
+    expect(resubmitted.statusCode).toBe(200);
+    const resubmittedBody = resubmitted.json() as { version: number };
+    const accepted = await mutate(managerSession, {
+      method: 'POST',
+      url: `/api/defects/${defect.id}/accept-repair`,
+      payload: { expectedVersion: resubmittedBody.version },
+    });
+    expect(accepted.statusCode).toBe(200);
+    expect((accepted.json() as { status: string }).status).toBe('COMPLETED');
+    expect((await prisma.act.findUniqueOrThrow({ where: { id: created.actId } })).status).toBe(
+      'COMPLETED',
+    );
+    await drain();
+    const acceptedNotes = await inject({
+      method: 'GET',
+      url: '/api/notifications',
+      cookies: { [SESSION_COOKIE_NAME]: contractorSession.cookie },
+    });
+    expect(
+      (acceptedNotes.json() as { items: Array<{ type: string }> }).items.some(
+        (item) => item.type === 'DEFECT_COMPLETED',
+      ),
+    ).toBe(true);
+    expect((await mailpitMessagesFor(contractor.email)).length).toBeGreaterThanOrEqual(2);
+    const stored = await prisma.defectItem.findUniqueOrThrow({ where: { id: defect.id } });
+    expect(stored.submissionComment).toBe('Щель закрыта');
+    expect(stored.rejectionReason).toBe('Осталась щель');
+    expect(stored.acceptedByUserId).toBe(manager.id);
   });
 });

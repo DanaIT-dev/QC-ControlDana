@@ -18,9 +18,9 @@ import {
   WorkerHeartbeat,
 } from '@sgr-registry/jobs';
 import { Queue, Worker, type ConnectionOptions } from 'bullmq';
-import Redis from 'ioredis';
-import { processAttachmentJob } from './attachment-scan';
-import { createS3Client, ObjectStore, resolveAttachmentBucket } from './object-store';
+import { Redis } from 'ioredis';
+import { processAttachmentJob } from './attachment-scan.js';
+import { createS3Client, ObjectStore, resolveAttachmentBucket } from './object-store.js';
 
 export class WorkerReadyTimeoutError extends Error {
   constructor(timeoutMs: number) {

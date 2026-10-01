@@ -1,19 +1,19 @@
 import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
-import { AuthModule } from './auth/auth.module';
-import { PrismaModule } from './auth/prisma.module';
-import { RedisModule } from './auth/redis.module';
-import { SafeExceptionFilter } from './common/safe-exception.filter';
-import { SuperAdminReadOnlyInterceptor } from './common/super-admin-read-only.interceptor';
-import { HealthModule } from './health/health.module';
-import { RegistryModule } from './registry/registry.module';
-import { UsersModule } from './users/users.module';
-import { SuperAdminModule } from './super-admin/super-admin.module';
-import { ReferenceDataModule } from './reference-data/reference-data.module';
-import { OperationsModule } from './operations/operations.module';
-import { AttachmentsModule } from './attachments/attachments.module';
-import { NotificationsModule } from './notifications/notifications.module';
-import { ObjectsModule } from './objects/objects.module';
+import { AuthModule } from './auth/auth.module.js';
+import { PrismaModule } from './auth/prisma.module.js';
+import { RedisModule } from './auth/redis.module.js';
+import { SafeExceptionFilter } from './common/safe-exception.filter.js';
+import { SuperAdminReadOnlyInterceptor } from './common/super-admin-read-only.interceptor.js';
+import { HealthModule } from './health/health.module.js';
+import { RegistryModule } from './registry/registry.module.js';
+import { UsersModule } from './users/users.module.js';
+import { SuperAdminModule } from './super-admin/super-admin.module.js';
+import { ReferenceDataModule } from './reference-data/reference-data.module.js';
+import { OperationsModule } from './operations/operations.module.js';
+import { AttachmentsModule } from './attachments/attachments.module.js';
+import { NotificationsModule } from './notifications/notifications.module.js';
+import { ObjectsModule } from './objects/objects.module.js';
 
 @Module({
   imports: [

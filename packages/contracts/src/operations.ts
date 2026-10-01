@@ -189,6 +189,32 @@ export const reopenDefectRequestSchema = z
   })
   .strict();
 
+export const submitDefectForInspectionRequestSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    comment: z.string(),
+  })
+  .strict();
+
+export const acceptDefectRepairRequestSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+  })
+  .strict();
+
+export const rejectDefectRepairRequestSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    reason: z.string(),
+  })
+  .strict();
+
+export const assignOrganizationMembershipRequestSchema = z
+  .object({
+    organizationId: uuid,
+  })
+  .strict();
+
 export const upsertProposalRequestSchema = z
   .object({
     expectedVersion: expectedVersionSchema.optional(),

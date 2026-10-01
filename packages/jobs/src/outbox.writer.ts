@@ -25,7 +25,7 @@ export async function syncSlaClocks(
   tx: Pick<Prisma.TransactionClient, 'slaClock' | '$executeRaw' | '$queryRaw'>,
   defect: {
     id: string;
-    status: 'IN_PROGRESS' | 'COMPLETED';
+    status: 'IN_PROGRESS' | 'PENDING_INSPECTION' | 'COMPLETED';
     claimDeadline: Date | null;
     plannedDeadline: Date | null;
     thirdPartyDeadline: Date | null;

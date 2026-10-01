@@ -6,7 +6,7 @@ import {
   type WorkerHeartbeatPayload,
   resolveWorkerHeartbeatKey,
 } from '@sgr-registry/domain';
-import type Redis from 'ioredis';
+import type { Redis } from 'ioredis';
 
 export class WorkerHeartbeat {
   private readonly logger = new Logger(WorkerHeartbeat.name);

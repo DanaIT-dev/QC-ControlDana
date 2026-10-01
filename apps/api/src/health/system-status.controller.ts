@@ -11,12 +11,12 @@ import {
 } from '@nestjs/common';
 import type { SystemStatusResponse } from '@sgr-registry/contracts';
 import type { FastifyRequest } from 'fastify';
-import { AuthenticationGuard } from '../auth/authentication.guard';
-import { CurrentUser } from '../auth/current-user.decorator';
-import type { AuthenticatedUser } from '../auth/authenticated-user';
-import { CapabilityGuard, RequireCapability } from '../common/capability.guard';
-import { SkipRlsTransaction } from '../auth/skip-rls-transaction';
-import { HealthService } from './health.service';
+import { AuthenticationGuard } from '../auth/authentication.guard.js';
+import { CurrentUser } from '../auth/current-user.decorator.js';
+import type { AuthenticatedUser } from '../auth/authenticated-user.js';
+import { CapabilityGuard, RequireCapability } from '../common/capability.guard.js';
+import { SkipRlsTransaction } from '../auth/skip-rls-transaction.js';
+import { HealthService } from './health.service.js';
 
 @Controller('system-status')
 @UseGuards(AuthenticationGuard, CapabilityGuard)

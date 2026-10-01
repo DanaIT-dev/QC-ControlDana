@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import {
+  acceptDefectRepairRequestSchema,
   addDefectRequestSchema,
   archiveProposalRequestSchema,
   auditLogQuerySchema,
@@ -10,15 +11,17 @@ import {
   historyQuerySchema,
   patchActHeaderRequestSchema,
   patchDeadlinesRequestSchema,
+  rejectDefectRepairRequestSchema,
   reopenDefectRequestSchema,
   replaceAssignmentsRequestSchema,
+  submitDefectForInspectionRequestSchema,
   restoreProposalRequestSchema,
   startActRequestSchema,
   upsertProposalRequestSchema,
   type ProposalSlot,
 } from '@sgr-registry/contracts';
 import { allocateActNumber, Prisma, startActViaDefiner } from '@sgr-registry/database';
-import { loadActorNamePartsByUserId } from '../common/actor-name-parts';
+import { loadActorNamePartsByUserId } from '../common/actor-name-parts.js';
 import {
   ASSIGNABLE_ENGINEER_ROLE,
   BUSINESS_TIME_ZONE,
@@ -40,8 +43,12 @@ import {
   canCreatePropertyObject,
   canManageReferenceData,
   canManageUsers,
+  acceptDefectRepair,
+  assertDirectCompletionAllowed,
   cancelAct,
   completeDefectItem,
+  rejectDefectRepair,
+  submitDefectForInspection,
   computeActStatus,
   createDefectItem,
   deadlineChangeRequiresReason,
@@ -65,21 +72,28 @@ import {
   isBusinessStaffRole,
 } from '@sgr-registry/domain';
 import type { FastifyRequest } from 'fastify';
-import type { AuthenticatedUser } from '../auth/authenticated-user';
-import { PrismaService } from '../auth/prisma.tokens';
-import { toJsonValue, writeAuditLog } from '../common/audit-writer';
-import { isPrismaUniqueConflict, parseCommandBody } from '../common/command-body';
+import type { AuthenticatedUser } from '../auth/authenticated-user.js';
+import { PrismaService } from '../auth/prisma.tokens.js';
+import { toJsonValue, writeAuditLog } from '../common/audit-writer.js';
+import { isPrismaUniqueConflict, parseCommandBody } from '../common/command-body.js';
 import {
   decodeHistoryCursor,
   encodeHistoryCursor,
   historyWhereAfter,
-} from '../common/history-cursor';
-import { actorContext, canonicalRequestHash, readIdempotencyKey } from '../common/request-context';
-import { RegistryAccessScope } from '../registry/registry-access-scope';
+} from '../common/history-cursor.js';
+import {
+  actorContext,
+  canonicalRequestHash,
+  readIdempotencyKey,
+} from '../common/request-context.js';
+import { resolveRegistryAccessScope } from '../registry/registry-access-scope.js';
 import {
   notifyActCancelled,
+  notifyContractorsAssigned,
   notifyDeadlineChanges,
+  notifyDefectRepairRejected,
   notifyDefectStatus,
+  notifyDefectSubmittedForInspection,
   notifyResponsibleAssigned,
   OutboxWriter,
   revokeRecipientsForUsers,
@@ -97,11 +111,21 @@ export class OperationsService {
   ) {}
 
   async lookups(user: AuthenticatedUser) {
-    const scope = new RegistryAccessScope(user);
+    const scope = await resolveRegistryAccessScope(this.prisma.client, user);
     const includeInactive = isOversightRole(user.role);
     const objectWhere: Prisma.PropertyObjectWhereInput = {
       ...(includeInactive ? {} : { active: true }),
       ...(scope.objectScoped ? { engineers: { some: scope.assignedObjectRelationWhere() } } : {}),
+      ...(scope.organizationScoped
+        ? {
+            acts: {
+              some: {
+                status: { not: 'CANCELLED' as const },
+                defectItems: { some: scope.liableDefectWhere() },
+              },
+            },
+          }
+        : {}),
     };
     const [objects, customers, liable, alternatives, defectTypes, workTypes, engineers] =
       await Promise.all([
@@ -472,13 +496,24 @@ export class OperationsService {
         const added = engineerIds.filter((id) => !previousIds.includes(id));
         const removed = previousIds.filter((id) => !engineerIds.includes(id));
         await revokeRecipientsForUsers(tx, defectItemId, removed);
-        const outboxIds = await notifyResponsibleAssigned(this.outboxWriter, tx, {
-          actId: item.actId,
-          defectItemId,
-          userIds: added,
-          actorUserId: user.id,
-          version: item.version + 1,
-        });
+        const previousLiableIds = previousLiable.map((row) => row.organizationId);
+        const addedLiable = liableIds.filter((id) => !previousLiableIds.includes(id));
+        const outboxIds = [
+          ...(await notifyResponsibleAssigned(this.outboxWriter, tx, {
+            actId: item.actId,
+            defectItemId,
+            userIds: added,
+            actorUserId: user.id,
+            version: item.version + 1,
+          })),
+          ...(await notifyContractorsAssigned(this.outboxWriter, tx, {
+            actId: item.actId,
+            defectItemId,
+            organizationIds: addedLiable,
+            actorUserId: user.id,
+            version: item.version + 1,
+          })),
+        ];
         await writeAuditLog(tx, {
           ...ctx,
           action: 'ASSIGNMENTS_REPLACED',
@@ -628,6 +663,10 @@ export class OperationsService {
     if (item.status === 'COMPLETED') {
       return { id: item.id, version: item.version, status: item.status };
     }
+    const liableCount = await this.prisma.client.defectItemLiableOrganization.count({
+      where: { defectItemId },
+    });
+    assertDirectCompletionAllowed(liableCount > 0);
     const readyAt = input.readyAt
       ? calendarDateToUtcNoon(input.readyAt)
       : calendarDateToUtcNoon(calendarDateInTimeZone(new Date(), BUSINESS_TIME_ZONE));
@@ -696,6 +735,270 @@ export class OperationsService {
       rethrowIfActNotStarted(error);
       throw error;
     }
+    await this.outboxWriter.enqueue(result.outboxIds);
+    return { id: result.id, version: result.version, status: result.status };
+  }
+
+  async submitForInspection(
+    user: AuthenticatedUser,
+    defectItemId: string,
+    body: unknown,
+    request: FastifyRequest,
+  ) {
+    const input = parseCommandBody(submitDefectForInspectionRequestSchema, body);
+    const comment = normalizeRequiredReason(input.comment);
+    const ctx = actorContext(user, request);
+    const item = await this.requireVisibleDefect(user, defectItemId);
+    const act = await this.requireVisibleAct(user, item.actId);
+    if (act.status === 'NEW' || act.startedAt == null) {
+      throw new InvalidTransitionError(
+        'Нельзя передать дефект на проверку до начала работы по акту',
+      );
+    }
+    const liableCount = await this.prisma.client.defectItemLiableOrganization.count({
+      where: { defectItemId },
+    });
+    if (liableCount === 0) {
+      throw new InvalidTransitionError(
+        'Передача на проверку доступна только для подрядного дефекта',
+      );
+    }
+    if (item.status === 'PENDING_INSPECTION') {
+      return { id: item.id, version: item.version, status: item.status };
+    }
+    submitDefectForInspection(
+      { id: item.id, actId: item.actId, status: item.status, readyAt: item.readyAt },
+      { comment },
+    );
+    const result = await this.prisma.client.$transaction(async (tx) => {
+      if (item.version !== input.expectedVersion) {
+        const latest = await tx.defectItem.findUnique({ where: { id: defectItemId } });
+        if (latest?.status === 'PENDING_INSPECTION') {
+          return {
+            id: latest.id,
+            version: latest.version,
+            status: latest.status,
+            outboxIds: [] as string[],
+          };
+        }
+        throw new StaleWriteError();
+      }
+      const updated = await tx.defectItem.updateMany({
+        where: { id: defectItemId, version: input.expectedVersion, status: 'IN_PROGRESS' },
+        data: {
+          status: 'PENDING_INSPECTION',
+          submittedForInspectionAt: new Date(),
+          submittedByUserId: user.id,
+          submissionComment: comment,
+          version: { increment: 1 },
+        },
+      });
+      if (updated.count !== 1) {
+        const latest = await tx.defectItem.findUnique({ where: { id: defectItemId } });
+        if (latest?.status === 'PENDING_INSPECTION') {
+          return {
+            id: latest.id,
+            version: latest.version,
+            status: latest.status,
+            outboxIds: [] as string[],
+          };
+        }
+        throw new StaleWriteError();
+      }
+      await this.syncActStatus(tx, item.actId);
+      const fresh = await tx.defectItem.findUniqueOrThrow({ where: { id: defectItemId } });
+      const outboxIds = await notifyDefectSubmittedForInspection(this.outboxWriter, tx, {
+        actId: item.actId,
+        defectItemId,
+        actorUserId: user.id,
+        version: fresh.version,
+        defect: {
+          id: fresh.id,
+          status: fresh.status,
+          claimDeadline: fresh.claimDeadline,
+          plannedDeadline: fresh.plannedDeadline,
+          thirdPartyDeadline: fresh.thirdPartyDeadline,
+        },
+      });
+      await writeAuditLog(tx, {
+        ...ctx,
+        action: 'DEFECT_SUBMITTED_FOR_INSPECTION',
+        entityType: 'DEFECT_ITEM',
+        entityId: defectItemId,
+        parentEntityType: 'ACT',
+        parentEntityId: item.actId,
+        oldValue: toJsonValue({ status: 'IN_PROGRESS' }),
+        newValue: toJsonValue({ status: 'PENDING_INSPECTION', comment }),
+      });
+      return { id: fresh.id, version: fresh.version, status: fresh.status, outboxIds };
+    });
+    await this.outboxWriter.enqueue(result.outboxIds);
+    return { id: result.id, version: result.version, status: result.status };
+  }
+
+  async acceptRepair(
+    user: AuthenticatedUser,
+    defectItemId: string,
+    body: unknown,
+    request: FastifyRequest,
+  ) {
+    const input = parseCommandBody(acceptDefectRepairRequestSchema, body);
+    const ctx = actorContext(user, request);
+    const item = await this.requireVisibleDefect(user, defectItemId);
+    const act = await this.requireVisibleAct(user, item.actId);
+    if (act.status === 'NEW' || act.startedAt == null) {
+      throw new InvalidTransitionError('Нельзя принять устранение до начала работы по акту');
+    }
+    if (item.status === 'COMPLETED') {
+      return { id: item.id, version: item.version, status: item.status };
+    }
+    const liableCount = await this.prisma.client.defectItemLiableOrganization.count({
+      where: { defectItemId },
+    });
+    if (liableCount === 0) {
+      throw new InvalidTransitionError('Приёмка устранения доступна только для подрядного дефекта');
+    }
+    acceptDefectRepair({
+      id: item.id,
+      actId: item.actId,
+      status: item.status,
+      readyAt: item.readyAt,
+    });
+    const readyAt = calendarDateToUtcNoon(calendarDateInTimeZone(new Date(), BUSINESS_TIME_ZONE));
+    const result = await this.prisma.client.$transaction(async (tx) => {
+      if (item.version !== input.expectedVersion) {
+        const latest = await tx.defectItem.findUnique({ where: { id: defectItemId } });
+        if (latest?.status === 'COMPLETED') {
+          return {
+            id: latest.id,
+            version: latest.version,
+            status: latest.status,
+            outboxIds: [] as string[],
+          };
+        }
+        throw new StaleWriteError();
+      }
+      const updated = await tx.defectItem.updateMany({
+        where: { id: defectItemId, version: input.expectedVersion, status: 'PENDING_INSPECTION' },
+        data: {
+          status: 'COMPLETED',
+          readyAt,
+          acceptedAt: new Date(),
+          acceptedByUserId: user.id,
+          version: { increment: 1 },
+        },
+      });
+      if (updated.count !== 1) {
+        const latest = await tx.defectItem.findUnique({ where: { id: defectItemId } });
+        if (latest?.status === 'COMPLETED') {
+          return {
+            id: latest.id,
+            version: latest.version,
+            status: latest.status,
+            outboxIds: [] as string[],
+          };
+        }
+        throw new StaleWriteError();
+      }
+      await this.syncActStatus(tx, item.actId);
+      const fresh = await tx.defectItem.findUniqueOrThrow({ where: { id: defectItemId } });
+      const outboxIds = await notifyDefectStatus(this.outboxWriter, tx, {
+        type: 'DEFECT_COMPLETED',
+        actId: item.actId,
+        defectItemId,
+        actorUserId: user.id,
+        occurrenceToken: fresh.version,
+        defect: {
+          id: fresh.id,
+          status: fresh.status,
+          claimDeadline: fresh.claimDeadline,
+          plannedDeadline: fresh.plannedDeadline,
+          thirdPartyDeadline: fresh.thirdPartyDeadline,
+        },
+      });
+      await writeAuditLog(tx, {
+        ...ctx,
+        action: 'DEFECT_COMPLETED',
+        entityType: 'DEFECT_ITEM',
+        entityId: defectItemId,
+        parentEntityType: 'ACT',
+        parentEntityId: item.actId,
+        oldValue: toJsonValue({ status: 'PENDING_INSPECTION' }),
+        newValue: toJsonValue({ status: 'COMPLETED', acceptedByUserId: user.id }),
+      });
+      return { id: fresh.id, version: fresh.version, status: fresh.status, outboxIds };
+    });
+    await this.outboxWriter.enqueue(result.outboxIds);
+    return { id: result.id, version: result.version, status: result.status };
+  }
+
+  async rejectRepair(
+    user: AuthenticatedUser,
+    defectItemId: string,
+    body: unknown,
+    request: FastifyRequest,
+  ) {
+    const input = parseCommandBody(rejectDefectRepairRequestSchema, body);
+    const reason = normalizeRequiredReason(input.reason);
+    const ctx = actorContext(user, request);
+    const item = await this.requireVisibleDefect(user, defectItemId);
+    const liableCount = await this.prisma.client.defectItemLiableOrganization.count({
+      where: { defectItemId },
+    });
+    if (liableCount === 0) {
+      throw new InvalidTransitionError(
+        'Возврат на доработку доступен только для подрядного дефекта',
+      );
+    }
+    rejectDefectRepair(
+      { id: item.id, actId: item.actId, status: item.status, readyAt: item.readyAt },
+      { reason },
+    );
+    const result = await this.prisma.client.$transaction(async (tx) => {
+      if (item.version !== input.expectedVersion) {
+        throw new StaleWriteError();
+      }
+      const updated = await tx.defectItem.updateMany({
+        where: { id: defectItemId, version: input.expectedVersion, status: 'PENDING_INSPECTION' },
+        data: {
+          status: 'IN_PROGRESS',
+          rejectedAt: new Date(),
+          rejectedByUserId: user.id,
+          rejectionReason: reason,
+          version: { increment: 1 },
+        },
+      });
+      if (updated.count !== 1) {
+        throw new StaleWriteError();
+      }
+      await this.syncActStatus(tx, item.actId);
+      const fresh = await tx.defectItem.findUniqueOrThrow({ where: { id: defectItemId } });
+      const outboxIds = await notifyDefectRepairRejected(this.outboxWriter, tx, {
+        actId: item.actId,
+        defectItemId,
+        actorUserId: user.id,
+        version: fresh.version,
+        defect: {
+          id: fresh.id,
+          status: fresh.status,
+          claimDeadline: fresh.claimDeadline,
+          plannedDeadline: fresh.plannedDeadline,
+          thirdPartyDeadline: fresh.thirdPartyDeadline,
+        },
+      });
+      await writeAuditLog(tx, {
+        ...ctx,
+        action: 'DEFECT_REPAIR_REJECTED',
+        entityType: 'DEFECT_ITEM',
+        entityId: defectItemId,
+        parentEntityType: 'ACT',
+        parentEntityId: item.actId,
+        reason,
+        oldValue: toJsonValue({ status: 'PENDING_INSPECTION' }),
+        newValue: toJsonValue({ status: 'IN_PROGRESS', reason }),
+      });
+      return { id: fresh.id, version: fresh.version, status: fresh.status, outboxIds };
+    });
     await this.outboxWriter.enqueue(result.outboxIds);
     return { id: result.id, version: result.version, status: result.status };
   }
@@ -1429,7 +1732,9 @@ export class OperationsService {
     }
     const object = await tx.propertyObject.findFirst({
       where: {
-        ...new RegistryAccessScope(user).objectVisibleWhere(objectId),
+        ...(await resolveRegistryAccessScope(this.prisma.client, user)).objectVisibleWhere(
+          objectId,
+        ),
         active: true,
       },
       select: { id: true },
@@ -1468,7 +1773,7 @@ export class OperationsService {
       throw new NotFoundException('Запись не найдена');
     }
     const act = await client.act.findFirst({
-      where: new RegistryAccessScope(user).actVisibleWhere(actId),
+      where: (await resolveRegistryAccessScope(this.prisma.client, user)).actVisibleWhere(actId),
     });
     if (!act) {
       throw new NotFoundException('Запись не найдена');
@@ -1485,7 +1790,10 @@ export class OperationsService {
       throw new NotFoundException('Запись не найдена');
     }
     const item = await client.defectItem.findFirst({
-      where: { id: defectItemId, AND: [new RegistryAccessScope(user).defectItemWhere()] },
+      where: {
+        id: defectItemId,
+        AND: [(await resolveRegistryAccessScope(this.prisma.client, user)).defectItemWhere()],
+      },
       include: { act: { select: { objectId: true } } },
     });
     if (!item) {
@@ -1569,7 +1877,7 @@ export class OperationsService {
     if (!UUID_PATTERN.test(actId)) {
       throw new NotFoundException('Запись не найдена');
     }
-    const scope = new RegistryAccessScope(user);
+    const scope = await resolveRegistryAccessScope(this.prisma.client, user);
     const act = await this.prisma.client.act.findFirst({
       where: scope.actVisibleWhere(actId),
       select: { id: true, status: true, startedAt: true },
@@ -1584,7 +1892,7 @@ export class OperationsService {
     if (!UUID_PATTERN.test(defectItemId)) {
       throw new NotFoundException('Запись не найдена');
     }
-    const scope = new RegistryAccessScope(user);
+    const scope = await resolveRegistryAccessScope(this.prisma.client, user);
     const item = await this.prisma.client.defectItem.findFirst({
       where: { id: defectItemId, AND: [scope.defectItemWhere()] },
     });
@@ -1595,7 +1903,7 @@ export class OperationsService {
   }
 
   private async assignedDefectIds(user: AuthenticatedUser, actId: string): Promise<Set<string>> {
-    const scope = new RegistryAccessScope(user);
+    const scope = await resolveRegistryAccessScope(this.prisma.client, user);
     const items = await this.prisma.client.defectItem.findMany({
       where: scope.defectItemsOnActWhere(actId),
       select: { id: true },
@@ -1609,15 +1917,17 @@ export class OperationsService {
       return;
     }
     const items = await tx.defectItem.findMany({ where: { actId } });
+    const status = computeActStatus(
+      items.map((item) => ({ status: item.status, active: true })),
+      { startedAt: act.startedAt, cancelledAt: act.cancelledAt },
+      { currentStatus: act.status },
+    );
+    if (status === act.status) {
+      return;
+    }
     await tx.act.update({
       where: { id: actId },
-      data: {
-        status: computeActStatus(
-          items.map((item) => ({ status: item.status, active: true })),
-          { startedAt: act.startedAt, cancelledAt: act.cancelledAt },
-          { currentStatus: act.status },
-        ),
-      },
+      data: { status },
     });
   }
 }

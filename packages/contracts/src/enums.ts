@@ -19,7 +19,7 @@ export const REGISTRY_STATUS_FILTERS = [
 ] as const;
 export type RegistryStatusFilter = (typeof REGISTRY_STATUS_FILTERS)[number];
 
-export const DEFECT_ITEM_STATUSES = ['IN_PROGRESS', 'COMPLETED'] as const;
+export const DEFECT_ITEM_STATUSES = ['IN_PROGRESS', 'PENDING_INSPECTION', 'COMPLETED'] as const;
 export type DefectItemStatus = (typeof DEFECT_ITEM_STATUSES)[number];
 
 export const USER_ROLES = [
@@ -120,6 +120,9 @@ export const NOTIFICATION_TYPES = [
   'THIRD_PARTY_DEADLINE_CHANGED',
   'DEFECT_COMPLETED',
   'DEFECT_REOPENED',
+  'DEFECT_SUBMITTED_FOR_INSPECTION',
+  'DEFECT_REPAIR_REJECTED',
+  'CONTRACTOR_ASSIGNED',
   'ACT_CANCELLED',
   'ATTACHMENT_READY',
   'ATTACHMENT_REJECTED',

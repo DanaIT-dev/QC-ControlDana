@@ -54,19 +54,18 @@
       "note": "Official Alpine image. The 2026-09-28 index contains linux/amd64 only. libxml2 2.13.9-r2 is outside CVE-2026-6653. The process user is root."
     },
     "object-storage": {
-      "repository": "docker.io/rustfs/rustfs",
-      "version": "1.0.0",
-      "reference": "rustfs/rustfs:1.0.0",
-      "source": "https://github.com/rustfs/rustfs",
-      "upstreamRelease": "https://github.com/rustfs/rustfs/releases/tag/1.0.0",
+      "repository": "docker.io/chrislusf/seaweedfs",
+      "version": "4.48",
+      "reference": "chrislusf/seaweedfs:4.48",
+      "source": "https://github.com/seaweedfs/seaweedfs",
+      "upstreamRelease": "https://github.com/seaweedfs/seaweedfs/releases/tag/4.48",
       "license": "Apache-2.0",
-      "manifestList": "sha256:8cc9801755448b71a786705ce76692c77e14936cccd87cf2fc31842e58f4d1ff",
+      "manifestList": "sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d",
       "platforms": {
-        "linux/amd64": "sha256:ba0a1b53e36f321c0d46f3867104abef169f7bc59c467c664ddac87e7ddc9a8b",
-        "linux/arm64": "sha256:42edb61d588775f9431ff436216d14392d2234d4eb2ed68321569fbf7245b36b"
+        "linux/amd64": "sha256:aba492e2a4e4c90bff795745e8e660affa1f09e7650f5981bd7bccd1a06cd931"
       },
       "amd64Confirmed": true,
-      "note": "Official rustfs/rustfs 1.0.0 manifest list. Platform digests were read from that index. The image user is rustfs. Console is disabled in compose."
+      "note": "Official chrislusf/seaweedfs 4.48 manifest list. linux/amd64 digest was read from that index. Trivy 0.66.0 reported no HIGH or CRITICAL on that platform digest. The server process runs as uid 1000. Master, filer, and admin ports are not published."
     },
     "node": {
       "repository": "docker.io/library/node",

@@ -21,6 +21,7 @@ enum ActStatus {
 
 enum DefectItemStatus {
   IN_PROGRESS
+  PENDING_INSPECTION
   COMPLETED
 }
 
@@ -131,6 +132,12 @@ model User {
   actChatMentions       ActChatMention[]
   importedEngineerMatches ImportedEngineerReference[] @relation("ImportedEngineerMatchedUser")
   importedEngineerResolutions ImportedEngineerReference[] @relation("ImportedEngineerMatchedBy")
+  organizationMemberships UserOrganizationMembership[]
+  organizationMembershipsAssigned UserOrganizationMembership[] @relation("MembershipAssignedBy")
+  organizationMembershipsRevoked UserOrganizationMembership[] @relation("MembershipRevokedBy")
+  defectsSubmitted DefectItem[] @relation("DefectSubmittedBy")
+  defectsRejected DefectItem[] @relation("DefectRejectedBy")
+  defectsAccepted DefectItem[] @relation("DefectAcceptedBy")
 
   @@index([role, status])
   @@index([status, createdAt])
@@ -212,11 +219,34 @@ model Organization {
   workTypes    OrganizationWorkType[]
   customerActs Act[]                          @relation("ActCustomer")
   liableItems  DefectItemLiableOrganization[]
+  memberships  UserOrganizationMembership[]
   proposals    Proposal[]
 
   @@unique([unp])
   @@index([active, officialName])
   @@map("organizations")
+}
+
+model UserOrganizationMembership {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @db.Uuid
+  organizationId   String    @db.Uuid
+  assignedByUserId String?   @db.Uuid
+  assignedAt       DateTime  @default(now()) @db.Timestamptz(3)
+  revokedAt        DateTime? @db.Timestamptz(3)
+  revokedByUserId  String?   @db.Uuid
+  version          Int       @default(1)
+  createdAt        DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @db.Timestamptz(3)
+
+  user           User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  assignedByUser User?        @relation("MembershipAssignedBy", fields: [assignedByUserId], references: [id], onDelete: Restrict)
+  revokedByUser  User?        @relation("MembershipRevokedBy", fields: [revokedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([userId])
+  @@index([organizationId])
+  @@map("user_organization_memberships")
 }
 
 model OrganizationRoleAssignment {
@@ -408,6 +438,14 @@ model DefectItem {
   claimDeadline      DateTime?        @db.Timestamptz(3)
   readyAt            DateTime?        @db.Timestamptz(3)
   thirdPartyDeadline DateTime?        @db.Timestamptz(3)
+  submittedForInspectionAt DateTime?  @db.Timestamptz(3)
+  submittedByUserId  String?          @db.Uuid
+  submissionComment  String?
+  rejectedAt         DateTime?        @db.Timestamptz(3)
+  rejectedByUserId   String?          @db.Uuid
+  rejectionReason    String?
+  acceptedAt         DateTime?        @db.Timestamptz(3)
+  acceptedByUserId   String?          @db.Uuid
   notes              String?
   createdAt          DateTime         @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime         @updatedAt @db.Timestamptz(3)
@@ -424,6 +462,9 @@ model DefectItem {
   importBatchId      String?          @db.Uuid
 
   act                  Act                            @relation(fields: [actId], references: [id], onDelete: Restrict)
+  submittedBy          User?                          @relation("DefectSubmittedBy", fields: [submittedByUserId], references: [id], onDelete: Restrict)
+  rejectedBy           User?                          @relation("DefectRejectedBy", fields: [rejectedByUserId], references: [id], onDelete: Restrict)
+  acceptedBy           User?                          @relation("DefectAcceptedBy", fields: [acceptedByUserId], references: [id], onDelete: Restrict)
   defectType           DefectType                     @relation(fields: [defectTypeId], references: [id], onDelete: Restrict)
   workType             WorkType?                      @relation(fields: [workTypeId], references: [id], onDelete: Restrict)
   importBatch          ImportBatch?                   @relation(fields: [importBatchId], references: [id], onDelete: Restrict)

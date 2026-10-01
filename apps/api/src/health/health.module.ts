@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common';
-import { AuthModule } from '../auth/auth.module';
-import { QueuesModule } from '../queues/queues.module';
-import { HealthController } from './health.controller';
-import { HealthService } from './health.service';
-import { SystemStatusController } from './system-status.controller';
+import { AuthModule } from '../auth/auth.module.js';
+import { QueuesModule } from '../queues/queues.module.js';
+import { HealthController } from './health.controller.js';
+import { HealthService } from './health.service.js';
+import { SystemStatusController } from './system-status.controller.js';
 
 @Module({
   imports: [AuthModule, QueuesModule],

@@ -8,9 +8,9 @@ import {
 } from '@nestjs/common';
 import type { FastifyRequest } from 'fastify';
 import { SESSION_COOKIE_NAME } from '@sgr-registry/domain';
-import type { AuthenticatedUser } from './authenticated-user';
-import { AuthService } from './auth.service';
-import { RedisUnavailableError } from './redis.constants';
+import type { AuthenticatedUser } from './authenticated-user.js';
+import { AuthService } from './auth.service.js';
+import { RedisUnavailableError } from './redis.constants.js';
 
 @Injectable()
 export class AuthenticationGuard implements CanActivate {

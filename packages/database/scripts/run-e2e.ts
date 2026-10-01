@@ -193,17 +193,24 @@ async function minioFingerprint(
   const client = s3Client(env);
   const keys: string[] = [];
   let token: string | undefined;
-  do {
-    const page = await client.send(
-      new ListObjectsV2Command({ Bucket: bucket, ContinuationToken: token }),
-    );
-    for (const item of page.Contents ?? []) {
-      if (item.Key) {
-        keys.push(item.Key);
+  try {
+    do {
+      const page = await client.send(
+        new ListObjectsV2Command({ Bucket: bucket, ContinuationToken: token }),
+      );
+      for (const item of page.Contents ?? []) {
+        if (item.Key) {
+          keys.push(item.Key);
+        }
       }
+      token = page.IsTruncated ? page.NextContinuationToken : undefined;
+    } while (token);
+  } catch (error) {
+    const code = error && typeof error === 'object' && 'name' in error ? String(error.name) : '';
+    if (code !== 'NoSuchBucket') {
+      throw error;
     }
-    token = page.IsTruncated ? page.NextContinuationToken : undefined;
-  } while (token);
+  }
   keys.sort();
   return {
     count: keys.length,

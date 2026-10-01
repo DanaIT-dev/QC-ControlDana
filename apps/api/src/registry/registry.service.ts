@@ -36,24 +36,24 @@ import {
   visibleProposalSlots,
 } from '@sgr-registry/domain';
 import { resolveImportedEngineerReference } from '@sgr-registry/database';
-import type { AuthenticatedUser } from '../auth/authenticated-user';
-import { PrismaService } from '../auth/prisma.tokens';
-import { actorContext } from '../common/request-context';
-import { parseCommandBody } from '../common/command-body';
-import { RegistryAccessScope } from './registry-access-scope';
+import type { AuthenticatedUser } from '../auth/authenticated-user.js';
+import { PrismaService } from '../auth/prisma.tokens.js';
+import { actorContext } from '../common/request-context.js';
+import { parseCommandBody } from '../common/command-body.js';
+import { resolveRegistryAccessScope } from './registry-access-scope.js';
 import {
   deadlineStateWhere,
   personSearchDefectItemIds,
   registryListWhere,
   registryOrderBy,
-} from './registry-query-builder';
+} from './registry-query-builder.js';
 import {
   calendarField,
   registryListSelect,
   timestampField,
   toActHeader,
   toRegistryRow,
-} from './registry-serializer';
+} from './registry-serializer.js';
 
 const COLLATOR = new Intl.Collator('ru', { sensitivity: 'base' });
 
@@ -165,7 +165,7 @@ export class RegistryService {
   }
 
   async filterOptions(user: AuthenticatedUser): Promise<RegistryFilterOptionsResponse> {
-    const scope = new RegistryAccessScope(user);
+    const scope = await resolveRegistryAccessScope(this.prisma.client, user);
     const itemWhere = scope.defectItemWhere();
     const [formRows, objectRows, defectTypeRows, customerRows, liableRows, engineerRows] =
       await Promise.all([
@@ -218,7 +218,7 @@ export class RegistryService {
   }
 
   async actDetail(user: AuthenticatedUser, actId: string): Promise<ActDetailResponse> {
-    const scope = new RegistryAccessScope(user);
+    const scope = await resolveRegistryAccessScope(this.prisma.client, user);
     const warningDays = await this.warningDays();
     const timeZone = loadConfig().BUSINESS_TIME_ZONE || BUSINESS_TIME_ZONE;
     const now = new Date();
@@ -269,6 +269,14 @@ export class RegistryService {
             claimDeadline: true,
             readyAt: true,
             thirdPartyDeadline: true,
+            submittedForInspectionAt: true,
+            submissionComment: true,
+            rejectedAt: true,
+            rejectionReason: true,
+            acceptedAt: true,
+            submittedBy: { select: { fullName: true } },
+            rejectedBy: { select: { fullName: true } },
+            acceptedBy: { select: { fullName: true } },
             notes: true,
             defectType: { select: { id: true, name: true } },
             responsibleEngineers: {
@@ -383,6 +391,14 @@ export class RegistryService {
         deadlineStateLabel: deadlineStateLabel(deadlineState),
         readyAt: timestampField(item.readyAt),
         thirdPartyDeadline: calendarField(item.thirdPartyDeadline, timeZone),
+        submittedForInspectionAt: timestampField(item.submittedForInspectionAt),
+        submittedByName: item.submittedBy?.fullName ?? null,
+        submissionComment: item.submissionComment,
+        rejectedAt: timestampField(item.rejectedAt),
+        rejectedByName: item.rejectedBy?.fullName ?? null,
+        rejectionReason: item.rejectionReason,
+        acceptedAt: timestampField(item.acceptedAt),
+        acceptedByName: item.acceptedBy?.fullName ?? null,
         notes: item.notes,
         ...proposals,
       };
@@ -425,7 +441,7 @@ export class RegistryService {
         const visible = await tx.defectItem.findFirst({
           where: {
             id: reference.defectItemId,
-            ...new RegistryAccessScope(user).defectItemWhere(),
+            ...(await resolveRegistryAccessScope(this.prisma.client, user)).defectItemWhere(),
           },
           select: { id: true },
         });
@@ -468,7 +484,7 @@ export class RegistryService {
       : [];
     return {
       query,
-      scope: new RegistryAccessScope(user),
+      scope: await resolveRegistryAccessScope(this.prisma.client, user),
       warningDays,
       timeZone,
       now,
