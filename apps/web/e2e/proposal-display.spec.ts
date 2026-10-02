@@ -42,7 +42,7 @@ async function openDemoRow(page: Page) {
 }
 
 async function restoreDemoProposal(page: Page) {
-  await page.getByRole('button', { name: 'Сохранить предложение' }).first().click();
+  await page.getByRole('button', { name: 'Зарегистрировать предложения' }).first().click();
   const dialog = page.getByRole('dialog', { name: 'Предложение' });
   await dialog.getByLabel('Сумма').fill('1250.00');
   await dialog.getByRole('combobox', { name: 'Организация' }).click();
@@ -118,7 +118,7 @@ test.describe('proposal organization and amount', () => {
     await page.getByText('Подъезд 2, квартира 45, санузел').first().click();
     await expect(page).toHaveURL(/\/acts\//);
     try {
-      await page.getByRole('button', { name: 'Сохранить предложение' }).first().click();
+      await page.getByRole('button', { name: 'Зарегистрировать предложения' }).first().click();
       const dialog = page.getByRole('dialog', { name: 'Предложение' });
       await expect(dialog.locator('select:not([aria-hidden="true"])')).toHaveCount(0);
       await dialog.getByLabel('Сумма').fill('4321.00');

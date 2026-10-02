@@ -232,7 +232,7 @@ test.describe('UI acceptance defects', () => {
     await login(page, ACCOUNTS.admin);
     await page.locator('.registry-table tbody tr').first().click();
     await expect(page).toHaveURL(/\/acts\//);
-    await page.getByRole('button', { name: 'Сохранить предложение' }).first().click();
+    await page.getByRole('button', { name: 'Зарегистрировать предложения' }).first().click();
     const dialog = page.getByRole('dialog', { name: 'Предложение' });
     await expect(dialog).toBeVisible();
     await expect(dialog.locator('select:not([aria-hidden="true"])')).toHaveCount(0);
@@ -261,7 +261,7 @@ test.describe('UI acceptance defects', () => {
     await login(page, ACCOUNTS.admin);
     await page.locator('.defect-card').first().getByRole('button', { name: 'Открыть' }).click();
     await expect(page.locator('.act-detail')).toBeVisible();
-    await page.getByRole('button', { name: 'Сохранить предложение' }).first().click();
+    await page.getByRole('button', { name: 'Зарегистрировать предложения' }).first().click();
     const dialog = page.getByRole('dialog', { name: 'Предложение' });
     await expect(dialog).toBeVisible();
     await expect(dialog.locator('select:not([aria-hidden="true"])')).toHaveCount(0);

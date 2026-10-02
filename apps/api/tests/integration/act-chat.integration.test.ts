@@ -469,6 +469,25 @@ describe('act chat integration', () => {
     });
     expect(afterSelf).toBe(1);
 
+    const engineerMention = await mutate(responsibleSession, {
+      method: 'POST',
+      url: `/api/acts/${actId}/chat`,
+      payload: {
+        body: '@Админ Чата проверка упоминания',
+        clientMessageId: randomUUID(),
+        mentionedUserIds: [admin.id],
+      },
+    });
+    expect(engineerMention.statusCode).toBe(201);
+    const mentionEvents = await prisma.notificationEvent.findMany({
+      where: { actId, type: 'ACT_CHAT_MENTION' },
+      include: { recipients: true },
+    });
+    expect(mentionEvents).toHaveLength(2);
+    expect(
+      mentionEvents.some((event) => event.recipients.some((row) => row.userId === admin.id)),
+    ).toBe(true);
+
     const outboxHits = await prisma.outboxEvent.findMany({
       where: { createdAt: { gte: new Date(Date.now() - 60_000) } },
     });

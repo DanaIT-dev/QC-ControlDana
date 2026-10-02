@@ -1,7 +1,7 @@
 'use client';
 
-import { canAccessReferenceKind, formatPersonShort } from '@sgr-registry/domain';
-import type { UserRole } from '@sgr-registry/contracts';
+import { canAccessReferenceKind, formatPersonShort, ORGANIZATION_ROLE_LABELS } from '@sgr-registry/domain';
+import { ORGANIZATION_ROLES, type OrganizationRole, type UserRole } from '@sgr-registry/contracts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent } from '@/components/ui/card';
 import {
   Dialog,
@@ -98,6 +99,7 @@ export function ReferenceDataView({
     email: string;
     phone: string;
     contactPerson: string;
+    roles: OrganizationRole[];
   } | null>(null);
   const listQuery = useQuery({
     queryKey: ['reference', tab, search, status],
@@ -170,16 +172,14 @@ export function ReferenceDataView({
       });
     }
     if (tab === 'organizations') {
-      setOrgEditTarget({
-        id: String(match.id),
-        version: Number(match.version),
-        officialName: String(match.officialName ?? ''),
-        unp: String(match.unp ?? ''),
-        postalAddress: String(match.postalAddress ?? ''),
-        email: String(match.email ?? ''),
-        phone: String(match.phone ?? ''),
-        contactPerson: String(match.contactPerson ?? ''),
-      });
+      setOrgEditTarget(
+        organizationEditFromItem(
+          match,
+          String(match.id),
+          Number(match.version),
+          String(match.officialName ?? ''),
+        ),
+      );
     }
   }, [requestedId, items, tab]);
 
@@ -250,6 +250,7 @@ export function ReferenceDataView({
             <tr className="border-b bg-background text-left text-[12px] font-medium text-muted-foreground">
               <th className="px-3 py-3">Название</th>
               {showAddress ? <th className="px-3 py-3">Адрес</th> : null}
+              {tab === 'organizations' ? <th className="px-3 py-3">Роли</th> : null}
               {tab === 'property-objects' ? (
                 <th className="px-3 py-3">Ответственные инженеры</th>
               ) : null}
@@ -270,6 +271,11 @@ export function ReferenceDataView({
                   {showAddress ? (
                     <td className="max-w-[28rem] truncate px-3 py-3 text-muted-foreground">
                       {address || '—'}
+                    </td>
+                  ) : null}
+                  {tab === 'organizations' ? (
+                    <td className="max-w-[18rem] truncate px-3 py-3 text-muted-foreground">
+                      {organizationRoleText(item)}
                     </td>
                   ) : null}
                   {tab === 'property-objects' ? (
@@ -309,16 +315,7 @@ export function ReferenceDataView({
                             variant="outline"
                             size="sm"
                             onClick={() =>
-                              setOrgEditTarget({
-                                id,
-                                version,
-                                officialName: String(item.officialName ?? title),
-                                unp: String(item.unp ?? ''),
-                                postalAddress: String(item.postalAddress ?? ''),
-                                email: String(item.email ?? ''),
-                                phone: String(item.phone ?? ''),
-                                contactPerson: String(item.contactPerson ?? ''),
-                              })
+                              setOrgEditTarget(organizationEditFromItem(item, id, version, title))
                             }
                           >
                             Редактировать
@@ -372,6 +369,11 @@ export function ReferenceDataView({
                 {showAddress && address ? (
                   <p className="text-sm break-words text-muted-foreground">{address}</p>
                 ) : null}
+                {tab === 'organizations' ? (
+                  <p className="text-sm break-words text-muted-foreground">
+                    Роли: {organizationRoleText(item)}
+                  </p>
+                ) : null}
                 {tab === 'property-objects' ? (
                   <p className="text-sm break-words text-muted-foreground">
                     Ответственные инженеры: {engineerNames(item)}
@@ -404,16 +406,7 @@ export function ReferenceDataView({
                         type="button"
                         variant="outline"
                         onClick={() =>
-                          setOrgEditTarget({
-                            id,
-                            version,
-                            officialName: String(item.officialName ?? title),
-                            unp: String(item.unp ?? ''),
-                            postalAddress: String(item.postalAddress ?? ''),
-                            email: String(item.email ?? ''),
-                            phone: String(item.phone ?? ''),
-                            contactPerson: String(item.contactPerson ?? ''),
-                          })
+                          setOrgEditTarget(organizationEditFromItem(item, id, version, title))
                         }
                       >
                         Редактировать
@@ -534,6 +527,7 @@ function CreateReferenceDialog({
   onCreate: (body: unknown) => void;
 }) {
   const [engineerIds, setEngineerIds] = useState<string[]>([]);
+  const [roles, setRoles] = useState<OrganizationRole[]>(['LIABLE_CONTRACTOR']);
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
@@ -556,7 +550,7 @@ function CreateReferenceDialog({
                 email: String(form.get('email') ?? '').trim() || null,
                 phone: String(form.get('phone') ?? '').trim() || null,
                 contactPerson: String(form.get('contactPerson') ?? '').trim() || null,
-                roles: ['LIABLE_CONTRACTOR'],
+                roles,
               });
             } else {
               const code = String(form.get('code') ?? '').trim();
@@ -615,6 +609,7 @@ function CreateReferenceDialog({
                 <Label htmlFor="org-contact">Контактное лицо</Label>
                 <Input id="org-contact" name="contactPerson" />
               </div>
+              <OrganizationRoleFields roles={roles} onChange={setRoles} />
             </>
           ) : null}
           {tab === 'work-types' || tab === 'defect-types' ? (
@@ -633,7 +628,9 @@ function CreateReferenceDialog({
             <Button type="button" variant="outline" onClick={onClose}>
               Отмена
             </Button>
-            <Button type="submit">Создать</Button>
+            <Button type="submit" disabled={tab === 'organizations' && roles.length === 0}>
+              Создать
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -657,6 +654,7 @@ function EditOrganizationDialog({
     email: string;
     phone: string;
     contactPerson: string;
+    roles: OrganizationRole[];
   };
   onClose: () => void;
   onSaved: () => Promise<void> | void;
@@ -667,6 +665,7 @@ function EditOrganizationDialog({
   const [email, setEmail] = useState(target.email);
   const [phone, setPhone] = useState(target.phone);
   const [contactPerson, setContactPerson] = useState(target.contactPerson);
+  const [roles, setRoles] = useState<OrganizationRole[]>(target.roles);
   const [pending, setPending] = useState(false);
 
   return (
@@ -693,6 +692,7 @@ function EditOrganizationDialog({
                     email: email.trim() || null,
                     phone: phone.trim() || null,
                     contactPerson: contactPerson.trim() || null,
+                    roles,
                   },
                 });
                 toast.success('Организация сохранена');
@@ -765,17 +765,82 @@ function EditOrganizationDialog({
               className="min-h-11"
             />
           </div>
+          <OrganizationRoleFields roles={roles} onChange={setRoles} />
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose} disabled={pending}>
               Отмена
             </Button>
-            <Button type="submit" disabled={pending || !officialName.trim()}>
+            <Button type="submit" disabled={pending || !officialName.trim() || roles.length === 0}>
               {pending ? 'Сохранение…' : 'Сохранить'}
             </Button>
           </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function organizationRoles(item: Record<string, unknown>): OrganizationRole[] {
+  if (!Array.isArray(item.roles)) {
+    return [];
+  }
+  return item.roles.filter((role): role is OrganizationRole =>
+    (ORGANIZATION_ROLES as readonly string[]).includes(String(role)),
+  );
+}
+
+function organizationRoleText(item: Record<string, unknown>): string {
+  const roles = organizationRoles(item);
+  return roles.length > 0 ? roles.map((role) => ORGANIZATION_ROLE_LABELS[role]).join(', ') : '—';
+}
+
+function organizationEditFromItem(
+  item: Record<string, unknown>,
+  id: string,
+  version: number,
+  title: string,
+) {
+  return {
+    id,
+    version,
+    officialName: String(item.officialName ?? title),
+    unp: String(item.unp ?? ''),
+    postalAddress: String(item.postalAddress ?? ''),
+    email: String(item.email ?? ''),
+    phone: String(item.phone ?? ''),
+    contactPerson: String(item.contactPerson ?? ''),
+    roles: organizationRoles(item),
+  };
+}
+
+function OrganizationRoleFields({
+  roles,
+  onChange,
+}: {
+  roles: OrganizationRole[];
+  onChange: (roles: OrganizationRole[]) => void;
+}) {
+  return (
+    <fieldset className="grid gap-2">
+      <legend className="text-sm font-medium">Роли</legend>
+      {ORGANIZATION_ROLES.map((role) => (
+        <label key={role} className="flex min-h-11 items-center gap-2 text-sm">
+          <Checkbox
+            checked={roles.includes(role)}
+            onCheckedChange={(checked) => {
+              onChange(
+                checked === true
+                  ? roles.includes(role)
+                    ? roles
+                    : [...roles, role]
+                  : roles.filter((item) => item !== role),
+              );
+            }}
+          />
+          {ORGANIZATION_ROLE_LABELS[role]}
+        </label>
+      ))}
+    </fieldset>
   );
 }
 

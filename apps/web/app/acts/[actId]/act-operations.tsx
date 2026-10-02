@@ -762,7 +762,7 @@ function ProposalEditor({
   return (
     <>
       <Button type="button" variant="outline" onClick={openEditor}>
-        Сохранить предложение
+        Зарегистрировать предложения
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-h-[min(100dvh,40rem)] overflow-y-auto">
@@ -819,7 +819,8 @@ function ProposalEditor({
             </div>
             <DirectoryCombobox
               label="Организация"
-              placeholder={lookups.isLoading ? 'Загрузка…' : 'Выберите организацию'}
+              placeholder={lookups.isLoading ? 'Загрузка…' : 'Выберите поставщика работ'}
+              emptyText="Нет поставщиков работ"
               options={organizationOptions.map((org) => ({
                 id: org.id,
                 label: org.officialName,
@@ -831,9 +832,11 @@ function ProposalEditor({
               }}
               loading={lookups.isLoading}
               disabled={lookups.isLoading}
-              addLabel={lookups.data?.canCreate?.organization ? 'Добавить организацию' : undefined}
+              addLabel={
+                lookups.data?.canCreate?.workSupplier ? 'Добавить поставщика работ' : undefined
+              }
               onAdd={
-                lookups.data?.canCreate?.organization
+                lookups.data?.canCreate?.workSupplier
                   ? (query) =>
                       setQuickCreate({
                         kind: 'organizations',

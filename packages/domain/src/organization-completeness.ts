@@ -3,6 +3,12 @@ import { DuplicateDirectoryRecordError } from './errors';
 import { foldKey } from './text';
 import { normalizeUnp } from './unp';
 
+export const ORGANIZATION_ROLE_LABELS: Record<OrganizationRole, string> = {
+  CUSTOMER: 'Заказчик',
+  LIABLE_CONTRACTOR: 'Виновная организация',
+  ALTERNATIVE_CONTRACTOR: 'Поставщик работ',
+};
+
 export const ORGANIZATION_DETAIL_FIELDS = [
   'unp',
   'postalAddress',
@@ -51,13 +57,36 @@ export function organizationIncompleteNotificationBody(input: {
   officialName: string;
   missingFields: readonly OrganizationDetailField[];
   liable?: boolean;
+  supplierEntry?: boolean;
 }): string {
+  if (input.supplierEntry) {
+    return `В справочник внесена организация «${input.officialName}». Необходимо заполнить данные организации.`;
+  }
   const labels = input.missingFields.map((field) => ORGANIZATION_DETAIL_FIELD_LABELS[field]);
   const listed = labels.length > 0 ? ` Не заполнены: ${labels.join(', ')}.` : '';
   if (input.liable) {
     return `Заполните подробные данные виновной организации «${input.officialName}».${listed}`;
   }
   return `Заполните подробные данные организации «${input.officialName}».${listed}`;
+}
+
+export function isNameOnlyWorkSupplier(input: {
+  roles?: readonly OrganizationRole[] | null;
+  unp?: string | null;
+  postalAddress?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  contactPerson?: string | null;
+}): boolean {
+  return (
+    input.roles?.length === 1 &&
+    input.roles[0] === 'ALTERNATIVE_CONTRACTOR' &&
+    !input.unp &&
+    !input.postalAddress &&
+    !input.email &&
+    !input.phone &&
+    !input.contactPerson
+  );
 }
 
 export function organizationDirectoryEditHref(organizationId: string): string {

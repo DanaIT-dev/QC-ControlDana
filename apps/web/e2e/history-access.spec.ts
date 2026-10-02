@@ -101,7 +101,7 @@ test.describe('history access by role', () => {
     const body = await history.text();
     expect(body).not.toMatch(/DEADLINE_UPDATED|actorName|totalCount|"items"/);
 
-    await expect(page.getByRole('button', { name: 'Сохранить предложение' }).first()).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Зарегистрировать предложения' }).first()).toBeVisible();
     await expect(page.getByText('Срок третьей стороны').first()).toBeVisible();
     await expect(page.getByText('Файлы и фотографии').first()).toBeVisible();
 

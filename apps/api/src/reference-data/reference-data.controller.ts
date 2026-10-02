@@ -44,7 +44,7 @@ export class ReferenceDataController {
   @Post(':kind')
   @HttpCode(201)
   @UseGuards(BrowserOriginGuard, CsrfGuard, DirectoryMutateRateLimitGuard)
-  @RequireCapability('MANAGE_REFERENCE_DATA')
+  @RequireCapability('MANAGE_REFERENCE_DATA', 'MANAGE_PROPOSALS')
   create(
     @CurrentUser() user: AuthenticatedUser,
     @Param('kind') kind: ReferenceKind,

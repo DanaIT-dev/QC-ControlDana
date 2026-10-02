@@ -23,6 +23,7 @@ export interface OperationLookups {
   canCreate?: {
     propertyObject: boolean;
     organization: boolean;
+    workSupplier?: boolean;
     workType: boolean;
     defectType: boolean;
     responsibleEngineer: boolean;

@@ -179,7 +179,7 @@ export function DirectoryCombobox({
                     <span className="block py-2">
                       {query.trim() ? 'Ничего не найдено' : emptyText}
                     </span>
-                    {onAdd && addLabel && query.trim() ? (
+                    {onAdd && addLabel ? (
                       <button
                         type="button"
                         className="mx-auto mb-2 flex min-h-9 items-center gap-1 rounded-md px-2 text-sm text-primary hover:bg-muted"
@@ -189,7 +189,7 @@ export function DirectoryCombobox({
                           onAdd(next);
                         }}
                       >
-                        {`+ Добавить «${query.trim()}»`}
+                        {query.trim() ? `+ Добавить «${query.trim()}»` : `+ ${addLabel}`}
                       </button>
                     ) : null}
                   </CommandEmpty>
@@ -243,7 +243,7 @@ export function DirectoryCombobox({
                 </>
               )}
             </CommandList>
-            {onAdd && addLabel ? (
+            {onAdd && addLabel && filtered.length > 0 ? (
               <div className="sticky bottom-0 z-10 shrink-0 border-t bg-popover">
                 <button
                   type="button"

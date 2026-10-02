@@ -278,6 +278,10 @@ export function canManageReferenceData(role: UserRole): boolean {
   return hasCapability(role, 'MANAGE_REFERENCE_DATA');
 }
 
+export function canCreateWorkSupplier(role: UserRole): boolean {
+  return canManageReferenceData(role) || hasCapability(role, 'MANAGE_PROPOSALS');
+}
+
 export function canViewReferenceData(role: UserRole): boolean {
   return satisfiesCapability(role, 'VIEW_REFERENCE_DATA');
 }

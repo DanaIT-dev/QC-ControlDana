@@ -39,6 +39,8 @@ export async function notifyOrganizationIncomplete(
     details: OrganizationDetailsInput;
     roles?: readonly OrganizationRole[];
     actorUserId: string;
+    recipientIds?: string[];
+    supplierEntry?: boolean;
   },
 ): Promise<string[]> {
   if (organizationDetailsComplete(input.details)) {
@@ -61,14 +63,48 @@ export async function notifyOrganizationIncomplete(
     defectItemId: null,
     actorUserId: input.actorUserId,
     automatic: true,
-    extraRecipientIds: [input.actorUserId],
+    extraRecipientIds: input.recipientIds ?? [input.actorUserId],
     body: organizationIncompleteNotificationBody({
       officialName: input.details.officialName,
       missingFields,
       liable: isLiableOrganizationRole(input.roles),
+      supplierEntry: input.supplierEntry,
     }),
     organizationId: input.organizationId,
     missingFields: missingFields as OrganizationDetailField[],
   });
   return [outboxId];
+}
+
+export async function notifyIncompleteWorkSupplier(
+  writer: OutboxWriter,
+  tx: OutboxTx,
+  input: { organizationId: string; actorUserId: string },
+): Promise<string[]> {
+  const organization = await tx.organization.findUnique({
+    where: { id: input.organizationId },
+    include: { roles: true },
+  });
+  if (!organization || !organization.roles.some((row) => row.role === 'ALTERNATIVE_CONTRACTOR')) {
+    return [];
+  }
+  if (organizationDetailsComplete(organization)) {
+    await resolveOrganizationIncompleteNotification(tx, organization.id);
+    return [];
+  }
+  const admins = await tx.user.findMany({
+    where: { role: 'ADMIN', status: 'ACTIVE' },
+    select: { id: true },
+  });
+  if (admins.length === 0) {
+    return [];
+  }
+  return notifyOrganizationIncomplete(writer, tx, {
+    organizationId: organization.id,
+    details: organization,
+    roles: organization.roles.map((row) => row.role),
+    actorUserId: input.actorUserId,
+    recipientIds: admins.map((row) => row.id),
+    supplierEntry: true,
+  });
 }

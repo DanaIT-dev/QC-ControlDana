@@ -41,6 +41,7 @@ import {
   canViewFullHistory,
   canViewHistory,
   canCreatePropertyObject,
+  canCreateWorkSupplier,
   canManageReferenceData,
   canManageUsers,
   acceptDefectRepair,
@@ -94,6 +95,7 @@ import {
   notifyDefectRepairRejected,
   notifyDefectStatus,
   notifyDefectSubmittedForInspection,
+  notifyIncompleteWorkSupplier,
   notifyResponsibleAssigned,
   OutboxWriter,
   revokeRecipientsForUsers,
@@ -210,6 +212,7 @@ export class OperationsService {
       canCreate: {
         propertyObject: canCreatePropertyObject(user.role),
         organization: canManageReferenceData(user.role),
+        workSupplier: canCreateWorkSupplier(user.role),
         workType: canManageReferenceData(user.role),
         defectType: canManageReferenceData(user.role),
         responsibleEngineer: canManageUsers(user.role),
@@ -1218,8 +1221,12 @@ export class OperationsService {
     const ctx = actorContext(user, request);
     const item = await this.requireVisibleDefect(user, defectItemId);
     const amount = parseProposalAmount(input.amount);
-    return this.prisma.client.$transaction(async (tx) => {
+    const result = await this.prisma.client.$transaction(async (tx) => {
       await this.assertOrganizations(tx, [input.alternativeContractorOrganizationId], true);
+      const supplierNoticeIds = await notifyIncompleteWorkSupplier(this.outboxWriter, tx, {
+        organizationId: input.alternativeContractorOrganizationId,
+        actorUserId: user.id,
+      });
       const current = await tx.proposal.findFirst({
         where: { defectItemId, slot, status: 'ACTIVE' },
       });
@@ -1257,7 +1264,7 @@ export class OperationsService {
             organizationId: input.alternativeContractorOrganizationId,
           }),
         });
-        return { id: fresh.id, version: fresh.version, slot };
+        return { id: fresh.id, version: fresh.version, slot, outboxIds: supplierNoticeIds };
       }
       const created = await tx.proposal.create({
         data: {
@@ -1283,8 +1290,10 @@ export class OperationsService {
         }),
       });
       void item;
-      return { id: created.id, version: created.version, slot };
+      return { id: created.id, version: created.version, slot, outboxIds: supplierNoticeIds };
     });
+    await this.outboxWriter.enqueue(result.outboxIds);
+    return { id: result.id, version: result.version, slot: result.slot };
   }
 
   async archiveProposal(

@@ -8,7 +8,9 @@ import {
   organizationDetailsComplete,
   organizationIncompleteNotificationBody,
   organizationIncompleteOccurrenceKey,
+  isNameOnlyWorkSupplier,
 } from './organization-completeness';
+import { canCreateWorkSupplier } from './capabilities';
 
 describe('organization completeness', () => {
   it('treats name-only records as incomplete and lists existing fields', () => {
@@ -34,6 +36,19 @@ describe('organization completeness', () => {
     expect(organizationCreateToast(true)).toBe(
       'Организация добавлена. Заполните подробные данные в справочнике.',
     );
+    expect(
+      organizationIncompleteNotificationBody({
+        officialName: 'ООО Поставщик',
+        missingFields: ['unp', 'postalAddress', 'email', 'phone', 'contactPerson'],
+        supplierEntry: true,
+      }),
+    ).toBe(
+      'В справочник внесена организация «ООО Поставщик». Необходимо заполнить данные организации.',
+    );
+    expect(isNameOnlyWorkSupplier({ roles: ['ALTERNATIVE_CONTRACTOR'] })).toBe(true);
+    expect(isNameOnlyWorkSupplier({ roles: ['LIABLE_CONTRACTOR'] })).toBe(false);
+    expect(canCreateWorkSupplier('CONTRACTOR_ENGINEER')).toBe(true);
+    expect(canCreateWorkSupplier('RESPONSIBLE_ENGINEER')).toBe(false);
     expect(organizationIncompleteOccurrenceKey('org-1')).toBe(
       'ORGANIZATION_DETAILS_INCOMPLETE:org-1',
     );

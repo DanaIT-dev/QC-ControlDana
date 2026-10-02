@@ -125,6 +125,7 @@ function OrganizationQuickCreateDialog({
   onClose: () => void;
   onCreated: (created: { id: string; label: string }) => void;
 }) {
+  const nameOnly = role === 'ALTERNATIVE_CONTRACTOR';
   const queryClient = useQueryClient();
   const [officialName, setOfficialName] = useState(initialName);
   const [unp, setUnp] = useState('');
@@ -169,7 +170,7 @@ function OrganizationQuickCreateDialog({
         !created.email ||
         !created.phone ||
         !created.contactPerson;
-      toast.success(organizationCreateToast(incomplete));
+      toast.success(nameOnly ? 'Поставщик работ добавлен' : organizationCreateToast(incomplete));
       await queryClient.invalidateQueries({ queryKey: queryKeys.lookups });
       onCreated({ id: created.id, label: created.officialName });
       onClose();
@@ -196,7 +197,15 @@ function OrganizationQuickCreateDialog({
           }}
         >
           <DialogHeader>
-            <DialogTitle>Добавить организацию</DialogTitle>
+            <DialogTitle>
+              {nameOnly ? 'Добавить поставщика работ' : 'Добавить организацию'}
+            </DialogTitle>
+            {nameOnly ? (
+              <DialogDescription>
+                Достаточно названия. После сохранения цены администратор получит уведомление
+                заполнить данные организации.
+              </DialogDescription>
+            ) : null}
           </DialogHeader>
           <div className="grid gap-1.5">
             <Label htmlFor="quick-org-name">Название организации</Label>
@@ -208,6 +217,8 @@ function OrganizationQuickCreateDialog({
               className="min-h-11"
             />
           </div>
+          {nameOnly ? null : (
+            <>
           <div className="grid gap-1.5">
             <Label htmlFor="quick-org-unp">УНП</Label>
             <Input
@@ -254,6 +265,8 @@ function OrganizationQuickCreateDialog({
               className="min-h-11"
             />
           </div>
+            </>
+          )}
           {existing ? (
             <div className="grid gap-2 rounded-lg border p-3">
               <p className="text-sm">Уже есть организация «{existing.label}».</p>

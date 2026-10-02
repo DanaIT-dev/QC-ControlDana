@@ -260,7 +260,7 @@ export class ActChatService {
           messageId,
         };
         assertSafeNotificationPayload(payload);
-        await tx.notificationEvent.create({
+        const event = await tx.notificationEvent.create({
           data: {
             type: 'ACT_CHAT_MENTION',
             occurrenceKey: buildOccurrenceKey(chatMentionOccurrenceKey(messageId, recipientId)),
@@ -268,9 +268,21 @@ export class ActChatService {
             actId: act.id,
             payload,
             occurredAt: now,
-            recipients: { create: { userId: recipientId } },
           },
         });
+        // Prisma nested create uses INSERT ... RETURNING. PostgreSQL checks that
+        // against nr_select, which only lets a responsible engineer read their own
+        // recipient rows. Mentioning someone else then fails even though nr_insert_chat
+        // allows the insert. Write the recipient without RETURNING.
+        await tx.$executeRaw`
+          INSERT INTO notification_recipients (id, "notificationEventId", "userId", "createdAt")
+          VALUES (
+            ${randomUUID()}::uuid,
+            ${event.id}::uuid,
+            ${recipientId}::uuid,
+            ${now}::timestamptz
+          )
+        `;
       }
 
       await writeAuditLog(tx, {

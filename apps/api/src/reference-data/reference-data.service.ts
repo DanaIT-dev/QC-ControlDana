@@ -25,6 +25,8 @@ import {
   parseOptionalCalendarDate,
   ValidationError,
   assertOrganizationNotDuplicate,
+  canManageReferenceData,
+  isNameOnlyWorkSupplier,
   REFERENCE_ADDRESS_MAX,
 } from '@sgr-registry/domain';
 import type { Prisma } from '@sgr-registry/database';
@@ -79,6 +81,9 @@ export class ReferenceDataService {
     body: unknown,
     request: FastifyRequest,
   ) {
+    if (!canManageReferenceData(actor.role) && kind !== 'organizations') {
+      throw new ForbiddenException('Недостаточно прав');
+    }
     if (kind === 'property-objects') {
       return this.createPropertyObject(actor, body, request);
     }
@@ -409,8 +414,22 @@ export class ReferenceDataService {
     );
     const phone = normalizeOptionalContact(input.phone, 'phone');
     const contactPerson = normalizeOptionalContact(input.contactPerson, 'contactPerson');
+    const nameOnlySupplier = isNameOnlyWorkSupplier({
+      roles: input.roles,
+      unp,
+      postalAddress,
+      email,
+      phone,
+      contactPerson,
+    });
+    if (!canManageReferenceData(actor.role) && !nameOnlySupplier) {
+      throw new ForbiddenException('Недостаточно прав');
+    }
     const ctx = actorContext(actor, request);
     const details = { officialName, unp, postalAddress, email, phone, contactPerson };
+    const roles = input.roles ?? [];
+    const deferSupplierNotice =
+      roles.includes('ALTERNATIVE_CONTRACTOR') && !roles.includes('LIABLE_CONTRACTOR');
     const outboxIds: string[] = [];
     try {
       const created = await this.prisma.client.$transaction(async (tx) => {
@@ -442,14 +461,16 @@ export class ReferenceDataService {
             roles: input.roles ?? [],
           }),
         });
-        outboxIds.push(
-          ...(await notifyOrganizationIncomplete(this.outboxWriter, tx, {
-            organizationId: createdRow.id,
-            details,
-            roles: input.roles,
-            actorUserId: actor.id,
-          })),
-        );
+        if (!deferSupplierNotice) {
+          outboxIds.push(
+            ...(await notifyOrganizationIncomplete(this.outboxWriter, tx, {
+              organizationId: createdRow.id,
+              details,
+              roles: input.roles,
+              actorUserId: actor.id,
+            })),
+          );
+        }
         return createdRow;
       });
       await this.outboxWriter.enqueue(outboxIds);

@@ -20,6 +20,7 @@ export {
   writeDomainOutbox,
 } from './defect-outbox.js';
 export {
+  notifyIncompleteWorkSupplier,
   notifyOrganizationIncomplete,
   resolveOrganizationIncompleteNotification,
 } from './organization-outbox.js';
