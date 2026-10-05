@@ -307,6 +307,7 @@ test.describe('app shell footer', () => {
     await login(page, ACCOUNTS.admin);
     const pages = [
       '/registry',
+      '/analytics',
       '/objects',
       '/deadlines',
       '/notifications',

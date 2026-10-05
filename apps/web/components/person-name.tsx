@@ -88,9 +88,7 @@ export function PersonName({
       aria-label={official}
     >
       <span className="min-w-0 truncate whitespace-nowrap">{surname}</span>
-      {initials ? (
-        <span className="shrink-0 whitespace-nowrap">{`\u00A0${initials}`}</span>
-      ) : null}
+      {initials ? <span className="shrink-0 whitespace-nowrap">{`\u00A0${initials}`}</span> : null}
     </span>
   );
 }

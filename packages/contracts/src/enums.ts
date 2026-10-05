@@ -164,6 +164,7 @@ export const ATTACHMENT_CATEGORIES = [
   'CLAIM_DOCUMENT',
   'THIRD_PARTY_DOCUMENT',
   'PROPOSAL_DOCUMENT',
+  'REPAIR_EVIDENCE',
   'OTHER',
 ] as const;
 export type AttachmentCategory = (typeof ATTACHMENT_CATEGORIES)[number];

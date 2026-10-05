@@ -30,6 +30,17 @@ export const queryKeys = {
     items: (query: string) => ['sla', 'items', query] as const,
   },
   notificationSettings: ['notification-settings'] as const,
+  analytics: {
+    overview: (query: string) => ['analytics', 'overview', query] as const,
+    costs: (query: string) => ['analytics', 'costs', query] as const,
+    liability: (query: string) => ['analytics', 'liability', query] as const,
+    process: (query: string) => ['analytics', 'process', query] as const,
+    patterns: (query: string) => ['analytics', 'patterns', query] as const,
+    quality: (query: string) => ['analytics', 'quality', query] as const,
+    drilldown: (query: string) => ['analytics', 'drilldown', query] as const,
+    filters: (query: string) => ['analytics', 'filters', query] as const,
+    financials: (defectItemId: string) => ['analytics', 'financials', defectItemId] as const,
+  },
   registry: {
     all: ['registry'] as const,
     defects: (query: unknown) => ['registry', 'defects', query] as const,

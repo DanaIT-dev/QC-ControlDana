@@ -1006,13 +1006,7 @@ function TempPasswordDialog({
   );
 }
 
-function EmployeeNameButton({
-  user,
-  onOpen,
-}: {
-  user: UserRow;
-  onOpen: (user: UserRow) => void;
-}) {
+function EmployeeNameButton({ user, onOpen }: { user: UserRow; onOpen: (user: UserRow) => void }) {
   return (
     <button
       type="button"

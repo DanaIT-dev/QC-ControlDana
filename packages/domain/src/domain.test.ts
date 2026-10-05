@@ -422,6 +422,11 @@ describe('capabilities', () => {
       'VIEW_NOTIFICATIONS',
       'VIEW_DEADLINE_CONTROL',
       'MANAGE_SYSTEM_SETTINGS',
+      'VIEW_QUALITY_ANALYTICS',
+      'VIEW_FINANCIAL_ANALYTICS',
+      'VIEW_CROSS_ORGANIZATION_ANALYTICS',
+      'MANAGE_DEFECT_FINANCIALS',
+      'REVIEW_ANALYTICS_INSIGHTS',
       'CHANGE_OWN_PASSWORD',
       'VIEW_OWN_PROFILE',
     ]);
@@ -458,10 +463,17 @@ describe('capabilities', () => {
       'DOWNLOAD_ATTACHMENT',
       'VIEW_NOTIFICATIONS',
       'VIEW_DEADLINE_CONTROL',
+      'VIEW_QUALITY_ANALYTICS',
       'CHANGE_OWN_PASSWORD',
       'VIEW_OWN_PROFILE',
     ]);
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).toContain('VIEW_ORGANIZATION_ACTS');
+    expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).toContain('VIEW_QUALITY_ANALYTICS');
+    expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('VIEW_FINANCIAL_ANALYTICS');
+    expect(satisfiesCapability('SUPER_ADMIN', 'VIEW_QUALITY_ANALYTICS')).toBe(true);
+    expect(satisfiesCapability('SUPER_ADMIN', 'VIEW_FINANCIAL_ANALYTICS')).toBe(true);
+    expect(hasCapability('SUPER_ADMIN', 'MANAGE_DEFECT_FINANCIALS')).toBe(false);
+    expect(hasCapability('SUPER_ADMIN', 'REVIEW_ANALYTICS_INSIGHTS')).toBe(false);
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).toContain('SUBMIT_DEFECT_FOR_INSPECTION');
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('VIEW_ALL_ACTS');
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('COMPLETE_DEFECT');

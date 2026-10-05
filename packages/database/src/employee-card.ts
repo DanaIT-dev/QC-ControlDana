@@ -17,9 +17,7 @@ export async function completeOwnProfileViaDefiner(
     birthDate: string;
   },
 ): Promise<CompletedOwnProfileRow> {
-  const rows = await tx.$queryRaw<
-    Array<{ id: string; full_name: string; version: number }>
-  >`
+  const rows = await tx.$queryRaw<Array<{ id: string; full_name: string; version: number }>>`
     SELECT id, full_name, version
     FROM public.sgr_complete_own_profile(
       ${input.lastName},

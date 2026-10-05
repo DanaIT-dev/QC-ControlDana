@@ -14,6 +14,7 @@ import { OperationsModule } from './operations/operations.module.js';
 import { AttachmentsModule } from './attachments/attachments.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
 import { ObjectsModule } from './objects/objects.module.js';
+import { AnalyticsModule } from './analytics/analytics.module.js';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { ObjectsModule } from './objects/objects.module.js';
     AttachmentsModule,
     NotificationsModule,
     ObjectsModule,
+    AnalyticsModule,
   ],
   providers: [
     {

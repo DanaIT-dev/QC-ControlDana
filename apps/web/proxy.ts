@@ -43,6 +43,7 @@ export function proxy(request: NextRequest) {
       pathname === '/complete-profile' ||
       pathname === '/notifications' ||
       pathname === '/deadlines' ||
+      pathname === '/analytics' ||
       pathname === '/objects' ||
       pathname === '/pending-role' ||
       pathname.startsWith('/acts/')) &&

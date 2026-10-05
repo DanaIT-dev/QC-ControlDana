@@ -41,6 +41,11 @@ export const CAPABILITIES = [
   'VIEW_DEADLINE_CONTROL',
   'VIEW_SYSTEM_SETTINGS',
   'MANAGE_SYSTEM_SETTINGS',
+  'VIEW_QUALITY_ANALYTICS',
+  'VIEW_FINANCIAL_ANALYTICS',
+  'VIEW_CROSS_ORGANIZATION_ANALYTICS',
+  'MANAGE_DEFECT_FINANCIALS',
+  'REVIEW_ANALYTICS_INSIGHTS',
   'CHANGE_OWN_PASSWORD',
   'VIEW_OWN_PROFILE',
 ] as const;
@@ -80,6 +85,11 @@ const ADMIN_CAPABILITIES = [
   'VIEW_NOTIFICATIONS',
   'VIEW_DEADLINE_CONTROL',
   'MANAGE_SYSTEM_SETTINGS',
+  'VIEW_QUALITY_ANALYTICS',
+  'VIEW_FINANCIAL_ANALYTICS',
+  'VIEW_CROSS_ORGANIZATION_ANALYTICS',
+  'MANAGE_DEFECT_FINANCIALS',
+  'REVIEW_ANALYTICS_INSIGHTS',
   'CHANGE_OWN_PASSWORD',
   'VIEW_OWN_PROFILE',
 ] as const satisfies readonly Capability[];
@@ -127,6 +137,11 @@ const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
     'DOWNLOAD_ATTACHMENT',
     'VIEW_NOTIFICATIONS',
     'VIEW_DEADLINE_CONTROL',
+    'VIEW_QUALITY_ANALYTICS',
+    'VIEW_FINANCIAL_ANALYTICS',
+    'VIEW_CROSS_ORGANIZATION_ANALYTICS',
+    'MANAGE_DEFECT_FINANCIALS',
+    'REVIEW_ANALYTICS_INSIGHTS',
     'CHANGE_OWN_PASSWORD',
     'VIEW_OWN_PROFILE',
   ],
@@ -143,6 +158,7 @@ const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
     'DOWNLOAD_ATTACHMENT',
     'VIEW_NOTIFICATIONS',
     'VIEW_DEADLINE_CONTROL',
+    'VIEW_QUALITY_ANALYTICS',
     'CHANGE_OWN_PASSWORD',
     'VIEW_OWN_PROFILE',
   ],
@@ -171,6 +187,7 @@ const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
     'DOWNLOAD_ATTACHMENT',
     'VIEW_NOTIFICATIONS',
     'VIEW_DEADLINE_CONTROL',
+    'VIEW_QUALITY_ANALYTICS',
     'CHANGE_OWN_PASSWORD',
     'VIEW_OWN_PROFILE',
   ],
@@ -191,6 +208,9 @@ export const OVERSIGHT_READ_CAPABILITIES: readonly Capability[] = [
   'VIEW_NOTIFICATIONS',
   'VIEW_DEADLINE_CONTROL',
   'VIEW_SYSTEM_SETTINGS',
+  'VIEW_QUALITY_ANALYTICS',
+  'VIEW_FINANCIAL_ANALYTICS',
+  'VIEW_CROSS_ORGANIZATION_ANALYTICS',
 ];
 
 const OVERSIGHT_READ_SET = new Set<Capability>(OVERSIGHT_READ_CAPABILITIES);
@@ -234,6 +254,11 @@ export const CAPABILITY_LABELS: Record<Capability, string> = {
   DOWNLOAD_ATTACHMENT: 'Скачивание вложений',
   VIEW_NOTIFICATIONS: 'Просмотр уведомлений',
   VIEW_DEADLINE_CONTROL: 'Контроль сроков',
+  VIEW_QUALITY_ANALYTICS: 'Аналитика качества',
+  VIEW_FINANCIAL_ANALYTICS: 'Финансовая аналитика',
+  VIEW_CROSS_ORGANIZATION_ANALYTICS: 'Сравнение организаций',
+  MANAGE_DEFECT_FINANCIALS: 'Управление финансовым влиянием дефекта',
+  REVIEW_ANALYTICS_INSIGHTS: 'Проверка аналитических сигналов',
   VIEW_SYSTEM_SETTINGS: 'Просмотр системных настроек',
   MANAGE_SYSTEM_SETTINGS: 'Управление системными настройками',
   CHANGE_OWN_PASSWORD: 'Смена собственного пароля',
@@ -362,9 +387,7 @@ export function canResolveImportedEngineer(role: UserRole): boolean {
 }
 
 export function canViewEmployees(role: UserRole): boolean {
-  return (
-    role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'MANAGER' || role === 'SGR_MANAGER'
-  );
+  return role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'MANAGER' || role === 'SGR_MANAGER';
 }
 
 export function canEditEmployment(role: UserRole): boolean {

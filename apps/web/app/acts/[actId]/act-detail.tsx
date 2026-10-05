@@ -6,6 +6,7 @@ import {
   canViewHistory,
   canViewActChat,
   canUploadCategory,
+  satisfiesCapability,
   canStartAct,
   hasCapability,
   importedDescriptionLabel,
@@ -42,6 +43,7 @@ import { commandFetch } from '../../../lib/command-api';
 import { formatCalendarDate, formatTimestamp, isSafeDocumentHref } from '../../../lib/registry-url';
 import { queryKeys } from '../../../lib/query-keys';
 import { ActHistory, ActOperations } from './act-operations';
+import { FinancialImpactPanel } from './financial-impact-panel';
 import { ActDiscussion } from './act-discussion';
 import { AttachmentsPanel } from '@/components/attachments-panel';
 import { ProposalValue, proposalSlotOf } from '@/components/proposal-value';
@@ -350,10 +352,16 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
                   uploadPath={`/api/defects/${item.id}/attachments`}
                   categories={
                     user.role === 'CONTRACTOR_ENGINEER'
-                      ? ['THIRD_PARTY_DOCUMENT']
+                      ? ['THIRD_PARTY_DOCUMENT', 'REPAIR_EVIDENCE']
                       : user.role === 'RESPONSIBLE_ENGINEER'
                         ? ['DEFECT_PHOTO', 'OTHER']
-                        : ['DEFECT_PHOTO', 'CLAIM_DOCUMENT', 'THIRD_PARTY_DOCUMENT', 'OTHER']
+                        : [
+                            'DEFECT_PHOTO',
+                            'CLAIM_DOCUMENT',
+                            'THIRD_PARTY_DOCUMENT',
+                            'REPAIR_EVIDENCE',
+                            'OTHER',
+                          ]
                   }
                   canUpload={(
                     ['DEFECT_PHOTO', 'CLAIM_DOCUMENT', 'THIRD_PARTY_DOCUMENT', 'OTHER'] as const
@@ -441,6 +449,9 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
                     </Badge>
                   ))}
                 </div>
+                {satisfiesCapability(user.role, 'VIEW_FINANCIAL_ANALYTICS') ? (
+                  <FinancialImpactPanel defectItemId={item.id} csrfToken={user.csrfToken} />
+                ) : null}
                 <ActOperations act={act} item={item} user={user} />
               </CardContent>
             </Card>

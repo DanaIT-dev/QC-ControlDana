@@ -1,6 +1,10 @@
 'use client';
 
-import { canAccessReferenceKind, formatPersonShort, ORGANIZATION_ROLE_LABELS } from '@sgr-registry/domain';
+import {
+  canAccessReferenceKind,
+  formatPersonShort,
+  ORGANIZATION_ROLE_LABELS,
+} from '@sgr-registry/domain';
 import { ORGANIZATION_ROLES, type OrganizationRole, type UserRole } from '@sgr-registry/contracts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';

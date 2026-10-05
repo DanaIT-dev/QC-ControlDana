@@ -175,6 +175,8 @@ export class AttachmentsService {
         uploadedById: attachment.uploadedById,
         actorUserId: user.id,
         status: attachment.status,
+        category: attachment.category,
+        inspectionAttemptId: attachment.inspectionAttemptId,
       })
     ) {
       throw new NotFoundException('Запись не найдена');
@@ -292,6 +294,20 @@ export class AttachmentsService {
     assertCategoryMatchesOwner(owner.type, category);
     if (!canUploadCategory(user.role, owner.type, category)) {
       throw new NotFoundException('Запись не найдена');
+    }
+    if (category === 'REPAIR_EVIDENCE' && owner.type === 'DEFECT_ITEM') {
+      const defect = await this.withUserDb(user, request, () =>
+        this.prisma.client.defectItem.findFirst({
+          where: { id: owner.defectItemId, status: 'IN_PROGRESS' },
+          select: { id: true },
+        }),
+      );
+      if (!defect) {
+        throw new ValidationError(
+          'category',
+          'Доказательство устранения можно приложить только к дефекту в работе',
+        );
+      }
     }
     const assigned = await this.withUserDb(user, request, () =>
       this.assignedDefectIds(user, owner.actId),

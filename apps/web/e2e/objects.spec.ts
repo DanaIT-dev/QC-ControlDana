@@ -231,6 +231,10 @@ test.describe('objects directory', () => {
     await page.getByLabel('Новый пароль').fill(DEMO_PASSWORD);
     await page.getByLabel('Текущий пароль').fill(tempPassword);
     await page.getByRole('button', { name: 'Сменить пароль' }).click();
+    await expect(page).toHaveURL(/\/complete-profile/);
+    await page.getByLabel('Номер телефона').fill('+375291112233');
+    await page.getByLabel('Дата рождения').fill('1990-01-15');
+    await page.getByRole('button', { name: 'Сохранить карточку' }).click();
     await expect(page).toHaveURL(/\/registry/);
     await page.goto('/objects');
     await expect(page.getByText('E2E уникальная привязка').filter({ visible: true })).toBeVisible();

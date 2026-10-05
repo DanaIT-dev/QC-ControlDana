@@ -333,6 +333,24 @@ describe('operations integration', () => {
       },
     });
     expect(changed.statusCode).toBe(200);
+    const changedBody = changed.json() as { csrfToken: string };
+    const profile = await mutate(
+      {
+        cookie: changed.cookies.find((item) => item.name === SESSION_COOKIE_NAME)?.value ?? '',
+        body: { csrfToken: changedBody.csrfToken },
+      },
+      {
+        method: 'POST',
+        url: '/api/users/me/complete-profile',
+        payload: {
+          lastName: 'Новый',
+          firstName: 'Инженер',
+          phone: '+375291112233',
+          birthDate: '1990-01-15',
+        },
+      },
+    );
+    expect(profile.statusCode).toBe(200);
     const restored = await inject({
       method: 'GET',
       url: '/api/registry/defects',

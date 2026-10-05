@@ -142,10 +142,14 @@
 - Пользовательские CRUD-интерфейсы актов, справочников и пользователей реализованы на этапе 4. См. [OPERATIONS_CONTRACT.md](./OPERATIONS_CONTRACT.md).
 - Демонстрационные персональные данные вымышлены.
 
+## Аналитика качества
+
+Отдельный контур описан в [QUALITY_ANALYTICS.md](./QUALITY_ANALYTICS.md). `DefectInspectionAttempt` фиксирует передачу на проверку и не создаётся задним числом для старых дефектов. `DefectFinancialImpact` хранит подтверждённые суммы отдельно от `Proposal`. `AnalyticsInsight` — наблюдаемый сигнал, а не причина.
+
 ## Отложено на следующие этапы
 
 - загрузка документов в S3/MinIO — см. [ATTACHMENTS_CONTRACT.md](./ATTACHMENTS_CONTRACT.md);
 - SMS, Telegram, мобильные push, WebSocket;
-- фактические расходы и взыскания;
+- знаменатель объёма работ `WorkExposure` (таблица есть, записи не создаются);
 - электронная подпись;
 - production deployment.

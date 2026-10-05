@@ -47,7 +47,13 @@ export const ALLOWED_ATTACHMENT_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png', '
 
 const CATEGORY_BY_OWNER: Record<AttachmentOwnerType, readonly AttachmentCategory[]> = {
   ACT: ['ACT_DOCUMENT', 'ACT_SCAN', 'OTHER'],
-  DEFECT_ITEM: ['DEFECT_PHOTO', 'CLAIM_DOCUMENT', 'THIRD_PARTY_DOCUMENT', 'OTHER'],
+  DEFECT_ITEM: [
+    'DEFECT_PHOTO',
+    'CLAIM_DOCUMENT',
+    'THIRD_PARTY_DOCUMENT',
+    'REPAIR_EVIDENCE',
+    'OTHER',
+  ],
   PROPOSAL: ['PROPOSAL_DOCUMENT'],
 };
 
@@ -139,7 +145,7 @@ export function canUploadCategory(
     return hasCapability(role, 'UPLOAD_PROPOSAL_ATTACHMENT') && category === 'PROPOSAL_DOCUMENT';
   }
   if (role === 'CONTRACTOR_ENGINEER') {
-    return category === 'THIRD_PARTY_DOCUMENT';
+    return category === 'THIRD_PARTY_DOCUMENT' || category === 'REPAIR_EVIDENCE';
   }
   if (role === 'RESPONSIBLE_ENGINEER') {
     return category === 'DEFECT_PHOTO' || category === 'OTHER';
@@ -177,7 +183,12 @@ export function canArchiveAttachment(input: {
   uploadedById: string;
   actorUserId: string;
   status: AttachmentStatus;
+  category?: AttachmentCategory;
+  inspectionAttemptId?: string | null;
 }): boolean {
+  if (input.inspectionAttemptId) {
+    return false;
+  }
   if (input.status === 'ARCHIVED' || input.status === 'UPLOADING') {
     return false;
   }

@@ -124,7 +124,7 @@ test.describe('new act workflow status', () => {
     await expect(page.getByRole('article').getByLabel('Викторов Алексей')).toBeVisible();
     await page.getByRole('tab', { name: 'История изменений' }).click();
     await expect(page.getByText('Акт взят в работу')).toHaveCount(1);
-    await expect(page.getByText(/Кто: Викторов А\./)).toBeVisible();
+    await expect(page.getByText(/Кто:\s*Викторов\s+А\./)).toBeVisible();
     await expect(page.getByText(/Дата и время:/)).toBeVisible();
 
     await page.getByRole('tab', { name: 'Дефекты' }).click();

@@ -45,3 +45,4 @@ export * from './worker-heartbeat';
 export * from './chat';
 export * from './organization-completeness';
 export * from './directory-codes';
+export * from './analytics';

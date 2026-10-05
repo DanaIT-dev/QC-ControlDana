@@ -219,52 +219,52 @@ function OrganizationQuickCreateDialog({
           </div>
           {nameOnly ? null : (
             <>
-          <div className="grid gap-1.5">
-            <Label htmlFor="quick-org-unp">УНП</Label>
-            <Input
-              id="quick-org-unp"
-              value={unp}
-              onChange={(event) => setUnp(event.target.value)}
-              className="min-h-11"
-            />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="quick-org-address">Адрес</Label>
-            <Input
-              id="quick-org-address"
-              value={postalAddress}
-              onChange={(event) => setPostalAddress(event.target.value)}
-              className="min-h-11"
-            />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="quick-org-email">Электронная почта</Label>
-            <Input
-              id="quick-org-email"
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              className="min-h-11"
-            />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="quick-org-phone">Телефон</Label>
-            <Input
-              id="quick-org-phone"
-              value={phone}
-              onChange={(event) => setPhone(event.target.value)}
-              className="min-h-11"
-            />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="quick-org-contact">Контактное лицо</Label>
-            <Input
-              id="quick-org-contact"
-              value={contactPerson}
-              onChange={(event) => setContactPerson(event.target.value)}
-              className="min-h-11"
-            />
-          </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="quick-org-unp">УНП</Label>
+                <Input
+                  id="quick-org-unp"
+                  value={unp}
+                  onChange={(event) => setUnp(event.target.value)}
+                  className="min-h-11"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="quick-org-address">Адрес</Label>
+                <Input
+                  id="quick-org-address"
+                  value={postalAddress}
+                  onChange={(event) => setPostalAddress(event.target.value)}
+                  className="min-h-11"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="quick-org-email">Электронная почта</Label>
+                <Input
+                  id="quick-org-email"
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  className="min-h-11"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="quick-org-phone">Телефон</Label>
+                <Input
+                  id="quick-org-phone"
+                  value={phone}
+                  onChange={(event) => setPhone(event.target.value)}
+                  className="min-h-11"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="quick-org-contact">Контактное лицо</Label>
+                <Input
+                  id="quick-org-contact"
+                  value={contactPerson}
+                  onChange={(event) => setContactPerson(event.target.value)}
+                  className="min-h-11"
+                />
+              </div>
             </>
           )}
           {existing ? (

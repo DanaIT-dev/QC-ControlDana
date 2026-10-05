@@ -9,3 +9,4 @@ export * from './sla';
 export * from './chat';
 export * from './super-admin';
 export * from './objects';
+export * from './analytics';

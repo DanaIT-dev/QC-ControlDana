@@ -94,6 +94,54 @@ enum AttachmentCategory {
   CLAIM_DOCUMENT
   THIRD_PARTY_DOCUMENT
   PROPOSAL_DOCUMENT
+  REPAIR_EVIDENCE
+  OTHER
+}
+
+enum InspectionAttemptStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+enum FinancialAmountType {
+  ESTIMATE
+  APPROVED_AMOUNT
+  ACTUAL_COST
+  RECOVERY
+  AVOIDED_LOSS
+}
+
+enum FinancialPayerType {
+  COMPANY
+  LIABLE_ORGANIZATION
+  CUSTOMER
+  OTHER
+}
+
+enum FinancialRecordStatus {
+  DRAFT
+  CONFIRMED
+  VOIDED
+}
+
+enum AnalyticsInsightStatus {
+  NEW
+  UNDER_REVIEW
+  CONFIRMED
+  DISMISSED
+}
+
+enum AnalyticsScopeKind {
+  COMPANY
+  ORGANIZATION
+  ASSIGNED
+}
+
+enum WorkExposureType {
+  AREA
+  COUNT
+  COST
   OTHER
 }
 
@@ -142,6 +190,11 @@ model User {
   defectsSubmitted DefectItem[] @relation("DefectSubmittedBy")
   defectsRejected DefectItem[] @relation("DefectRejectedBy")
   defectsAccepted DefectItem[] @relation("DefectAcceptedBy")
+  inspectionAttemptsSubmitted DefectInspectionAttempt[] @relation("AttemptSubmittedBy")
+  inspectionAttemptsReviewed DefectInspectionAttempt[] @relation("AttemptReviewedBy")
+  financialImpactsCreated DefectFinancialImpact[] @relation("FinancialCreatedBy")
+  financialImpactsConfirmed DefectFinancialImpact[] @relation("FinancialConfirmedBy")
+  analyticsInsightsReviewed AnalyticsInsight[] @relation("InsightReviewedBy")
 
   @@index([role, status])
   @@index([status, createdAt])
@@ -225,6 +278,8 @@ model Organization {
   liableItems  DefectItemLiableOrganization[]
   memberships  UserOrganizationMembership[]
   proposals    Proposal[]
+  financialImpacts DefectFinancialImpact[]
+  workExposures WorkExposure[]
 
   @@unique([unp])
   @@index([active, officialName])
@@ -479,6 +534,8 @@ model DefectItem {
   slaClocks            SlaClock[]
   notificationEvents   NotificationEvent[]
   importedEngineerReferences ImportedEngineerReference[]
+  inspectionAttempts DefectInspectionAttempt[]
+  financialImpacts DefectFinancialImpact[]
 
   @@index([actId])
   @@index([status])
@@ -571,6 +628,7 @@ model Attachment {
   actId            String?            @db.Uuid
   defectItemId     String?            @db.Uuid
   proposalId       String?            @db.Uuid
+  inspectionAttemptId String?         @db.Uuid
   originalFilename String
   safeDisplayName  String
   objectKey        String?            @unique
@@ -597,12 +655,14 @@ model Attachment {
   act        Act?        @relation(fields: [actId], references: [id], onDelete: Restrict)
   defectItem DefectItem? @relation(fields: [defectItemId], references: [id], onDelete: Restrict)
   proposal   Proposal?   @relation(fields: [proposalId], references: [id], onDelete: Restrict)
+  inspectionAttempt DefectInspectionAttempt? @relation(fields: [inspectionAttemptId], references: [id], onDelete: Restrict)
   uploadedBy User        @relation("AttachmentUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
   archivedBy User?       @relation("AttachmentArchivedBy", fields: [archivedById], references: [id], onDelete: Restrict)
 
   @@index([actId, status, createdAt])
   @@index([defectItemId, status, createdAt])
   @@index([proposalId, status, createdAt])
+  @@index([inspectionAttemptId])
   @@index([uploadedById])
   @@index([sha256])
   @@index([status])
@@ -796,6 +856,121 @@ model EmailDelivery {
   @@unique([notificationRecipientId])
   @@index([status, nextAttemptAt])
   @@map("email_deliveries")
+}
+
+model DefectInspectionAttempt {
+  id                String                   @id @default(uuid()) @db.Uuid
+  defectItemId      String                   @db.Uuid
+  attemptNumber     Int
+  status            InspectionAttemptStatus
+  submittedByUserId String                   @db.Uuid
+  submittedAt       DateTime                 @db.Timestamptz(3)
+  contractorComment String?
+  reviewedByUserId  String?                  @db.Uuid
+  reviewedAt        DateTime?                @db.Timestamptz(3)
+  reviewComment     String?
+  rejectionReason   String?
+  createdAt         DateTime                 @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime                 @updatedAt @db.Timestamptz(3)
+
+  defectItem   DefectItem   @relation(fields: [defectItemId], references: [id], onDelete: Cascade)
+  submittedBy  User         @relation("AttemptSubmittedBy", fields: [submittedByUserId], references: [id], onDelete: Restrict)
+  reviewedBy   User?        @relation("AttemptReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: Restrict)
+  evidence     Attachment[]
+
+  @@unique([defectItemId, attemptNumber])
+  @@index([defectItemId, status])
+  @@index([submittedAt])
+  @@map("defect_inspection_attempts")
+}
+
+model DefectFinancialImpact {
+  id                   String                @id @default(uuid()) @db.Uuid
+  defectItemId         String                @db.Uuid
+  amountType           FinancialAmountType
+  payerType            FinancialPayerType
+  payerOrganizationId  String?               @db.Uuid
+  amountOriginal       Decimal               @db.Decimal(14, 2)
+  currency             String
+  exchangeRateToByn    Decimal               @db.Decimal(18, 6)
+  amountByn            Decimal               @db.Decimal(14, 2)
+  occurredAt           DateTime              @db.Timestamptz(3)
+  status               FinancialRecordStatus
+  source               String
+  comment              String?
+  createdByUserId      String                @db.Uuid
+  confirmedByUserId    String?               @db.Uuid
+  confirmedAt          DateTime?             @db.Timestamptz(3)
+  voidedAt             DateTime?             @db.Timestamptz(3)
+  createdAt            DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime              @updatedAt @db.Timestamptz(3)
+
+  defectItem         DefectItem    @relation(fields: [defectItemId], references: [id], onDelete: Restrict)
+  payerOrganization  Organization? @relation(fields: [payerOrganizationId], references: [id], onDelete: Restrict)
+  createdBy          User          @relation("FinancialCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  confirmedBy        User?         @relation("FinancialConfirmedBy", fields: [confirmedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([defectItemId, status, amountType, payerType])
+  @@index([status, amountType, payerType, occurredAt])
+  @@map("defect_financial_impacts")
+}
+
+model AnalyticsInsight {
+  id                       String                 @id @default(uuid()) @db.Uuid
+  signalKey                String
+  signalType               String
+  title                    String
+  plainLanguageExplanation String
+  dimensions               Json
+  supportCount             Int
+  totalCount               Int
+  observedValue            Decimal                @db.Decimal(18, 6)
+  baselineValue            Decimal                @db.Decimal(18, 6)
+  lift                     Decimal?               @db.Decimal(18, 6)
+  confidence               String
+  sampleCoverage           Decimal?               @db.Decimal(8, 4)
+  periodFrom               DateTime?              @db.Timestamptz(3)
+  periodTo                 DateTime?              @db.Timestamptz(3)
+  generatedAt              DateTime               @db.Timestamptz(3)
+  ruleVersion              String
+  status                   AnalyticsInsightStatus @default(NEW)
+  statisticallyStable      Boolean                @default(false)
+  active                   Boolean                @default(true)
+  scopeKind                AnalyticsScopeKind
+  scopeFingerprint         String
+  scopeOrganizationId      String?                @db.Uuid
+  scopeUserId              String?                @db.Uuid
+  reviewedByUserId         String?                @db.Uuid
+  reviewedAt               DateTime?              @db.Timestamptz(3)
+  reviewComment            String?
+  createdAt                DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt                DateTime               @updatedAt @db.Timestamptz(3)
+
+  reviewedBy User? @relation("InsightReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([signalKey, scopeFingerprint])
+  @@index([scopeKind, status, generatedAt])
+  @@index([scopeFingerprint, active])
+  @@map("analytics_insights")
+}
+
+model WorkExposure {
+  id               String           @id @default(uuid()) @db.Uuid
+  organizationId   String           @db.Uuid
+  propertyObjectId String?          @db.Uuid
+  workTypeId       String?          @db.Uuid
+  exposureType     WorkExposureType
+  exposureValue    Decimal          @db.Decimal(18, 4)
+  unit             String
+  periodFrom       DateTime         @db.Timestamptz(3)
+  periodTo         DateTime         @db.Timestamptz(3)
+  source           String
+  createdAt        DateTime         @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, periodFrom, periodTo])
+  @@map("work_exposures")
 }
 
 model SlaEvaluationState {

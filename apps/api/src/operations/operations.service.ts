@@ -21,6 +21,7 @@ import {
   type ProposalSlot,
 } from '@sgr-registry/contracts';
 import { allocateActNumber, Prisma, startActViaDefiner } from '@sgr-registry/database';
+import { openInspectionAttempt, settleInspectionAttempt } from './inspection-attempts.js';
 import { loadActorNamePartsByUserId } from '../common/actor-name-parts.js';
 import {
   ASSIGNABLE_ENGINEER_ROLE,
@@ -823,6 +824,12 @@ export class OperationsService {
           thirdPartyDeadline: fresh.thirdPartyDeadline,
         },
       });
+      await openInspectionAttempt(tx, {
+        defectItemId,
+        userId: user.id,
+        submittedAt: fresh.submittedForInspectionAt ?? new Date(),
+        comment,
+      });
       await writeAuditLog(tx, {
         ...ctx,
         action: 'DEFECT_SUBMITTED_FOR_INSPECTION',
@@ -903,6 +910,12 @@ export class OperationsService {
         }
         throw new StaleWriteError();
       }
+      await settleInspectionAttempt(tx, {
+        defectItemId,
+        status: 'ACCEPTED',
+        userId: user.id,
+        reviewedAt: new Date(),
+      });
       await this.syncActStatus(tx, item.actId);
       const fresh = await tx.defectItem.findUniqueOrThrow({ where: { id: defectItemId } });
       const outboxIds = await notifyDefectStatus(this.outboxWriter, tx, {
@@ -974,6 +987,13 @@ export class OperationsService {
       if (updated.count !== 1) {
         throw new StaleWriteError();
       }
+      await settleInspectionAttempt(tx, {
+        defectItemId,
+        status: 'REJECTED',
+        userId: user.id,
+        reviewedAt: new Date(),
+        rejectionReason: reason,
+      });
       await this.syncActStatus(tx, item.actId);
       const fresh = await tx.defectItem.findUniqueOrThrow({ where: { id: defectItemId } });
       const outboxIds = await notifyDefectRepairRejected(this.outboxWriter, tx, {

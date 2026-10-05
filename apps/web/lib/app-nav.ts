@@ -37,6 +37,13 @@ export function navSectionsForRole(role: UserRole): AppNavSections {
         pathname === '/registry' || (pathname.startsWith('/acts/') && pathname !== '/acts/new'),
     });
   }
+  if (satisfiesCapability(role, 'VIEW_QUALITY_ANALYTICS')) {
+    primary.push({
+      href: '/analytics',
+      label: 'Аналитика',
+      match: (pathname) => pathname === '/analytics' || pathname.startsWith('/analytics/'),
+    });
+  }
   if (satisfiesCapability(role, 'VIEW_REFERENCE_DATA')) {
     primary.push({
       href: '/objects',
