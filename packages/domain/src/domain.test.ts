@@ -15,6 +15,8 @@ import {
   assertUniqueProposalSlots,
   canAddProposalSlot,
   canCreatePropertyObject,
+  canEditEmployment,
+  canViewEmployees,
   capabilitiesForRole,
   canAccessReferenceKind,
   canViewObjectsDirectory,
@@ -542,6 +544,19 @@ describe('capabilities', () => {
     expect(postLoginPath('PENDING_ROLE')).toBe('/pending-role');
     expect(postLoginPath('ADMIN')).toBe('/registry');
     expect(postLoginPath('SUPER_ADMIN', true)).toBe('/change-password');
+    expect(postLoginPath('ADMIN', false, true)).toBe('/complete-profile');
+    expect(postLoginPath('RESPONSIBLE_ENGINEER', true, true)).toBe('/change-password');
+    expect(canViewEmployees('SUPER_ADMIN')).toBe(true);
+    expect(canViewEmployees('ADMIN')).toBe(true);
+    expect(canViewEmployees('MANAGER')).toBe(true);
+    expect(canViewEmployees('SGR_MANAGER')).toBe(true);
+    expect(canViewEmployees('RESPONSIBLE_ENGINEER')).toBe(false);
+    expect(canViewEmployees('CONTRACTOR_ENGINEER')).toBe(false);
+    expect(canEditEmployment('ADMIN')).toBe(true);
+    expect(canEditEmployment('MANAGER')).toBe(true);
+    expect(canEditEmployment('SGR_MANAGER')).toBe(true);
+    expect(canEditEmployment('SUPER_ADMIN')).toBe(false);
+    expect(canEditEmployment('RESPONSIBLE_ENGINEER')).toBe(false);
   });
 });
 

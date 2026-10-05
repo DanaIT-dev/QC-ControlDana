@@ -18,7 +18,7 @@ describe('PersonName', () => {
     const parts = root?.querySelectorAll(':scope > span') ?? [];
     expect(parts).toHaveLength(2);
     expect(parts[0]).toHaveTextContent('Василевич');
-    expect(parts[1]).toHaveTextContent('М.В.');
+    expect(parts[1]?.textContent).toBe('\u00A0М.В.');
   });
 
   it('uses structured parts for a user without patronymic', () => {
@@ -46,6 +46,6 @@ describe('PersonName', () => {
     const parts = root.querySelectorAll(':scope > span');
     expect(parts).toHaveLength(2);
     expect(parts[0]).toHaveTextContent('Василевич');
-    expect(parts[1]).toHaveTextContent('М.В.');
+    expect(parts[1]?.textContent).toBe('\u00A0М.В.');
   });
 });

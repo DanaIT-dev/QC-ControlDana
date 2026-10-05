@@ -16,7 +16,11 @@ import { MobileUserBlock, UserMenu } from '@/components/user-menu';
 
 export function AppShell({ user, children }: { user: SafeUserProfile; children: ReactNode }) {
   const [open, setOpen] = useState(false);
-  const homeHref = postLoginPath(user.role);
+  const homeHref = postLoginPath(
+    user.role,
+    user.mustChangePassword,
+    Boolean(user.mustCompleteProfile),
+  );
   const showNotifications = satisfiesCapability(user.role, 'VIEW_NOTIFICATIONS');
   const readOnly = isOversightRole(user.role);
   return (

@@ -1,4 +1,9 @@
-import { canManageUsers, hasCapability, isProfileEditorRole } from '@sgr-registry/domain';
+import {
+  canManageUsers,
+  canViewEmployees,
+  hasCapability,
+  isProfileEditorRole,
+} from '@sgr-registry/domain';
 import { requireBusinessUser } from '../../lib/server-auth';
 import { AppShell } from '../app-shell';
 import { ForbiddenState } from '@/components/forbidden-state';
@@ -10,12 +15,10 @@ export default async function UsersPage() {
   const user = await requireBusinessUser();
   const canManage = canManageUsers(user.role);
   const canCreateUnassigned = hasCapability(user.role, 'CREATE_UNASSIGNED_USER');
-  const canView =
-    canManage || canCreateUnassigned || hasCapability(user.role, 'VIEW_ALL_BUSINESS_DATA');
-  if (!canView) {
+  if (!canViewEmployees(user.role)) {
     return (
       <AppShell user={user}>
-        <ForbiddenState description="Раздел доступен только администратору." />
+        <ForbiddenState description="Раздел доступен суперадминистратору, администратору и руководителям." />
       </AppShell>
     );
   }

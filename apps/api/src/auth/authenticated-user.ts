@@ -12,4 +12,5 @@ export interface AuthenticatedUser {
   sessionHash: string;
   csrfToken: string;
   mustChangePassword: boolean;
+  mustCompleteProfile: boolean;
 }

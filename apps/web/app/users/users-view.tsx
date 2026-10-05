@@ -3,6 +3,7 @@
 import { LISTABLE_USER_ROLES, USER_STATUSES, type UserRole } from '@sgr-registry/contracts';
 import {
   assignableRolesFor,
+  canEditEmployment,
   canEditUserProfile,
   canMutateManagedUser,
   hasCapability,
@@ -59,6 +60,10 @@ interface UserRow {
   middleName?: string | null;
   fullName: string;
   email: string;
+  phone?: string | null;
+  birthDate?: string | null;
+  hiredOn?: string | null;
+  contractEndsOn?: string | null;
   role: UserRole;
   roleLabel: string;
   status: (typeof USER_STATUSES)[number];
@@ -95,6 +100,8 @@ export function UsersView({
   const [temporaryPassword, setTemporaryPassword] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [conflict, setConflict] = useState(false);
+  const [cardUser, setCardUser] = useState<UserRow | null>(null);
+  const canEditCard = canEditEmployment(currentUserRole);
   const showActions = canManage || canEditProfiles;
   const assignableRoles = assignableRolesFor(currentUserRole);
   const roleFilters = isOversightRole(currentUserRole)
@@ -252,13 +259,7 @@ export function UsersView({
                 <td className="px-3 py-3">
                   <div className="flex items-center gap-2">
                     <UserAvatar name={item.fullName} />
-                    <PersonName
-                      lastName={item.lastName}
-                      firstName={item.firstName}
-                      middleName={item.middleName}
-                      fullName={item.fullName}
-                      className="font-medium leading-5"
-                    />
+                    <EmployeeNameButton user={item} onOpen={setCardUser} />
                   </div>
                 </td>
                 <td className="px-3 py-3">{item.email}</td>
@@ -301,12 +302,7 @@ export function UsersView({
                 <UserAvatar name={item.fullName} />
                 <div className="min-w-0">
                   <h2 className="text-base leading-6 font-semibold">
-                    <PersonName
-                      lastName={item.lastName}
-                      firstName={item.firstName}
-                      middleName={item.middleName}
-                      fullName={item.fullName}
-                    />
+                    <EmployeeNameButton user={item} onOpen={setCardUser} />
                   </h2>
                   <p className="text-sm text-muted-foreground">{item.email}</p>
                 </div>
@@ -380,6 +376,22 @@ export function UsersView({
         />
       ) : null}
       <TempPasswordDialog password={temporaryPassword} onClose={() => setTemporaryPassword(null)} />
+      {cardUser ? (
+        <EmployeeCardDialog
+          user={cardUser}
+          canEdit={canEditCard}
+          csrfToken={csrfToken}
+          onClose={() => setCardUser(null)}
+          onConflict={() => {
+            setCardUser(null);
+            setConflict(true);
+          }}
+          onSaved={() => {
+            setCardUser(null);
+            void queryClient.invalidateQueries({ queryKey: ['users'] });
+          }}
+        />
+      ) : null}
       <ConflictDialog
         open={conflict}
         onRefresh={() => {
@@ -986,6 +998,153 @@ function TempPasswordDialog({
             Скопировать
           </Button>
           <Button type="button" onClick={onClose}>
+            Закрыть
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EmployeeNameButton({
+  user,
+  onOpen,
+}: {
+  user: UserRow;
+  onOpen: (user: UserRow) => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="text-left font-medium text-primary underline-offset-4 hover:underline"
+      onClick={() => onOpen(user)}
+    >
+      <PersonName
+        lastName={user.lastName}
+        firstName={user.firstName}
+        middleName={user.middleName}
+        fullName={user.fullName}
+      />
+    </button>
+  );
+}
+
+function formatCardDate(value: string | null | undefined): string {
+  if (!value) {
+    return '—';
+  }
+  const [year, month, day] = value.split('-');
+  if (!year || !month || !day) {
+    return value;
+  }
+  return `${day}.${month}.${year}`;
+}
+
+function EmployeeCardDialog({
+  user,
+  canEdit,
+  csrfToken,
+  onClose,
+  onConflict,
+  onSaved,
+}: {
+  user: UserRow;
+  canEdit: boolean;
+  csrfToken: string;
+  onClose: () => void;
+  onConflict: () => void;
+  onSaved: () => void;
+}) {
+  const [hiredOn, setHiredOn] = useState(user.hiredOn ?? '');
+  const [contractEndsOn, setContractEndsOn] = useState(user.contractEndsOn ?? '');
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    if (saving) {
+      return;
+    }
+    setSaving(true);
+    try {
+      await commandFetch(`/api/users/${user.id}/employment`, {
+        method: 'PATCH',
+        csrfToken,
+        body: {
+          expectedVersion: user.version,
+          hiredOn: hiredOn || null,
+          contractEndsOn: contractEndsOn || null,
+        },
+      });
+      toast.success('Карточка сохранена');
+      onSaved();
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) {
+        onConflict();
+        return;
+      }
+      toast.error(error instanceof ApiError ? error.message : 'Не удалось сохранить карточку');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Карточка сотрудника</DialogTitle>
+          <DialogDescription>{user.email}</DialogDescription>
+        </DialogHeader>
+        <dl className="grid gap-3 text-sm">
+          <div className="grid gap-1">
+            <dt className="text-muted-foreground">Полное ФИО</dt>
+            <dd className="font-medium">{user.fullName}</dd>
+          </div>
+          <div className="grid gap-1">
+            <dt className="text-muted-foreground">Номер телефона</dt>
+            <dd>{user.phone?.trim() ? user.phone : '—'}</dd>
+          </div>
+          <div className="grid gap-1">
+            <dt className="text-muted-foreground">Дата рождения</dt>
+            <dd>{formatCardDate(user.birthDate)}</dd>
+          </div>
+          <div className="grid gap-1">
+            <dt className="text-muted-foreground">Принят на работу с</dt>
+            {canEdit ? (
+              <dd>
+                <Input
+                  type="date"
+                  value={hiredOn}
+                  onChange={(event) => setHiredOn(event.target.value)}
+                  aria-label="Принят на работу с"
+                />
+              </dd>
+            ) : (
+              <dd>{formatCardDate(user.hiredOn)}</dd>
+            )}
+          </div>
+          <div className="grid gap-1">
+            <dt className="text-muted-foreground">Контракт до</dt>
+            {canEdit ? (
+              <dd>
+                <Input
+                  type="date"
+                  value={contractEndsOn}
+                  onChange={(event) => setContractEndsOn(event.target.value)}
+                  aria-label="Контракт до"
+                />
+              </dd>
+            ) : (
+              <dd>{formatCardDate(user.contractEndsOn)}</dd>
+            )}
+          </div>
+        </dl>
+        <DialogFooter>
+          {canEdit ? (
+            <Button type="button" onClick={() => void save()} disabled={saving}>
+              {saving ? 'Сохранение…' : 'Сохранить'}
+            </Button>
+          ) : null}
+          <Button type="button" variant="outline" onClick={onClose}>
             Закрыть
           </Button>
         </DialogFooter>

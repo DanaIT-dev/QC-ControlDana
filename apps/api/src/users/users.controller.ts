@@ -26,7 +26,12 @@ export class UsersController {
   constructor(@Inject(UsersService) private readonly usersService: UsersService) {}
 
   @Get()
-  @RequireCapability('MANAGE_USERS', 'VIEW_ALL_BUSINESS_DATA', 'CREATE_UNASSIGNED_USER')
+  @RequireCapability(
+    'MANAGE_USERS',
+    'VIEW_ALL_BUSINESS_DATA',
+    'CREATE_UNASSIGNED_USER',
+    'VIEW_HISTORY',
+  )
   list(@CurrentUser() user: AuthenticatedUser, @Query() query: Record<string, unknown>) {
     return this.usersService.list(user, query);
   }
@@ -41,6 +46,29 @@ export class UsersController {
     @Req() request: FastifyRequest,
   ) {
     return this.usersService.create(user, body, request);
+  }
+
+  @Post('me/complete-profile')
+  @HttpCode(200)
+  @UseGuards(BrowserOriginGuard, CsrfGuard)
+  completeProfile(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: unknown,
+    @Req() request: FastifyRequest,
+  ) {
+    return this.usersService.completeOwnProfile(user, body, request);
+  }
+
+  @Patch(':userId/employment')
+  @RequireCapability('MANAGE_USERS', 'VIEW_ALL_ACTS')
+  @UseGuards(BrowserOriginGuard, CsrfGuard)
+  updateEmployment(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('userId') userId: string,
+    @Body() body: unknown,
+    @Req() request: FastifyRequest,
+  ) {
+    return this.usersService.updateEmployment(user, userId, body, request);
   }
 
   @Patch(':userId/profile')

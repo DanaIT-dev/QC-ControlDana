@@ -40,6 +40,24 @@ export const patchUserProfileRequestSchema = z
   })
   .strict();
 
+export const completeOwnProfileRequestSchema = z
+  .object({
+    lastName: z.string(),
+    firstName: z.string(),
+    middleName: z.union([z.string(), z.null()]).optional(),
+    phone: z.string(),
+    birthDate: calendarDate,
+  })
+  .strict();
+
+export const patchUserEmploymentRequestSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    hiredOn: z.union([calendarDate, z.null()]),
+    contractEndsOn: z.union([calendarDate, z.null()]),
+  })
+  .strict();
+
 export const versionedReasonSchema = z
   .object({
     expectedVersion: expectedVersionSchema,

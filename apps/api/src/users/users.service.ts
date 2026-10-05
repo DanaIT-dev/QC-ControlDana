@@ -1,4 +1,5 @@
 import {
+  ForbiddenException,
   Inject,
   Injectable,
   Logger,
@@ -6,9 +7,11 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import {
+  completeOwnProfileRequestSchema,
   createUserRequestSchema,
   historyQuerySchema,
   assignOrganizationMembershipRequestSchema,
+  patchUserEmploymentRequestSchema,
   patchUserProfileRequestSchema,
   patchUserRequestSchema,
   usersListQuerySchema,
@@ -24,6 +27,8 @@ import {
   assertCanAssignRole,
   assertCanEditUserProfile,
   assertCanMutateManagedUser,
+  canEditEmployment,
+  canViewEmployees,
   composeOfficialFullName,
   comparePersonNames,
   hasCapability,
@@ -35,9 +40,11 @@ import {
   ValidationError,
 } from '@sgr-registry/domain';
 import {
+  completeOwnProfileViaDefiner,
   reconcileDirectoryEngineerLinks,
   reconcileImportedEngineerReferences,
   revokeEngineerObjectAccess,
+  updateUserEmploymentViaDefiner,
   updateUserProfileViaDefiner,
   upsertUserCredentialsViaDefiner,
   type Prisma,
@@ -66,6 +73,11 @@ const USER_SELECT = {
   middleName: true,
   fullName: true,
   email: true,
+  phone: true,
+  birthDate: true,
+  hiredOn: true,
+  contractEndsOn: true,
+  mustCompleteProfile: true,
   role: true,
   status: true,
   createdAt: true,
@@ -91,6 +103,9 @@ export class UsersService {
   ) {}
 
   async list(actor: AuthenticatedUser, rawQuery: Record<string, unknown>) {
+    if (!canViewEmployees(actor.role)) {
+      throw new ForbiddenException('Недостаточно прав');
+    }
     const query = parseCommandBody(usersListQuerySchema, rawQuery);
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 50;
@@ -216,6 +231,7 @@ export class UsersService {
             role: input.role,
             status: 'ACTIVE',
             mustChangePassword: true,
+            mustCompleteProfile: true,
           },
           select: USER_SELECT,
         });
@@ -230,6 +246,7 @@ export class UsersService {
             email: created.email,
             role: created.role,
             mustChangePassword: true,
+            mustCompleteProfile: true,
           }),
         });
         await syncDirectoryEngineerLinks(tx, actor, ctx.requestId, {
@@ -447,6 +464,118 @@ export class UsersService {
       user: result.dto,
       requireReauth: result.emailChanged && actor.id === userId,
     };
+  }
+
+  async completeOwnProfile(actor: AuthenticatedUser, body: unknown, request: FastifyRequest) {
+    if (!actor.mustCompleteProfile) {
+      throw new ForbiddenException('Карточка уже заполнена');
+    }
+    const input = parseCommandBody(completeOwnProfileRequestSchema, body);
+    const parts = parsePersonNameInput({
+      lastName: input.lastName,
+      firstName: input.firstName,
+      middleName: input.middleName ?? null,
+    });
+    const fullName = composeOfficialFullName(parts);
+    const phone = normalizeEmployeePhone(input.phone);
+    assertBirthDate(input.birthDate);
+    const ctx = actorContext(actor, request);
+    try {
+      const fresh = await this.prisma.client.$transaction(async (tx) => {
+        const updated = await completeOwnProfileViaDefiner(tx, {
+          lastName: parts.lastName,
+          firstName: parts.firstName,
+          middleName: parts.middleName,
+          fullName,
+          phone,
+          birthDate: input.birthDate,
+        });
+        const saved = await tx.user.findUniqueOrThrow({
+          where: { id: updated.id },
+          select: USER_SELECT,
+        });
+        if (fullName !== actor.fullName) {
+          await syncDirectoryEngineerLinks(tx, actor, ctx.requestId, {
+            userId: saved.id,
+            fullName: saved.fullName,
+            previousRole: saved.role,
+            nextRole: saved.role,
+            nextStatus: saved.status,
+          });
+        }
+        await writeAuditLog(tx, {
+          ...ctx,
+          action: 'USER_CARD_COMPLETED',
+          entityType: 'USER',
+          entityId: saved.id,
+          newValue: toJsonValue({
+            phoneSet: true,
+            birthDateSet: true,
+            mustCompleteProfile: false,
+          }),
+        });
+        return saved;
+      });
+      return { user: toUserDto(fresh) };
+    } catch (error) {
+      throw mapUserMutationError(error);
+    }
+  }
+
+  async updateEmployment(
+    actor: AuthenticatedUser,
+    userId: string,
+    body: unknown,
+    request: FastifyRequest,
+  ) {
+    assertUserId(userId);
+    if (!canEditEmployment(actor.role)) {
+      throw new AccountProtectedError();
+    }
+    const input = parseCommandBody(patchUserEmploymentRequestSchema, body);
+    if (input.hiredOn) {
+      assertHireDate(input.hiredOn);
+    }
+    if (input.contractEndsOn) {
+      assertContractEndDate(input.contractEndsOn, input.hiredOn);
+    }
+    const ctx = actorContext(actor, request);
+    try {
+      const fresh = await this.prisma.client.$transaction(async (tx) => {
+        const current = await tx.user.findUnique({ where: { id: userId }, select: USER_SELECT });
+        if (!current) {
+          throw new NotFoundException('Запись не найдена');
+        }
+        await updateUserEmploymentViaDefiner(tx, {
+          targetId: userId,
+          hiredOn: input.hiredOn,
+          contractEndsOn: input.contractEndsOn,
+          expectedVersion: input.expectedVersion,
+        });
+        const saved = await tx.user.findUniqueOrThrow({
+          where: { id: userId },
+          select: USER_SELECT,
+        });
+        await writeAuditLog(tx, {
+          ...ctx,
+          action: 'USER_EMPLOYMENT_UPDATED',
+          entityType: 'USER',
+          entityId: userId,
+          oldValue: toJsonValue({
+            hiredOn: calendarDate(current.hiredOn),
+            contractEndsOn: calendarDate(current.contractEndsOn),
+          }),
+          newValue: toJsonValue({
+            hiredOn: calendarDate(saved.hiredOn),
+            contractEndsOn: calendarDate(saved.contractEndsOn),
+          }),
+        });
+        return saved;
+      });
+      return { user: toUserDto(fresh) };
+    } catch (error) {
+      throw mapUserMutationError(error);
+    }
   }
 
   async archive(actor: AuthenticatedUser, userId: string, body: unknown, request: FastifyRequest) {
@@ -908,6 +1037,58 @@ async function syncDirectoryEngineerLinks(
   }
 }
 
+function calendarDate(value: Date | null): string | null {
+  if (!value) {
+    return null;
+  }
+  return value.toISOString().slice(0, 10);
+}
+
+function todayInMinsk(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Minsk',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+}
+
+function addCalendarDays(isoDate: string, days: number): string {
+  const date = new Date(`${isoDate}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function assertBirthDate(value: string): void {
+  if (value < '1900-01-01' || value > todayInMinsk()) {
+    throw new ValidationError('birthDate', 'Укажите дату рождения');
+  }
+}
+
+function assertHireDate(value: string): void {
+  if (value < '1950-01-01' || value > addCalendarDays(todayInMinsk(), 366)) {
+    throw new ValidationError('hiredOn', 'Укажите дату приёма на работу');
+  }
+}
+
+function assertContractEndDate(value: string, hiredOn: string | null): void {
+  if (value < '1950-01-01' || value > '2100-12-31') {
+    throw new ValidationError('contractEndsOn', 'Укажите дату окончания контракта');
+  }
+  if (hiredOn && value < hiredOn) {
+    throw new ValidationError('contractEndsOn', 'Контракт не может закончиться раньше приёма');
+  }
+}
+
+function normalizeEmployeePhone(value: string): string {
+  const phone = value.trim().replace(/\s+/g, ' ');
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length < 6 || digits.length > 15 || phone.length > 32) {
+    throw new ValidationError('phone', 'Укажите номер телефона');
+  }
+  return phone;
+}
+
 function toUserDto(
   user: {
     id: string;
@@ -916,6 +1097,11 @@ function toUserDto(
     middleName: string | null;
     fullName: string;
     email: string;
+    phone: string | null;
+    birthDate: Date | null;
+    hiredOn: Date | null;
+    contractEndsOn: Date | null;
+    mustCompleteProfile: boolean;
     role: AuthenticatedUser['role'];
     status: 'ACTIVE' | 'ARCHIVED';
     createdAt: Date;
@@ -938,6 +1124,11 @@ function toUserDto(
     middleName: user.middleName,
     fullName: user.fullName,
     email: user.email,
+    phone: user.phone,
+    birthDate: calendarDate(user.birthDate),
+    hiredOn: calendarDate(user.hiredOn),
+    contractEndsOn: calendarDate(user.contractEndsOn),
+    mustCompleteProfile: user.mustCompleteProfile,
     role: user.role,
     roleLabel: roleLabel(user.role),
     status: user.status,

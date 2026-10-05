@@ -1,4 +1,9 @@
-import { hasCapability, isPendingRole, satisfiesCapability } from '@sgr-registry/domain';
+import {
+  canViewEmployees,
+  hasCapability,
+  isPendingRole,
+  satisfiesCapability,
+} from '@sgr-registry/domain';
 import type { UserRole } from '@sgr-registry/contracts';
 
 export interface AppNavItem {
@@ -67,11 +72,7 @@ export function navSectionsForRole(role: UserRole): AppNavSections {
       match: (pathname) => pathname.startsWith('/reference-data'),
     });
   }
-  if (
-    hasCapability(role, 'MANAGE_USERS') ||
-    hasCapability(role, 'CREATE_UNASSIGNED_USER') ||
-    hasCapability(role, 'VIEW_ALL_BUSINESS_DATA')
-  ) {
+  if (canViewEmployees(role)) {
     administration.push({
       href: '/users',
       label: 'Пользователи',

@@ -205,7 +205,7 @@ test.describe('responsive header navigation', () => {
     await page.getByRole('menuitem', { name: 'Выйти' }).click();
     await login(page, ACCOUNTS.sgrManager);
     await expectAdminNavItem(page, 'Журнал аудита', true);
-    await expectAdminNavItem(page, 'Пользователи', false);
+    await expectAdminNavItem(page, 'Пользователи', true);
     await expectAdminNavItem(page, 'Состояние системы', false);
 
     await page.getByRole('button', { name: 'Меню пользователя' }).click();

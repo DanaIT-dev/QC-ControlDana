@@ -113,6 +113,11 @@ export type { UpdatedPropertyObjectRow } from './update-property-object';
 export { updateUserProfileViaDefiner } from './update-user-profile';
 export type { UpdatedUserProfileRow } from './update-user-profile';
 export {
+  completeOwnProfileViaDefiner,
+  updateUserEmploymentViaDefiner,
+} from './employee-card';
+export type { CompletedOwnProfileRow } from './employee-card';
+export {
   applyDirectoryEngineerLink,
   clearDirectoryEngineerLink,
   revokeEngineerObjectAccess,

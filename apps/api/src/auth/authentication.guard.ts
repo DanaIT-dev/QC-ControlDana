@@ -32,6 +32,13 @@ export class AuthenticationGuard implements CanActivate {
       if (request.user.mustChangePassword && !isPasswordChangeAllowed(request.url)) {
         throw new ForbiddenException('Необходимо сменить временный пароль');
       }
+      if (
+        request.user.mustCompleteProfile &&
+        !request.user.mustChangePassword &&
+        !isProfileCompletionAllowed(request.url)
+      ) {
+        throw new ForbiddenException('Заполните карточку сотрудника');
+      }
       return true;
     } catch (error) {
       if (error instanceof UnauthorizedException || error instanceof ForbiddenException) {
@@ -48,4 +55,12 @@ export class AuthenticationGuard implements CanActivate {
 function isPasswordChangeAllowed(url: string): boolean {
   const path = url.split('?')[0] ?? '';
   return /\/auth\/(me|capabilities|logout|logout-all|change-password)$/.test(path);
+}
+
+function isProfileCompletionAllowed(url: string): boolean {
+  const path = url.split('?')[0] ?? '';
+  return (
+    /\/auth\/(me|capabilities|logout|logout-all|change-password)$/.test(path) ||
+    /\/users\/me\/complete-profile$/.test(path)
+  );
 }

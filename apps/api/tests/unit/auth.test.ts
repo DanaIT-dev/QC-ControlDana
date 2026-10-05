@@ -178,6 +178,7 @@ describe('CsrfGuard', () => {
       sessionHash: 'abc',
       csrfToken: 'csrf-correct',
       mustChangePassword: false,
+      mustCompleteProfile: false,
     } satisfies AuthenticatedUser;
     expect(
       guard.canActivate(httpContext({ user, headers: { 'x-csrf-token': 'csrf-correct' } })),

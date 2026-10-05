@@ -49,6 +49,9 @@ export async function requireAppUser(): Promise<SafeUserProfile> {
   if (user.mustChangePassword) {
     redirect('/change-password');
   }
+  if (user.mustCompleteProfile) {
+    redirect('/complete-profile');
+  }
   return user;
 }
 

@@ -105,6 +105,10 @@ model User {
   fullName            String
   email               String     @unique
   phone               String?
+  birthDate           DateTime?  @db.Date
+  hiredOn             DateTime?  @db.Date
+  contractEndsOn      DateTime?  @db.Date
+  mustCompleteProfile Boolean    @default(false)
   mustChangePassword  Boolean    @default(false)
   sessionVersion      Int        @default(1)
   lastLoginAt         DateTime?  @db.Timestamptz(3)

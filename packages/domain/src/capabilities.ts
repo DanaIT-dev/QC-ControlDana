@@ -361,9 +361,26 @@ export function canResolveImportedEngineer(role: UserRole): boolean {
   return role === 'ADMIN' || role === 'MANAGER' || role === 'SGR_MANAGER';
 }
 
-export function postLoginPath(role: UserRole, mustChangePassword = false): string {
+export function canViewEmployees(role: UserRole): boolean {
+  return (
+    role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'MANAGER' || role === 'SGR_MANAGER'
+  );
+}
+
+export function canEditEmployment(role: UserRole): boolean {
+  return role === 'ADMIN' || role === 'MANAGER' || role === 'SGR_MANAGER';
+}
+
+export function postLoginPath(
+  role: UserRole,
+  mustChangePassword = false,
+  mustCompleteProfile = false,
+): string {
   if (mustChangePassword) {
     return '/change-password';
+  }
+  if (mustCompleteProfile) {
+    return '/complete-profile';
   }
   if (isPendingRole(role)) {
     return '/pending-role';

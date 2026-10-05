@@ -242,9 +242,10 @@ describe('role-aware navigation', () => {
     expect(navItemsForRole('MANAGER').map((item) => item.label)).toEqual(admin);
     expect(navItemsForRole('MANAGER').map((item) => item.href)).not.toContain('/super-admin');
     expect(navSectionsForRole('SGR_MANAGER').administration.map((item) => item.label)).toEqual([
+      'Пользователи',
       'Журнал аудита',
     ]);
-    expect(navSectionsForRole('SGR_MANAGER').administration.map((item) => item.href)).not.toContain(
+    expect(navSectionsForRole('SGR_MANAGER').administration.map((item) => item.href)).toContain(
       '/users',
     );
     expect(responsible).toEqual([

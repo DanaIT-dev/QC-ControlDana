@@ -21,6 +21,7 @@ export interface SafeUserProfile {
   roleLabel: string;
   csrfToken: string;
   mustChangePassword: boolean;
+  mustCompleteProfile?: boolean;
 }
 
 export const changePasswordRequestSchema = z

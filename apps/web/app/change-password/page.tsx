@@ -18,7 +18,7 @@ export default async function ChangePasswordPage() {
           csrfToken={user.csrfToken}
           email={user.email}
           fullName={user.fullName}
-          nextPath={postLoginPath(user.role)}
+          nextPath={postLoginPath(user.role, false, Boolean(user.mustCompleteProfile))}
         />
       </ChangePasswordCard>
     </AppShell>

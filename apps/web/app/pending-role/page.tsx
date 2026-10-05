@@ -9,7 +9,9 @@ export const dynamic = 'force-dynamic';
 export default async function PendingRolePage() {
   const user = await requireAppUser();
   if (!isPendingRole(user.role)) {
-    redirect(postLoginPath(user.role, user.mustChangePassword));
+    redirect(
+      postLoginPath(user.role, user.mustChangePassword, Boolean(user.mustCompleteProfile)),
+    );
   }
   return (
     <AppShell user={user}>

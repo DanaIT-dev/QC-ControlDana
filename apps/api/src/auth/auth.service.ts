@@ -279,6 +279,7 @@ export class AuthService {
       sessionHash,
       csrfToken: stored.csrfToken,
       mustChangePassword: user.mustChangePassword,
+      mustCompleteProfile: user.mustCompleteProfile,
     };
   }
 
@@ -505,6 +506,7 @@ export function toSafeProfile(
     email: string;
     role: SafeUserProfile['role'];
     mustChangePassword?: boolean;
+    mustCompleteProfile?: boolean;
   },
   csrfToken: string,
 ): SafeUserProfile {
@@ -519,6 +521,7 @@ export function toSafeProfile(
     roleLabel: roleLabel(user.role),
     csrfToken,
     mustChangePassword: Boolean(user.mustChangePassword),
+    mustCompleteProfile: Boolean(user.mustCompleteProfile),
   };
 }
 

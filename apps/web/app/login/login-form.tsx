@@ -59,10 +59,15 @@ export function LoginForm() {
       }
       const profile = (await response.json()) as {
         mustChangePassword?: boolean;
+        mustCompleteProfile?: boolean;
         role?: Parameters<typeof postLoginPath>[0];
       };
       const nextPath = profile.role
-        ? postLoginPath(profile.role, Boolean(profile.mustChangePassword))
+        ? postLoginPath(
+            profile.role,
+            Boolean(profile.mustChangePassword),
+            Boolean(profile.mustCompleteProfile),
+          )
         : '/';
       window.location.assign(nextPath);
     } catch {

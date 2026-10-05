@@ -120,7 +120,7 @@ export function ChangePasswordForm({
       ) : null}
       {success ? (
         <Alert>
-          <AlertDescription>Пароль обновлён, выполняется переход в реестр.</AlertDescription>
+          <AlertDescription>Пароль обновлён.</AlertDescription>
         </Alert>
       ) : null}
       <Button type="submit" disabled={pending}>

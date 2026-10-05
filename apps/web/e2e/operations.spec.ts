@@ -62,11 +62,11 @@ test.describe('operational workflow', () => {
     await expect(page.getByText('История изменений')).toBeVisible();
   });
 
-  test('SGR_MANAGER has no user management', async ({ page }) => {
+  test('SGR_MANAGER can view employees without managing accounts', async ({ page }) => {
     await login(page, 'marina.sokolova@example.sgr.local');
-    await expect(page.getByRole('link', { name: 'Пользователи' })).toHaveCount(0);
     await page.goto('/users');
-    await expect(page.getByText('Недостаточно прав')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Пользователи' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Добавить пользователя' })).toHaveCount(0);
   });
 
   test('RESPONSIBLE_ENGINEER payload has no B/C', async ({ page }) => {

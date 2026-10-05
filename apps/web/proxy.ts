@@ -40,6 +40,7 @@ export function proxy(request: NextRequest) {
       pathname === '/users' ||
       pathname === '/reference-data' ||
       pathname === '/change-password' ||
+      pathname === '/complete-profile' ||
       pathname === '/notifications' ||
       pathname === '/deadlines' ||
       pathname === '/objects' ||

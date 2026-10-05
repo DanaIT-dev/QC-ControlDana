@@ -6,5 +6,9 @@ export const dynamic = 'force-dynamic';
 
 export default async function HomePage() {
   const user = await fetchCurrentUser();
-  redirect(user ? postLoginPath(user.role, user.mustChangePassword) : '/login');
+  redirect(
+    user
+      ? postLoginPath(user.role, user.mustChangePassword, Boolean(user.mustCompleteProfile))
+      : '/login',
+  );
 }
