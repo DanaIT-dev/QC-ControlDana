@@ -198,6 +198,30 @@ function metricSql(metric: AnalyticsMetric, query: AnalyticsQuery): Prisma.Sql {
         SELECT 1 FROM public.defect_inspection_attempts attempt
         WHERE attempt."defectItemId" = d.id
       )`;
+    case 'confirmedExposure':
+      return Prisma.sql`EXISTS (
+        SELECT 1 FROM public.defect_financial_impacts impact
+        WHERE impact."defectItemId" = d.id
+          AND impact.status::text = 'CONFIRMED'
+          AND (
+            (impact."amountType"::text = 'ACTUAL_COST' AND impact."payerType"::text = 'COMPANY')
+            OR impact."amountType"::text = 'RECOVERY'
+          )
+      )`;
+    case 'riskWeightedBacklog':
+      return Prisma.sql`d.status::text IN ('IN_PROGRESS', 'PENDING_INSPECTION') AND (
+        EXISTS (
+          SELECT 1 FROM public.defect_financial_impacts impact
+          WHERE impact."defectItemId" = d.id
+            AND impact.status::text = 'CONFIRMED'
+            AND impact."amountType"::text = 'APPROVED_AMOUNT'
+        ) OR EXISTS (
+          SELECT 1 FROM public.defect_financial_impacts impact
+          WHERE impact."defectItemId" = d.id
+            AND impact.status::text = 'CONFIRMED'
+            AND impact."amountType"::text = 'ESTIMATE'
+        )
+      )`;
     default:
       return Prisma.sql`TRUE`;
   }

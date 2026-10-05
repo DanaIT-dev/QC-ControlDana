@@ -7,6 +7,7 @@ import type {
   AnalyticsOverview,
   AnalyticsPatterns,
   AnalyticsProcess,
+  AnalyticsSupportDrilldown,
   FinancialImpactList,
 } from '@sgr-registry/contracts';
 import { commandFetch } from './command-api';
@@ -47,6 +48,19 @@ export function fetchAnalyticsDataQuality(search: string) {
 
 export function fetchAnalyticsDrilldown(search: string) {
   return getJson<AnalyticsDrilldown>(`/api/analytics/drilldown${search}`);
+}
+
+export function fetchAnalyticsSupport(insightId: string, search: string) {
+  const source = new URLSearchParams(search);
+  const allowed = new URLSearchParams();
+  for (const key of ['page', 'pageSize', 'sort', 'direction']) {
+    const value = source.get(key);
+    if (value) allowed.set(key, value);
+  }
+  const suffix = allowed.toString();
+  return getJson<AnalyticsSupportDrilldown>(
+    `/api/analytics/patterns/${insightId}/defects${suffix ? `?${suffix}` : ''}`,
+  );
 }
 
 export function fetchAnalyticsFilters(search: string) {

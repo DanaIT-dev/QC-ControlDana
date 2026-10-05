@@ -8,7 +8,7 @@ import type {
 } from '@sgr-registry/contracts';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { PageHeader } from '@/components/page-header';
 import { EmptyState, ErrorState, MetricSkeleton, TableSkeleton } from '@/components/states';
 import { Button } from '@/components/ui/button';
@@ -24,6 +24,7 @@ import {
   fetchAnalyticsOverview,
   fetchAnalyticsPatterns,
   fetchAnalyticsProcess,
+  fetchAnalyticsSupport,
   reviewInsight,
 } from '@/lib/analytics-api';
 import { queryKeys } from '@/lib/query-keys';
@@ -42,14 +43,19 @@ export function AnalyticsView({ csrfToken }: { csrfToken: string }) {
   const router = useRouter();
   const params = useSearchParams();
   const search = params.toString();
-  const suffix = search ? `?${search}` : '';
+  const filterParams = new URLSearchParams(search);
+  filterParams.delete('insightId');
+  filterParams.delete('sort');
+  filterParams.delete('direction');
+  const filterSearch = filterParams.toString();
+  const suffix = filterSearch ? `?${filterSearch}` : '';
   const tab = params.get('tab') ?? 'overview';
   const overview = useQuery({
-    queryKey: queryKeys.analytics.overview(search),
+    queryKey: queryKeys.analytics.overview(filterSearch),
     queryFn: () => fetchAnalyticsOverview(suffix),
   });
   const filters = useQuery({
-    queryKey: queryKeys.analytics.filters(search),
+    queryKey: queryKeys.analytics.filters(filterSearch),
     queryFn: () => fetchAnalyticsFilters(suffix),
   });
 
@@ -73,7 +79,15 @@ export function AnalyticsView({ csrfToken }: { csrfToken: string }) {
   }
 
   function openMetric(metric: string) {
-    update({ tab: 'drilldown', metric });
+    if (metric.startsWith('insight:')) {
+      update({
+        tab: 'drilldown',
+        metric: null,
+        insightId: metric.slice('insight:'.length),
+      });
+      return;
+    }
+    update({ tab: 'drilldown', metric, insightId: null });
   }
 
   return (
@@ -110,27 +124,43 @@ export function AnalyticsView({ csrfToken }: { csrfToken: string }) {
           {overview.data ? <OverviewPane data={overview.data} onOpen={openMetric} /> : null}
         </TabsContent>
         <TabsContent value="costs">
-          <CostsPane search={search} suffix={suffix} onOpen={openMetric} />
+          <CostsPane search={filterSearch} suffix={suffix} onOpen={openMetric} />
         </TabsContent>
         <TabsContent value="liability">
-          <LiabilityPane search={search} suffix={suffix} />
+          <LiabilityPane search={filterSearch} suffix={suffix} />
         </TabsContent>
         <TabsContent value="process">
-          <ProcessPane search={search} suffix={suffix} onOpen={openMetric} />
+          <ProcessPane search={filterSearch} suffix={suffix} onOpen={openMetric} />
         </TabsContent>
         <TabsContent value="patterns">
-          <PatternsPane search={search} suffix={suffix} csrfToken={csrfToken} onOpen={openMetric} />
+          <PatternsPane
+            search={filterSearch}
+            suffix={suffix}
+            csrfToken={csrfToken}
+            onOpen={openMetric}
+          />
         </TabsContent>
         <TabsContent value="data-quality">
-          <QualityPane search={search} suffix={suffix} onOpen={openMetric} />
+          <QualityPane search={filterSearch} suffix={suffix} onOpen={openMetric} />
         </TabsContent>
         <TabsContent value="drilldown">
-          <DrilldownPane
-            search={search}
-            suffix={suffix}
-            page={params.get('page') ?? '1'}
-            onPage={(page) => update({ page, tab: 'drilldown' })}
-          />
+          {params.get('insightId') ? (
+            <SupportPane
+              insightId={params.get('insightId') ?? ''}
+              search={search}
+              onBack={() => update({ tab: 'patterns', insightId: null })}
+              onPage={(page) =>
+                update({ page, tab: 'drilldown', insightId: params.get('insightId') })
+              }
+            />
+          ) : (
+            <DrilldownPane
+              search={filterSearch}
+              suffix={suffix}
+              page={params.get('page') ?? '1'}
+              onPage={(page) => update({ page, tab: 'drilldown' })}
+            />
+          )}
         </TabsContent>
       </Tabs>
     </div>
@@ -150,22 +180,42 @@ function FilterBar({
   objects: Array<{ id: string; label: string }>;
   onChange: (next: Record<string, string | null>) => void;
 }) {
+  const [from, setFrom] = useState(dateFrom);
+  const [to, setTo] = useState(dateTo);
+  const fromRef = useRef<HTMLInputElement>(null);
+  const toRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (document.activeElement !== fromRef.current) setFrom(dateFrom);
+  }, [dateFrom]);
+  useEffect(() => {
+    if (document.activeElement !== toRef.current) setTo(dateTo);
+  }, [dateTo]);
   return (
     <div className="mb-4 flex flex-wrap items-end gap-2">
       <label className="grid gap-1 text-xs text-muted-foreground">
         Дата регистрации с
         <Input
+          ref={fromRef}
           type="date"
-          value={dateFrom}
-          onChange={(event) => onChange({ dateFrom: event.target.value || null })}
+          value={from}
+          suppressHydrationWarning
+          onChange={(event) => {
+            setFrom(event.target.value);
+            onChange({ dateFrom: event.target.value || null });
+          }}
         />
       </label>
       <label className="grid gap-1 text-xs text-muted-foreground">
         Дата регистрации по
         <Input
+          ref={toRef}
           type="date"
-          value={dateTo}
-          onChange={(event) => onChange({ dateTo: event.target.value || null })}
+          value={to}
+          suppressHydrationWarning
+          onChange={(event) => {
+            setTo(event.target.value);
+            onChange({ dateTo: event.target.value || null });
+          }}
         />
       </label>
       <label className="grid min-w-40 gap-1 text-xs text-muted-foreground">
@@ -196,11 +246,15 @@ function OverviewPane({
   onOpen: (metric: string) => void;
 }) {
   const cards = [
-    [
-      'Подтверждённые затраты Dana',
-      data.financialVisible ? formatMoney(data.companyActualCostByn) : 'Недоступно',
-      'companyActualCost',
-    ],
+    ...(data.financialVisible
+      ? ([
+          [
+            'Подтверждённые затраты Dana',
+            formatMoney(data.companyActualCostByn ?? null),
+            'companyActualCost',
+          ],
+        ] as const)
+      : []),
     ['Открытый backlog', String(data.openDefects), 'openDefects'],
     ['Просрочено', String(data.overdueDefects), 'overdueDefects'],
     ['Медиана закрытия', formatDuration(data.medianClosureMs), 'closedInPeriod'],
@@ -216,7 +270,7 @@ function OverviewPane({
     ['Новые сигналы', String(data.newInsights), 'defects'],
   ] as const;
   return (
-    <div className="grid gap-4">
+    <div className="grid gap-4" data-analytics-ready="true">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {cards.map(([label, value, metric]) => (
           <button
@@ -231,6 +285,12 @@ function OverviewPane({
         ))}
       </div>
       <p className="text-sm text-muted-foreground">{data.firstTimeRight.coverageText}</p>
+      {data.confirmedFinancialExposure ? (
+        <ExposureCard exposure={data.confirmedFinancialExposure} onOpen={onOpen} />
+      ) : null}
+      {data.riskWeightedOpenBacklog ? (
+        <BacklogCard backlog={data.riskWeightedOpenBacklog} onOpen={onOpen} />
+      ) : null}
       <BarChart
         title="Открыто и закрыто"
         rows={data.openedClosed.map((row) => ({
@@ -246,21 +306,82 @@ function OverviewPane({
       <SimpleTable
         title="Топ рисков"
         columns={['Дефект', 'Оценка']}
-        rows={data.topRisks.map((row) => [
-          row.label,
-          row.score.toLocaleString('ru-RU', { maximumFractionDigits: 2 }),
-        ])}
+        rows={data.topRisks.map((row) => [row.label, row.score])}
         empty="Нет открытых дефектов в текущем scope."
       />
       {data.financialVisible ? (
         <SimpleTable
           title="Организации по подтверждённому влиянию"
           columns={['Организация', 'BYN']}
-          rows={data.topOrganizations.map((row) => [row.name, formatMoney(row.amountByn)])}
+          rows={(data.topOrganizations ?? []).map((row) => [row.name, formatMoney(row.amountByn)])}
           empty="Нет подтверждённых затрат компании."
         />
       ) : null}
     </div>
+  );
+}
+
+function ExposureCard({
+  exposure,
+  onOpen,
+}: {
+  exposure: NonNullable<AnalyticsOverview['confirmedFinancialExposure']>;
+  onOpen: (metric: string) => void;
+}) {
+  const period =
+    [exposure.periodFrom, exposure.periodTo].filter(Boolean).join(' – ') || 'весь доступный период';
+  return (
+    <button
+      type="button"
+      className="min-h-28 rounded-[10px] border bg-card p-3 text-left"
+      title="Чистая нагрузка = подтверждённые ACTUAL_COST плательщика COMPANY минус подтверждённые RECOVERY. ESTIMATE, APPROVED_AMOUNT, AVOIDED_LOSS, DRAFT и VOIDED не входят."
+      onClick={() => onOpen('confirmedExposure')}
+    >
+      <p className="text-xs text-muted-foreground">Подтверждённая финансовая нагрузка</p>
+      <p className="text-xl font-semibold">
+        {exposure.available && exposure.netConfirmedExposureByn
+          ? formatMoney(exposure.netConfirmedExposureByn)
+          : 'Нет подтверждённых данных'}
+      </p>
+      {exposure.available ? (
+        <p className="text-xs text-muted-foreground">
+          Расходы {formatMoney(exposure.grossCompanyCostByn ?? null)}, возмещения{' '}
+          {formatMoney(exposure.confirmedRecoveryByn ?? null)}, записей {exposure.recordCount},{' '}
+          {exposure.currency}, {period}
+        </p>
+      ) : (
+        <p className="text-xs text-muted-foreground">Период: {period}</p>
+      )}
+    </button>
+  );
+}
+
+function BacklogCard({
+  backlog,
+  onOpen,
+}: {
+  backlog: NonNullable<AnalyticsOverview['riskWeightedOpenBacklog']>;
+  onOpen: (metric: string) => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="min-h-28 rounded-[10px] border bg-card p-3 text-left"
+      title={`Сумма базовой оценки открытого дефекта, умноженной на коэффициент риска. База: последняя подтверждённая APPROVED_AMOUNT, иначе ESTIMATE. Коэффициент: 1.00, просрочка +0.25, каждое отклонение после первого +0.15, ожидание проверки дольше ${backlog.inspectionWaitDays} дней +0.20, максимум 2.00. Формула ${backlog.formulaVersion}.`}
+      onClick={() => onOpen('riskWeightedBacklog')}
+    >
+      <p className="text-xs text-muted-foreground">Риск-взвешенный открытый долг</p>
+      <p className="text-xl font-semibold">
+        {backlog.available && backlog.weightedByn
+          ? formatMoney(backlog.weightedByn)
+          : 'Недостаточно подтверждённых финансовых данных'}
+      </p>
+      <p className="text-xs text-muted-foreground">
+        Оценено {backlog.evaluatedDefects} из {backlog.openDefects}. Покрытие{' '}
+        {backlog.monetaryCoverage == null ? 'нет базы' : formatRate(backlog.monetaryCoverage)}.
+        Формула {backlog.formulaVersion}. Расчёт {backlog.calculatedAt.slice(0, 10)}.
+      </p>
+    </button>
   );
 }
 
@@ -476,8 +597,9 @@ function ProcessPane({
         empty="Нет временных меток попыток."
       />
       <p className="text-sm text-muted-foreground">
-        Время ожидания проверки не включается во время подрядчика. Назначение инженера не имеет
-        отдельной метки времени, поэтому DetectionToAssignment не вычисляется.
+        Время ожидания проверки не включается во время подрядчика. DetectionToAssignment: Метрика
+        недоступна: система пока не фиксирует необходимое событие. AssignmentToWorkStart: Метрика
+        недоступна: система пока не фиксирует необходимое событие.
       </p>
       <button
         type="button"
@@ -563,23 +685,31 @@ function PatternCard({
     }
   }
   return (
-    <Card>
+    <Card data-signal-type={item.signalType}>
       <CardHeader>
         <CardTitle className="text-base">{item.displayLabel}</CardTitle>
       </CardHeader>
-      <CardContent className="grid gap-2 text-sm">
-        <p>{item.plainLanguageExplanation}</p>
+      <CardContent className="grid min-w-0 gap-2 text-sm break-words">
+        <p className="break-words">{item.plainLanguageExplanation}</p>
         <p>
           Выборка: {item.supportCount}. Базовый уровень: {formatRate(item.baselineValue)}.
           Достоверность: {item.confidence}. Статус: {item.status}.
         </p>
-        <button
-          type="button"
-          className="min-h-11 w-fit underline"
-          onClick={() => onOpen('defects')}
-        >
-          Открыть дефекты выборки
-        </button>
+        <p className="text-xs text-muted-foreground">
+          Правило {item.ruleVersion}. Рассчитано {item.generatedAt.slice(0, 10)}. Покрытие{' '}
+          {formatRate(item.sampleCoverage)}.
+        </p>
+        {item.supportAvailable ? (
+          <button
+            type="button"
+            className="min-h-11 w-fit underline"
+            onClick={() => onOpen(`insight:${item.id}`)}
+          >
+            Показать исходные дефекты
+          </button>
+        ) : (
+          <p>Support snapshot unavailable</p>
+        )}
         {item.canReview ? (
           <div className="grid gap-2">
             <Input
@@ -633,7 +763,11 @@ function QualityPane({
     ['Без ответственного', data.missingResponsible, 'noResponsible'],
     ['Без срока', data.missingDeadline, 'defects'],
     ['Без истории попыток', data.missingAttemptHistory, 'withoutAttempts'],
-    ['Без финансовых данных', data.missingFinancialData, 'defects'],
+    ...(data.coverage.some((item) => item.metric === 'financial')
+      ? ([['Без финансовых данных', data.missingFinancialData, 'defects']] as Array<
+          [string, number, string]
+        >)
+      : []),
     ['Несопоставленные инженеры', data.unresolvedEngineers, 'defects'],
     ['Импортированные записи', data.importedRecords, 'defects'],
     ['Неполные timestamps', data.incompleteTimestamps, 'defects'],
@@ -655,14 +789,112 @@ function QualityPane({
       </div>
       <p className="text-sm text-muted-foreground">
         Недоступные измерения: {data.unavailableDimensions.join(', ')}. Тип дефекта обязателен в
-        модели, поэтому пропуск типа равен 0.
+        модели, поэтому пропуск типа равен 0. Записей объёма работ: {data.workExposureRecords}.
+        Пустая экспозиция не отключает остальные вкладки. Эти измерения нужно начать сохранять
+        отдельно, без разбора свободного текста.
       </p>
+      <SimpleTable
+        title="Недоступные метрики"
+        columns={['Метрика', 'Причина']}
+        rows={data.unavailableMetrics.map((item) => [item.metric, item.reason])}
+        empty="Все рассчитанные метрики доступны."
+      />
       <SimpleTable
         title="Покрытие"
         columns={['Метрика', 'Покрыто', 'Всего']}
         rows={data.coverage.map((row) => [row.label, String(row.covered), String(row.total)])}
         empty="Нет дефектов."
       />
+    </div>
+  );
+}
+
+function SupportPane({
+  insightId,
+  search,
+  onBack,
+  onPage,
+}: {
+  insightId: string;
+  search: string;
+  onBack: () => void;
+  onPage: (page: string) => void;
+}) {
+  const page = new URLSearchParams(search).get('page') ?? '1';
+  const query = useQuery({
+    queryKey: queryKeys.analytics.support(insightId, search),
+    queryFn: () => fetchAnalyticsSupport(insightId, search),
+  });
+  if (query.isLoading) return <TableSkeleton />;
+  if (query.isError) {
+    return (
+      <ErrorState
+        description="Исходные дефекты сигнала не загрузились."
+        onRetry={() => void query.refetch()}
+      />
+    );
+  }
+  if (!query.data) return null;
+  const data = query.data;
+  return (
+    <div className="grid min-w-0 gap-3">
+      <button type="button" className="min-h-11 w-fit underline" onClick={onBack}>
+        Назад к паттернам
+      </button>
+      <h2 className="text-lg font-semibold">{data.title ?? 'Сигнал'}</h2>
+      <p className="text-sm text-muted-foreground">
+        Выборка: {data.supportCount}. Правило {data.ruleVersion ?? '—'}. Расчёт{' '}
+        {data.observedAt?.slice(0, 10) ?? '—'}. {data.unavailableReason ?? ''}
+      </p>
+      <div className="max-w-full overflow-x-auto">
+        <SimpleTable
+          title="Дефекты сигнала"
+          columns={[
+            'Акт',
+            'Дефект',
+            'Объект',
+            'Тип',
+            'Работы',
+            'Организация',
+            'Статус',
+            'Срок',
+            'Попытки',
+            'Причина',
+          ]}
+          rows={data.items.map((item) => [
+            item.actNumber ?? item.actId,
+            item.label,
+            item.objectName,
+            item.defectType,
+            item.workType ?? '—',
+            item.liableOrganizations.join(', ') || '—',
+            item.status,
+            item.deadline ? item.deadline.slice(0, 10) : '—',
+            String(item.attemptCount),
+            item.contributionReason ?? '—',
+          ])}
+          empty={data.unavailableReason ?? 'В доступной области нет дефектов этого сигнала.'}
+        />
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {data.items.map((item) => (
+          <Link key={item.defectItemId} className="underline" href={`/acts/${item.actId}`}>
+            Акт {item.actNumber ?? item.actId}
+          </Link>
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => onPage(String(Math.max(1, Number(page) - 1)))}
+        >
+          Назад
+        </Button>
+        <Button type="button" variant="outline" onClick={() => onPage(String(Number(page) + 1))}>
+          Дальше
+        </Button>
+      </div>
     </div>
   );
 }
@@ -894,10 +1126,13 @@ function MetricButton({
 }
 
 function formatMoney(amount: string | null): string {
-  if (amount == null) return 'Нет подтверждённых данных';
-  const value = Number(amount);
-  if (!Number.isFinite(value)) return 'Нет подтверждённых данных';
-  return `${value.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} BYN`;
+  if (amount == null || !/^-?\d+(\.\d{1,2})?$/.test(amount)) {
+    return 'Нет подтверждённых данных';
+  }
+  const negative = amount.startsWith('-');
+  const [whole, fraction = ''] = amount.slice(negative ? 1 : 0).split('.');
+  const grouped = (whole || '0').replace(/\B(?=(\d{3})+(?!\d))/g, '\u00A0');
+  return `${negative ? '−' : ''}${grouped},${fraction.padEnd(2, '0')} BYN`;
 }
 
 function formatRate(value: number | null): string {

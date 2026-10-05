@@ -194,7 +194,10 @@ export function RegistryView({ user }: { user: SafeUserProfile }) {
           pushQuery({ ...query, page: 1, search: trimmed.length >= 2 ? trimmed : null });
         }}
         onChange={pushQuery}
-        onReset={() => pushQuery(parseRegistryListQuery({}))}
+        onReset={() => {
+          setSearchDraft('');
+          pushQuery(parseRegistryListQuery({}));
+        }}
         sheetOpen={filtersOpen}
         onSheetOpenChange={setFiltersOpen}
         resultCount={listQuery.isSuccess ? totalCount : undefined}

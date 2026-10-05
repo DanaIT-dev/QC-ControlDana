@@ -115,6 +115,22 @@ describe('analytics API', () => {
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
 
+    await prisma.analyticsInsightDefect.deleteMany({
+      where: { defectItem: { act: { officialNumber: { startsWith: 'analytics-' } } } },
+    });
+    await prisma.$executeRaw`ALTER TABLE public.defect_financial_impacts DISABLE TRIGGER defect_financial_impacts_guard`;
+    await prisma.defectFinancialImpact.deleteMany({
+      where: { defectItem: { act: { officialNumber: { startsWith: 'analytics-' } } } },
+    });
+    await prisma.$executeRaw`ALTER TABLE public.defect_financial_impacts ENABLE TRIGGER defect_financial_impacts_guard`;
+    await prisma.defectItemLiableOrganization.deleteMany({
+      where: { defectItem: { act: { officialNumber: { startsWith: 'analytics-' } } } },
+    });
+    await prisma.defectItem.deleteMany({
+      where: { act: { officialNumber: { startsWith: 'analytics-' } } },
+    });
+    await prisma.act.deleteMany({ where: { officialNumber: { startsWith: 'analytics-' } } });
+
     const object = await prisma.propertyObject.create({
       data: { name: `${marker} object`, address: 'Минск' },
     });
@@ -205,12 +221,13 @@ describe('analytics API', () => {
       where: { defectItemId: { in: [ownDefectId, foreignDefectId] } },
     });
     await prisma.$executeRaw`ALTER TABLE public.defect_financial_impacts ENABLE TRIGGER defect_financial_impacts_guard`;
+    await prisma.analyticsInsightDefect.deleteMany({ where: { defectItem: { actId } } });
     await prisma.analyticsInsight
       .deleteMany({ where: { plainLanguageExplanation: { contains: marker } } })
       .catch(() => undefined);
     await prisma.proposal.deleteMany({ where: { defectItemId: ownDefectId } });
     await prisma.defectItemLiableOrganization.deleteMany({
-      where: { defectItemId: { in: [ownDefectId, foreignDefectId] } },
+      where: { defectItem: { actId } },
     });
     await prisma.defectItem.deleteMany({ where: { actId } });
     await prisma.act.deleteMany({ where: { id: actId } });
@@ -333,6 +350,10 @@ describe('analytics API', () => {
     };
     expect(contractorBody.financialVisible).toBe(false);
     expect(contractorBody.defects).toBe(1);
+    expect(contractorOverview.json()).not.toHaveProperty('confirmedFinancialExposure');
+    expect(contractorOverview.json()).not.toHaveProperty('riskWeightedOpenBacklog');
+    expect(contractorOverview.json()).not.toHaveProperty('companyActualCostByn');
+    expect(contractorOverview.json()).not.toHaveProperty('topOrganizations');
     const filters = await read(contractorSession, '/api/analytics/filters');
     expect(JSON.stringify(filters.json())).not.toContain(foreignOrgId);
     expect(JSON.stringify(filters.json())).not.toContain(`${marker} foreign`);
@@ -368,5 +389,107 @@ describe('analytics API', () => {
     expect((await read(adminSession, '/api/analytics/drilldown?pageSize=1000')).statusCode).toBe(
       400,
     );
+
+    const workType = await prisma.workType.create({
+      data: { code: marker.slice(0, 20), name: `${marker} work`, sortOrder: 3 },
+    });
+    const accepted = await prisma.user.findFirstOrThrow({
+      where: { email: { startsWith: marker } },
+      select: { id: true },
+    });
+    async function completed(orgId: string, location: string) {
+      const defect = await prisma.defectItem.create({
+        data: {
+          actId,
+          defectTypeId,
+          workTypeId: workType.id,
+          status: 'COMPLETED',
+          location,
+          claimDetails: location,
+          readyAt: new Date('2026-06-01T00:00:00.000Z'),
+        },
+      });
+      await prisma.defectItemLiableOrganization.create({
+        data: { defectItemId: defect.id, organizationId: orgId },
+      });
+      return defect.id;
+    }
+    for (let index = 0; index < 20; index += 1) {
+      const id = await completed(foreignOrgId, `baseline-${index}`);
+      await prisma.defectInspectionAttempt.create({
+        data: {
+          defectItemId: id,
+          attemptNumber: 1,
+          status: 'ACCEPTED',
+          submittedByUserId: accepted.id,
+          submittedAt: new Date('2026-05-02T00:00:00.000Z'),
+          reviewedByUserId: admin.id,
+          reviewedAt: new Date('2026-05-03T00:00:00.000Z'),
+        },
+      });
+    }
+    const supportIds: string[] = [];
+    for (let index = 0; index < 6; index += 1) {
+      const id = await completed(ownOrgId, `rework-${index}`);
+      supportIds.push(id);
+      await prisma.defectInspectionAttempt.createMany({
+        data: [
+          {
+            defectItemId: id,
+            attemptNumber: 1,
+            status: 'REJECTED',
+            submittedByUserId: accepted.id,
+            submittedAt: new Date('2026-05-02T00:00:00.000Z'),
+            reviewedByUserId: admin.id,
+            reviewedAt: new Date('2026-05-03T00:00:00.000Z'),
+            rejectionReason: 'повтор',
+          },
+          {
+            defectItemId: id,
+            attemptNumber: 2,
+            status: 'ACCEPTED',
+            submittedByUserId: accepted.id,
+            submittedAt: new Date('2026-05-04T00:00:00.000Z'),
+            reviewedByUserId: admin.id,
+            reviewedAt: new Date('2026-05-05T00:00:00.000Z'),
+          },
+        ],
+      });
+    }
+    await completed(ownOrgId, 'legacy-without-attempt');
+    const patterns = await read(adminSession, '/api/analytics/patterns');
+    expect(patterns.statusCode).toBe(200);
+    const cards = (
+      patterns.json() as { items: Array<{ id: string; signalType: string; supportCount: number }> }
+    ).items;
+    const low = cards.find(
+      (item) => item.signalType === 'LOW_FIRST_TIME_RIGHT' && item.supportCount === 6,
+    );
+    expect(low).toBeTruthy();
+    const support = await read(adminSession, `/api/analytics/patterns/${low?.id}/defects`);
+    expect(support.statusCode).toBe(200);
+    const supportBody = support.json() as {
+      supportCount: number;
+      ruleVersion: string;
+      items: Array<{ defectItemId: string; contributionReason: string }>;
+    };
+    expect(supportBody.supportCount).toBe(6);
+    expect(supportBody.ruleVersion).toBe('2026.10.05.2');
+    expect(supportBody.items.map((item) => item.defectItemId).sort()).toEqual(supportIds.sort());
+    expect(supportBody.items[0]?.contributionReason).toContain('First-Time-Right');
+    expect(
+      (await read(adminSession, `/api/analytics/patterns/${low?.id}/defects?dateFrom=2026-01-01`))
+        .statusCode,
+    ).toBe(400);
+    expect(
+      (await read(contractorSession, `/api/analytics/patterns/${low?.id}/defects`)).statusCode,
+    ).toBe(404);
+    const exposure = (
+      (await read(adminSession, '/api/analytics/overview')).json() as {
+        confirmedFinancialExposure?: { netConfirmedExposureByn?: string };
+        topRisks: Array<{ defectItemId: string }>;
+      }
+    ).confirmedFinancialExposure;
+    expect(exposure?.netConfirmedExposureByn).toBe('25.50');
   });
 });

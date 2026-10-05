@@ -20,6 +20,8 @@ async function cleanup(): Promise<void> {
   await prisma.$executeRawUnsafe('TRUNCATE TABLE "audit_logs"');
   await prisma.idempotencyRecord.deleteMany();
   await prisma.attachment.deleteMany();
+  await prisma.analyticsInsightDefect.deleteMany();
+  await prisma.analyticsInsight.deleteMany();
   await prisma.proposal.deleteMany();
   await prisma.defectItemLiableOrganization.deleteMany();
   await prisma.defectItemEngineer.deleteMany();

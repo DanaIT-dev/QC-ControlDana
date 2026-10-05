@@ -84,6 +84,8 @@ export const analyticsQuerySchema = z
         'rework',
         'withAttempts',
         'withoutAttempts',
+        'confirmedExposure',
+        'riskWeightedBacklog',
       ])
       .optional(),
     page: z.coerce.number().int().positive().max(10_000).optional(),
@@ -121,6 +123,17 @@ export const insightReviewSchema = z
 
 export type InsightReview = z.infer<typeof insightReviewSchema>;
 
+export const supportDrilldownSchema = z
+  .object({
+    page: z.coerce.number().int().positive().max(10_000).optional(),
+    pageSize: z.coerce.number().int().positive().max(100).optional(),
+    sort: z.enum(['createdAt', 'status', 'actNumber']).optional(),
+    direction: z.enum(['asc', 'desc']).optional(),
+  })
+  .strict();
+
+export type SupportDrilldownQuery = z.infer<typeof supportDrilldownSchema>;
+
 export interface AnalyticsDuration {
   median: number | null;
   p75: number | null;
@@ -150,7 +163,28 @@ export interface AnalyticsOverview {
   noLiableOrganization: number;
   noMovement: number;
   closedInPeriod: number;
-  companyActualCostByn: string | null;
+  companyActualCostByn?: string | null;
+  confirmedFinancialExposure?: {
+    available: boolean;
+    currency: 'BYN';
+    grossCompanyCostByn?: string;
+    confirmedRecoveryByn?: string;
+    netConfirmedExposureByn?: string;
+    recordCount: number;
+    periodFrom: string | null;
+    periodTo: string | null;
+  };
+  riskWeightedOpenBacklog?: {
+    available: boolean;
+    weightedByn: string | null;
+    unweightedByn: string | null;
+    evaluatedDefects: number;
+    openDefects: number;
+    monetaryCoverage: number | null;
+    formulaVersion: string;
+    calculatedAt: string;
+    inspectionWaitDays: number;
+  };
   medianClosureMs: number | null;
   p90ClosureMs: number | null;
   closureSampleSize: number;
@@ -159,8 +193,8 @@ export interface AnalyticsOverview {
   newInsights: number;
   openedClosed: Array<{ period: string; opened: number; closed: number }>;
   backlogAge: Array<{ bucket: string; count: number }>;
-  topRisks: Array<{ defectItemId: string; actId: string; label: string; score: number }>;
-  topOrganizations: Array<{ organizationId: string; name: string; amountByn: string }>;
+  topRisks: Array<{ defectItemId: string; actId: string; label: string; score: string }>;
+  topOrganizations?: Array<{ organizationId: string; name: string; amountByn: string }>;
   financialVisible: boolean;
   crossOrganizationVisible: boolean;
   canReviewInsights: boolean;
@@ -251,6 +285,37 @@ export interface AnalyticsPatternCard {
   reviewedAt: string | null;
   reviewComment: string | null;
   canReview: boolean;
+  supportAvailable: boolean;
+}
+
+export interface AnalyticsSupportDrilldown {
+  insightId: string;
+  supportAvailable: boolean;
+  unavailableReason: string | null;
+  signalType: string | null;
+  title: string | null;
+  ruleVersion: string | null;
+  observedAt: string | null;
+  dimensions: Array<{ key: string; value: string; label: string }>;
+  supportCount: number;
+  page: number;
+  pageSize: number;
+  sort: string;
+  direction: string;
+  items: Array<{
+    defectItemId: string;
+    label: string;
+    actId: string;
+    actNumber: string | null;
+    objectName: string;
+    defectType: string;
+    workType: string | null;
+    liableOrganizations: string[];
+    status: string;
+    deadline: string | null;
+    attemptCount: number;
+    contributionReason: string | null;
+  }>;
 }
 
 export interface AnalyticsPatterns {
@@ -269,6 +334,8 @@ export interface AnalyticsDataQuality {
   importedRecords: number;
   incompleteTimestamps: number;
   unavailableDimensions: string[];
+  unavailableMetrics: Array<{ metric: string; reason: string }>;
+  workExposureRecords: number;
   coverage: Array<{
     metric: string;
     label: string;

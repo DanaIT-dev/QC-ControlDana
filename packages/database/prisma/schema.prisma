@@ -536,6 +536,7 @@ model DefectItem {
   importedEngineerReferences ImportedEngineerReference[]
   inspectionAttempts DefectInspectionAttempt[]
   financialImpacts DefectFinancialImpact[]
+  insightDefects AnalyticsInsightDefect[]
 
   @@index([actId])
   @@index([status])
@@ -943,15 +944,37 @@ model AnalyticsInsight {
   reviewedByUserId         String?                @db.Uuid
   reviewedAt               DateTime?              @db.Timestamptz(3)
   reviewComment            String?
+  filterSnapshot           Json                   @default("{}")
+  filterHash               String                 @default("")
+  snapshotHash             String
+  supportAvailable         Boolean                @default(false)
   createdAt                DateTime               @default(now()) @db.Timestamptz(3)
   updatedAt                DateTime               @updatedAt @db.Timestamptz(3)
 
   reviewedBy User? @relation("InsightReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: Restrict)
+  defects AnalyticsInsightDefect[]
 
-  @@unique([signalKey, scopeFingerprint])
+  @@unique([scopeFingerprint, snapshotHash])
   @@index([scopeKind, status, generatedAt])
   @@index([scopeFingerprint, active])
+  @@index([signalKey, scopeFingerprint, filterHash, active])
   @@map("analytics_insights")
+}
+
+model AnalyticsInsightDefect {
+  id                 String   @id @default(uuid()) @db.Uuid
+  insightId          String   @db.Uuid
+  defectItemId       String   @db.Uuid
+  contributionReason String
+  observedAt         DateTime @db.Timestamptz(3)
+  createdAt          DateTime @default(now()) @db.Timestamptz(3)
+
+  insight    AnalyticsInsight @relation(fields: [insightId], references: [id], onDelete: Restrict)
+  defectItem DefectItem       @relation(fields: [defectItemId], references: [id], onDelete: Restrict)
+
+  @@unique([insightId, defectItemId])
+  @@index([defectItemId])
+  @@map("analytics_insight_defects")
 }
 
 model WorkExposure {

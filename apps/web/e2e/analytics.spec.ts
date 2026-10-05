@@ -1,3 +1,5 @@
+import { spawnSync } from 'node:child_process';
+import { resolve } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { expectPrimaryNavItem } from './nav';
 
@@ -31,6 +33,27 @@ async function login(page: Page, email: string) {
 }
 
 test.describe('quality analytics', () => {
+  test.beforeAll(() => {
+    const databaseUrl = process.env.MIGRATION_DATABASE_URL ?? '';
+    expect(databaseUrl).toContain('sgr_registry_e2e');
+    const result = spawnSync(
+      'pnpm',
+      [
+        '--filter',
+        '@sgr-registry/database',
+        'exec',
+        'tsx',
+        'scripts/prepare-e2e-analytics-signal.ts',
+      ],
+      {
+        encoding: 'utf8',
+        cwd: resolve(__dirname, '../../..'),
+        env: process.env,
+      },
+    );
+    expect(result.status, `${result.stderr}\n${result.stdout}`).toBe(0);
+  });
+
   test('admin keeps filters and can open the section', async ({ page }) => {
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
@@ -50,8 +73,28 @@ test.describe('quality analytics', () => {
     await expect(page.getByLabel('Дата регистрации с')).toHaveValue('2026-01-01');
     await page.getByRole('tab', { name: 'Паттерны' }).click();
     await page.getByRole('tab', { name: 'Качество данных' }).click();
-    await page.getByRole('tab', { name: 'Обзор' }).click();
-    await page.screenshot({ path: 'test-results/analytics/admin-overview.png', fullPage: true });
+    await expect(async () => {
+      if (
+        (await page.getByRole('tab', { name: 'Обзор' }).getAttribute('data-state')) !== 'active'
+      ) {
+        await page.getByRole('tab', { name: 'Обзор' }).click();
+      }
+      await expect(page.getByRole('tab', { name: 'Обзор' })).toHaveAttribute(
+        'data-state',
+        'active',
+      );
+      await expect(page.locator('[data-analytics-ready="true"]')).toBeVisible();
+      await expect(
+        page.getByRole('button', { name: /Подтверждённая финансовая нагрузка/ }),
+      ).toContainText('Нет подтверждённых данных');
+      await expect(
+        page.getByRole('button', { name: /Риск-взвешенный открытый долг/ }),
+      ).toContainText('Недостаточно подтверждённых финансовых данных');
+    }).toPass();
+    await page.screenshot({
+      path: 'test-results/analytics-hardening/admin-overview.png',
+      fullPage: true,
+    });
     expect(errors.filter((message) => !message.includes('favicon'))).toEqual([]);
   });
 
@@ -67,8 +110,9 @@ test.describe('quality analytics', () => {
         () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
       );
       expect(overflow).toBe(false);
+      await expect(page.locator('[data-analytics-ready="true"]')).toBeVisible();
       await page.screenshot({
-        path: `test-results/analytics/admin-${viewport.width}x${viewport.height}.png`,
+        path: `test-results/analytics-hardening/admin-${viewport.width}x${viewport.height}.png`,
         fullPage: true,
       });
     });
@@ -78,10 +122,14 @@ test.describe('quality analytics', () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await login(page, ACCOUNTS.admin);
     await page.goto('/analytics');
+    await expect(page.locator('[data-analytics-ready="true"]')).toBeVisible();
     await page.evaluate(() => {
       document.documentElement.style.zoom = '1.25';
     });
-    await page.screenshot({ path: 'test-results/analytics/zoom-125.png', fullPage: true });
+    await page.screenshot({
+      path: 'test-results/analytics-hardening/zoom-125.png',
+      fullPage: true,
+    });
     await page.evaluate(() => {
       document.documentElement.style.zoom = '1.5';
     });
@@ -89,7 +137,10 @@ test.describe('quality analytics', () => {
       () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
     );
     expect(overflow).toBe(false);
-    await page.screenshot({ path: 'test-results/analytics/zoom-150.png', fullPage: true });
+    await page.screenshot({
+      path: 'test-results/analytics-hardening/zoom-150.png',
+      fullPage: true,
+    });
   });
 
   test('contractor does not see finance or review actions', async ({ page }) => {
@@ -100,7 +151,11 @@ test.describe('quality analytics', () => {
     await expect(page.getByRole('tab', { name: 'Финансы' })).toHaveCount(0);
     await page.getByRole('tab', { name: 'Паттерны' }).click();
     await expect(page.getByRole('button', { name: 'Подтвердить' })).toHaveCount(0);
-    await page.screenshot({ path: 'test-results/analytics/contractor.png', fullPage: true });
+    await expect(page.getByText('Подтверждённая финансовая нагрузка')).toHaveCount(0);
+    await page.screenshot({
+      path: 'test-results/analytics-hardening/contractor.png',
+      fullPage: true,
+    });
   });
 
   test('super admin has no mutation actions', async ({ page }) => {
@@ -110,7 +165,10 @@ test.describe('quality analytics', () => {
     await expect(page.getByRole('heading', { name: 'Аналитика' })).toBeVisible();
     await page.getByRole('tab', { name: 'Паттерны' }).click();
     await expect(page.getByRole('button', { name: 'Подтвердить' })).toHaveCount(0);
-    await page.screenshot({ path: 'test-results/analytics/super-admin.png', fullPage: true });
+    await page.screenshot({
+      path: 'test-results/analytics-hardening/super-admin.png',
+      fullPage: true,
+    });
   });
 
   test('pending role does not get the section', async ({ page }) => {
@@ -151,7 +209,89 @@ test.describe('quality analytics', () => {
       await login(page, email);
       await page.goto('/analytics');
       await expect(page.getByRole('heading', { name: 'Аналитика' })).toBeVisible();
-      await page.screenshot({ path: `test-results/analytics/${role}.png`, fullPage: true });
+      await expect(page.locator('[data-analytics-ready="true"]')).toBeVisible();
+      await page.screenshot({
+        path: `test-results/analytics-hardening/${role}.png`,
+        fullPage: true,
+      });
     });
   }
+
+  test('admin opens only the defects that formed a low first-time-right signal', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await login(page, ACCOUNTS.admin);
+    await page.goto('/analytics?dateFrom=2026-01-01');
+    await expect(page.locator('[data-analytics-ready="true"]')).toBeVisible();
+    const exposure = page.getByRole('button', { name: /Подтверждённая финансовая нагрузка/ });
+    await expect(exposure).toHaveAttribute('title', /ACTUAL_COST/);
+    const backlog = page.getByRole('button', { name: /Риск-взвешенный открытый долг/ });
+    await expect(backlog).toHaveAttribute('title', /Формула 2026\.10\.05\.2/);
+    await page.getByRole('tab', { name: 'Качество данных' }).click();
+    await expect(
+      page.getByText('Метрика недоступна: система пока не фиксирует необходимое событие'),
+    ).toHaveCount(2);
+    await page.getByRole('tab', { name: 'Паттерны' }).click();
+    await expect(page.getByRole('tab', { name: 'Паттерны' })).toHaveAttribute(
+      'data-state',
+      'active',
+    );
+    const signal = page
+      .locator('[data-slot="card"]')
+      .filter({ hasText: 'доля принятия с первой попытки 0.0%' });
+    await expect(signal).toHaveCount(1);
+    await expect(signal).toContainText('Выборка: 6.');
+    await signal.getByRole('button', { name: 'Показать исходные дефекты' }).click();
+    await expect(page).toHaveURL(/tab=drilldown/);
+    await expect(page).toHaveURL(/insightId=/);
+    await expect(
+      page.getByRole('heading', { name: 'First-Time-Right ниже базового уровня' }),
+    ).toBeVisible();
+    await expect(page.getByText('Выборка: 6. Правило 2026.10.05.2')).toBeVisible();
+    await expect(page.getByRole('link', { name: /Акт / })).toHaveCount(6);
+    await expect(page.getByText('baseline-0')).toHaveCount(0);
+    const mainText = await page.locator('main').innerText();
+    expect(mainText).not.toMatch(/undefined|NaN|Infinity/);
+    expect(mainText).not.toMatch(/@/);
+    await page.screenshot({
+      path: 'test-results/analytics-hardening/signal-support.png',
+      fullPage: true,
+    });
+    await page.getByRole('link', { name: /Акт / }).first().click();
+    await expect(page).toHaveURL(/\/acts\//);
+    await page.goBack();
+    await expect(page).toHaveURL(/dateFrom=2026-01-01/);
+    await expect(page).toHaveURL(/insightId=/);
+    await expect(page.getByText('Выборка: 6. Правило 2026.10.05.2')).toBeVisible();
+  });
+
+  test('contractor does not see the other organization', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await login(page, ACCOUNTS.contractor);
+    await page.goto('/analytics');
+    await expect(page.locator('[data-analytics-ready="true"]')).toBeVisible();
+    await expect(page.getByText('ООО «Оконные системы Бел» (демо)')).toHaveCount(0);
+    await expect(page.getByText('Подтверждённая финансовая нагрузка')).toHaveCount(0);
+    const mainText = await page.locator('main').innerText();
+    expect(mainText).not.toMatch(/@/);
+    await page.screenshot({
+      path: 'test-results/analytics-hardening/contractor-mobile.png',
+      fullPage: true,
+    });
+  });
+
+  test('empty pattern filter and overview retry', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await login(page, ACCOUNTS.admin);
+    await page.goto('/analytics?dateFrom=2099-01-01&tab=patterns');
+    await expect(page.getByText('Сигналов нет')).toBeVisible();
+    await page.route('**/api/analytics/overview**', (route) => route.abort());
+    await page.getByRole('tab', { name: 'Обзор' }).click();
+    await expect(page.getByText('Обзор не загрузился.')).toBeVisible();
+    await page.unroute('**/api/analytics/overview**');
+    await page.getByRole('button', { name: 'Повторить' }).click();
+    await expect(page.locator('[data-analytics-ready="true"]')).toBeVisible();
+  });
 });

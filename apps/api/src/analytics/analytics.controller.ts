@@ -40,6 +40,15 @@ export class AnalyticsController {
     return this.analytics.patterns(user, query);
   }
 
+  @Get('patterns/:insightId/defects')
+  supportDefects(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('insightId') insightId: string,
+    @Query() query: Record<string, unknown>,
+  ) {
+    return this.analytics.supportDefects(user, insightId, query);
+  }
+
   @Get('data-quality')
   dataQuality(@CurrentUser() user: AuthenticatedUser, @Query() query: Record<string, unknown>) {
     return this.analytics.dataQuality(user, query);

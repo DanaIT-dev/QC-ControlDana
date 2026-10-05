@@ -3,7 +3,15 @@ import { ValidationError } from './errors';
 
 export const ANALYTICS_TIME_ZONE = 'Europe/Minsk';
 export const ANALYTICS_UTC_OFFSET = '+03:00';
-export const ANALYTICS_RULE_VERSION = '2026.10.05';
+export const ANALYTICS_RULE_VERSION = '2026.10.05.2';
+export const BACKLOG_RISK_FORMULA_VERSION = '2026.10.05.2';
+export const ANALYTICS_INSPECTION_WAIT_DAYS = 7;
+export const LOW_FTR_MIN_COMPLETED_WITH_ATTEMPTS = 5;
+export const LOW_FTR_MIN_COVERAGE = 0.6;
+export const LOW_FTR_MIN_BASELINE_GAP = 0.15;
+export const ANALYTICS_TOP_RISK_LIMIT = 10;
+export const UNAVAILABLE_METRIC_TEXT =
+  'Метрика недоступна: система пока не фиксирует необходимое событие';
 export const ANALYTICS_MIN_SUPPORT = 5;
 export const ANALYTICS_MIN_OBJECTS = 2;
 export const ANALYTICS_MIN_COVERAGE = 0.6;
@@ -48,6 +56,8 @@ export const ANALYTICS_METRICS = [
   'rework',
   'withAttempts',
   'withoutAttempts',
+  'confirmedExposure',
+  'riskWeightedBacklog',
 ] as const;
 
 export type AnalyticsMetric = (typeof ANALYTICS_METRICS)[number];
@@ -322,6 +332,53 @@ export function addMoney(left: string, right: string): string {
   );
 }
 
+export function subtractMoney(left: string, right: string): string {
+  return formatScaled(
+    parseScaled(left, MONEY_SCALE) - parseScaled(right, MONEY_SCALE),
+    MONEY_SCALE,
+  );
+}
+
+function divideScaled(numerator: bigint, divisor: bigint): bigint {
+  if (divisor === 0n) {
+    throw new ValidationError('amount', 'Деление на ноль');
+  }
+  const negative = numerator < 0n !== divisor < 0n;
+  const absolute = numerator < 0n ? -numerator : numerator;
+  const divider = divisor < 0n ? -divisor : divisor;
+  const quotient = absolute / divider;
+  const remainder = absolute % divider;
+  const rounded = remainder * 2n >= divider ? quotient + 1n : quotient;
+  return negative ? -rounded : rounded;
+}
+
+export function meanMoney(amounts: readonly string[]): string | null {
+  if (amounts.length === 0) {
+    return null;
+  }
+  const total = amounts.reduce((sum, amount) => sum + parseScaled(amount, MONEY_SCALE), 0n);
+  return formatScaled(divideScaled(total, BigInt(amounts.length)), MONEY_SCALE);
+}
+
+export function medianMoney(amounts: readonly string[]): string | null {
+  if (amounts.length === 0) {
+    return null;
+  }
+  const sorted = [...amounts].sort((left, right) =>
+    parseScaled(left, MONEY_SCALE) < parseScaled(right, MONEY_SCALE) ? -1 : 1,
+  );
+  const middle = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) {
+    return formatScaled(parseScaled(sorted[middle] ?? '0.00', MONEY_SCALE), MONEY_SCALE);
+  }
+  const lower = sorted[middle - 1];
+  const upper = sorted[middle];
+  if (lower == null || upper == null) {
+    return null;
+  }
+  return meanMoney([lower, upper]);
+}
+
 export function convertToByn(input: {
   amountOriginal: string;
   currency: string;
@@ -473,21 +530,155 @@ export function riskScore(input: RiskFactorInput): RiskAssessment {
   return { score, used, omitted };
 }
 
+export interface ConfirmedExposure {
+  grossCompanyCostByn: string | null;
+  confirmedRecoveryByn: string | null;
+  netConfirmedExposureByn: string | null;
+  recordCount: number;
+}
+
+export function confirmedFinancialExposure(
+  records: ReadonlyArray<FinancialAmountInput>,
+): ConfirmedExposure {
+  const costs = records.filter(isCompanyActualCost).map((record) => record.amountByn);
+  const recoveries = records
+    .filter((record) => record.status === 'CONFIRMED' && record.amountType === 'RECOVERY')
+    .map((record) => record.amountByn);
+  const gross = sumMoney(costs);
+  const recovery = sumMoney(recoveries);
+  if (gross == null && recovery == null) {
+    return {
+      grossCompanyCostByn: null,
+      confirmedRecoveryByn: null,
+      netConfirmedExposureByn: null,
+      recordCount: 0,
+    };
+  }
+  return {
+    grossCompanyCostByn: gross ?? '0.00',
+    confirmedRecoveryByn: recovery ?? '0.00',
+    netConfirmedExposureByn: subtractMoney(gross ?? '0.00', recovery ?? '0.00'),
+    recordCount: costs.length + recoveries.length,
+  };
+}
+
+export function backlogRiskCoefficient(input: {
+  overdue: boolean;
+  rejectedAttemptCount: number;
+  inspectionWaitingBeyondThreshold: boolean;
+}): string {
+  const rejections = Math.max(0, Math.floor(input.rejectedAttemptCount));
+  let scaled = 100;
+  if (input.overdue) {
+    scaled += 25;
+  }
+  scaled += 15 * Math.max(0, rejections - 1);
+  if (input.inspectionWaitingBeyondThreshold) {
+    scaled += 20;
+  }
+  return formatScaled(BigInt(Math.min(200, scaled)), MONEY_SCALE);
+}
+
+export function multiplyMoney(amount: string, coefficient: string): string {
+  const product = parseScaled(amount, MONEY_SCALE) * parseScaled(coefficient, MONEY_SCALE);
+  const negative = product < 0n;
+  const absolute = negative ? -product : product;
+  const factor = 100n;
+  const rounded = (absolute + factor / 2n) / factor;
+  return formatScaled(negative ? -rounded : rounded, MONEY_SCALE);
+}
+
 export interface QualityDebt {
   confirmedFinancialExposureByn: string | null;
-  riskWeightedOpenBacklog: number;
+  grossCompanyCostByn: string | null;
+  confirmedRecoveryByn: string | null;
+  riskWeightedOpenBacklogByn: string | null;
+  unweightedOpenBacklogByn: string | null;
+  evaluatedOpenDefects: number;
   openDefects: number;
+  monetaryCoverage: number | null;
+  formulaVersion: string;
 }
 
 export function qualityDebt(input: {
-  confirmedCompanyCostOnOpenDefects: ReadonlyArray<string | null>;
-  openRiskScores: readonly number[];
+  records: ReadonlyArray<FinancialAmountInput>;
+  openItems: ReadonlyArray<{ baseAmountByn: string | null; coefficient: string }>;
+  openDefects: number;
 }): QualityDebt {
+  const exposure = confirmedFinancialExposure(input.records);
+  const priced = input.openItems.filter(
+    (item): item is { baseAmountByn: string; coefficient: string } => item.baseAmountByn != null,
+  );
+  const unweighted = sumMoney(priced.map((item) => item.baseAmountByn));
+  const weighted = sumMoney(
+    priced.map((item) => multiplyMoney(item.baseAmountByn, item.coefficient)),
+  );
   return {
-    confirmedFinancialExposureByn: sumMoney(input.confirmedCompanyCostOnOpenDefects),
-    riskWeightedOpenBacklog: input.openRiskScores.reduce((total, score) => total + score, 0),
-    openDefects: input.openRiskScores.length,
+    confirmedFinancialExposureByn: exposure.netConfirmedExposureByn,
+    grossCompanyCostByn: exposure.grossCompanyCostByn,
+    confirmedRecoveryByn: exposure.confirmedRecoveryByn,
+    riskWeightedOpenBacklogByn: weighted,
+    unweightedOpenBacklogByn: unweighted,
+    evaluatedOpenDefects: priced.length,
+    openDefects: input.openDefects,
+    monetaryCoverage: input.openDefects === 0 ? null : priced.length / input.openDefects,
+    formulaVersion: BACKLOG_RISK_FORMULA_VERSION,
   };
+}
+
+const ANALYTICS_FILTER_KEYS = [
+  'dateFrom',
+  'dateTo',
+  'propertyObjectId',
+  'customerOrganizationId',
+  'liableOrganizationId',
+  'workTypeId',
+  'defectTypeId',
+  'status',
+  'deadlineState',
+  'source',
+  'importedOnly',
+  'attemptResult',
+] as const;
+
+export function canonicalAnalyticsFilter(input: Readonly<Record<string, unknown>>): {
+  snapshot: Record<string, string>;
+  serialized: string;
+  hash: string;
+} {
+  const snapshot: Record<string, string> = {};
+  for (const key of ANALYTICS_FILTER_KEYS) {
+    const value = input[key];
+    if (typeof value === 'string' && value.length > 0) {
+      snapshot[key] = value;
+    }
+  }
+  const serialized = JSON.stringify(snapshot);
+  return {
+    snapshot,
+    serialized,
+    hash: createHash('sha256').update(serialized).digest('hex'),
+  };
+}
+
+export function insightSnapshotHash(input: {
+  ruleVersion: string;
+  signalKey: string;
+  filterHash: string;
+  supportDigest: string;
+  reason: string;
+}): string {
+  return createHash('sha256')
+    .update(
+      [
+        input.ruleVersion,
+        input.signalKey,
+        input.filterHash,
+        input.supportDigest,
+        input.reason,
+      ].join('\n'),
+    )
+    .digest('hex');
 }
 
 export interface IndexComponent {
@@ -702,6 +893,70 @@ export function assessProportionSignal(input: ProportionSignalInput): Proportion
     displayLabel: 'Сигнал для проверки',
     signalKey: analyticsSignalKey({
       signalType: input.signalType,
+      dimensions: input.dimensions,
+      periodFrom: input.periodFrom,
+      periodTo: input.periodTo,
+    }),
+  };
+}
+
+export function assessLowFirstTimeRight(input: {
+  dimensions: Array<{ key: string; value: string; label: string }>;
+  completedAcceptedOnFirst: number;
+  completedWithAttempts: number;
+  completedDefects: number;
+  baselineAcceptedOnFirst: number;
+  baselineCompletedWithAttempts: number;
+  periodFrom: string | null;
+  periodTo: string | null;
+}): ProportionSignal | null {
+  if (input.dimensions.length === 0 || input.dimensions.length > 3) {
+    return null;
+  }
+  if (
+    input.dimensions.some(
+      (dimension) => dimension.value.trim() === '' || dimension.label.trim() === '',
+    )
+  ) {
+    return null;
+  }
+  if (input.completedWithAttempts < LOW_FTR_MIN_COMPLETED_WITH_ATTEMPTS) {
+    return null;
+  }
+  const coverage = ratio(input.completedWithAttempts, input.completedDefects);
+  if (coverage == null || coverage < LOW_FTR_MIN_COVERAGE) {
+    return null;
+  }
+  const observed = ratio(input.completedAcceptedOnFirst, input.completedWithAttempts);
+  const baseline = ratio(input.baselineAcceptedOnFirst, input.baselineCompletedWithAttempts);
+  if (observed == null || baseline == null || baseline - observed < LOW_FTR_MIN_BASELINE_GAP) {
+    return null;
+  }
+  const interval = wilsonInterval(
+    input.completedWithAttempts - input.completedAcceptedOnFirst,
+    input.completedWithAttempts,
+    ANALYTICS_BONFERRONI_Z,
+  );
+  const statisticallyStable = interval != null && 1 - interval.high < baseline;
+  const names = input.dimensions.map((dimension) => dimension.label).join(', ');
+  return {
+    signalType: 'LOW_FIRST_TIME_RIGHT',
+    title: 'First-Time-Right ниже базового уровня',
+    plainLanguageExplanation: `В сегменте «${names}» доля принятия с первой попытки ${(observed * 100).toFixed(1)}% при базовом уровне ${(baseline * 100).toFixed(1)}%. Это наблюдаемая связь. Отдельное исследование здесь не проводится.`,
+    dimensions: input.dimensions,
+    supportCount: input.completedWithAttempts,
+    totalCount: input.baselineCompletedWithAttempts,
+    observedValue: observed,
+    baselineValue: baseline,
+    lift: baseline === 0 ? null : observed / baseline,
+    confidence: signalConfidence(input.completedWithAttempts, coverage, interval),
+    sampleCoverage: coverage,
+    periodFrom: input.periodFrom,
+    periodTo: input.periodTo,
+    statisticallyStable,
+    displayLabel: 'Сигнал для проверки',
+    signalKey: analyticsSignalKey({
+      signalType: 'LOW_FIRST_TIME_RIGHT',
       dimensions: input.dimensions,
       periodFrom: input.periodFrom,
       periodTo: input.periodTo,

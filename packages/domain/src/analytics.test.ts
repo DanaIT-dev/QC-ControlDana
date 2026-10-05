@@ -3,16 +3,24 @@ import {
   addMoney,
   agingBucket,
   analyticsSignalKey,
+  assessLowFirstTimeRight,
   assessProportionSignal,
   attemptClock,
+  backlogRiskCoefficient,
+  canonicalAnalyticsFilter,
+  confirmedFinancialExposure,
   convertToByn,
   durationStats,
   firstTimeRight,
   formatByn,
   formatCoverage,
   includedFinancialAmount,
+  insightSnapshotHash,
+  meanMoney,
+  medianMoney,
   minskDayEnd,
   minskDayStart,
+  multiplyMoney,
   organizationQualityIndex,
   percentile,
   qualityDebt,
@@ -21,6 +29,7 @@ import {
   riskScore,
   seasonOfMonth,
   signalDisplayLabel,
+  subtractMoney,
   sumMoney,
   wilsonInterval,
 } from './analytics';
@@ -169,11 +178,13 @@ describe('quality debt and organization index', () => {
     expect(risk.omitted).toContain('просрочка');
     expect(risk.used).not.toContain('тяжесть');
     const debt = qualityDebt({
-      confirmedCompanyCostOnOpenDefects: [null],
-      openRiskScores: [risk.score],
+      records: [],
+      openItems: [{ baseAmountByn: null, coefficient: '1.25' }],
+      openDefects: 1,
     });
     expect(debt.confirmedFinancialExposureByn).toBeNull();
-    expect(debt.riskWeightedOpenBacklog).toBeGreaterThan(0);
+    expect(debt.riskWeightedOpenBacklogByn).toBeNull();
+    expect(debt.monetaryCoverage).toBe(0);
   });
 
   it('does not rank a small organization sample', () => {
@@ -264,5 +275,184 @@ describe('calendar helpers', () => {
     expect(agingBucket(61)).toBe('60+');
     expect(seasonOfMonth(1)).toBe('winter');
     expect(seasonOfMonth(13)).toBeNull();
+  });
+});
+
+describe('money precision', () => {
+  it('keeps kopecks, large amounts, mean and median without binary rounding', () => {
+    expect(addMoney('0.01', '0.10')).toBe('0.11');
+    expect(subtractMoney('10.55', '0.01')).toBe('10.54');
+    expect(addMoney('999999999999.98', '0.01')).toBe('999999999999.99');
+    expect(meanMoney(['0.01', '0.02'])).toBe('0.02');
+    expect(medianMoney(['0.01', '0.10', '10.55'])).toBe('0.10');
+    expect(medianMoney(['0.01', '0.02', '0.03', '10.55'])).toBe('0.03');
+    expect(meanMoney(['999999999999.99', '0.01'])).toBe('500000000000.00');
+    expect(multiplyMoney('10.55', '1.15')).toBe('12.13');
+    expect(() => meanMoney([])).not.toThrow();
+    expect(meanMoney([])).toBeNull();
+  });
+});
+
+describe('confirmed exposure and backlog coefficient', () => {
+  it('subtracts only confirmed recovery from company actual cost', () => {
+    const exposure = confirmedFinancialExposure([
+      { amountType: 'ACTUAL_COST', payerType: 'COMPANY', status: 'CONFIRMED', amountByn: '10.55' },
+      { amountType: 'RECOVERY', payerType: 'COMPANY', status: 'CONFIRMED', amountByn: '12.00' },
+      { amountType: 'ESTIMATE', payerType: 'COMPANY', status: 'CONFIRMED', amountByn: '99.00' },
+      {
+        amountType: 'APPROVED_AMOUNT',
+        payerType: 'COMPANY',
+        status: 'CONFIRMED',
+        amountByn: '80.00',
+      },
+      { amountType: 'ACTUAL_COST', payerType: 'COMPANY', status: 'DRAFT', amountByn: '5.00' },
+      { amountType: 'ACTUAL_COST', payerType: 'COMPANY', status: 'VOIDED', amountByn: '5.00' },
+      { amountType: 'AVOIDED_LOSS', payerType: 'COMPANY', status: 'CONFIRMED', amountByn: '7.00' },
+    ]);
+    expect(exposure.grossCompanyCostByn).toBe('10.55');
+    expect(exposure.confirmedRecoveryByn).toBe('12.00');
+    expect(exposure.netConfirmedExposureByn).toBe('-1.45');
+    expect(confirmedFinancialExposure([]).netConfirmedExposureByn).toBeNull();
+  });
+
+  it('caps the open-backlog coefficient and prices only a known base', () => {
+    expect(
+      backlogRiskCoefficient({
+        overdue: true,
+        rejectedAttemptCount: 4,
+        inspectionWaitingBeyondThreshold: true,
+      }),
+    ).toBe('1.90');
+    expect(
+      backlogRiskCoefficient({
+        overdue: true,
+        rejectedAttemptCount: 20,
+        inspectionWaitingBeyondThreshold: true,
+      }),
+    ).toBe('2.00');
+    const debt = qualityDebt({
+      records: [
+        {
+          amountType: 'ACTUAL_COST',
+          payerType: 'COMPANY',
+          status: 'CONFIRMED',
+          amountByn: '10.00',
+        },
+      ],
+      openItems: [
+        { baseAmountByn: '8.00', coefficient: '1.25' },
+        { baseAmountByn: null, coefficient: '2.00' },
+      ],
+      openDefects: 4,
+    });
+    expect(debt.unweightedOpenBacklogByn).toBe('8.00');
+    expect(debt.riskWeightedOpenBacklogByn).toBe('10.00');
+    expect(debt.evaluatedOpenDefects).toBe(1);
+    expect(debt.monetaryCoverage).toBe(0.25);
+  });
+});
+
+describe('low first-time-right rule', () => {
+  const dimensions = [{ key: 'liableOrganization', value: 'org-1', label: 'Организация Х' }];
+
+  it('emits a review signal only past the sample, coverage and gap thresholds', () => {
+    const signal = assessLowFirstTimeRight({
+      dimensions,
+      completedAcceptedOnFirst: 1,
+      completedWithAttempts: 6,
+      completedDefects: 8,
+      baselineAcceptedOnFirst: 20,
+      baselineCompletedWithAttempts: 26,
+      periodFrom: '2026-01-01',
+      periodTo: '2026-09-30',
+    });
+    expect(signal?.signalType).toBe('LOW_FIRST_TIME_RIGHT');
+    expect(signal?.supportCount).toBe(6);
+    expect(signal?.displayLabel).toBe('Сигнал для проверки');
+    expect(signal?.plainLanguageExplanation).not.toMatch(/является причиной/);
+    expect(signal?.sampleCoverage).toBeCloseTo(6 / 8);
+  });
+
+  it('stays silent for a small sample, low coverage, a weak gap and an empty dimension', () => {
+    expect(
+      assessLowFirstTimeRight({
+        dimensions,
+        completedAcceptedOnFirst: 0,
+        completedWithAttempts: 4,
+        completedDefects: 4,
+        baselineAcceptedOnFirst: 10,
+        baselineCompletedWithAttempts: 14,
+        periodFrom: null,
+        periodTo: null,
+      }),
+    ).toBeNull();
+    expect(
+      assessLowFirstTimeRight({
+        dimensions,
+        completedAcceptedOnFirst: 1,
+        completedWithAttempts: 5,
+        completedDefects: 20,
+        baselineAcceptedOnFirst: 15,
+        baselineCompletedWithAttempts: 20,
+        periodFrom: null,
+        periodTo: null,
+      }),
+    ).toBeNull();
+    expect(
+      assessLowFirstTimeRight({
+        dimensions,
+        completedAcceptedOnFirst: 4,
+        completedWithAttempts: 5,
+        completedDefects: 5,
+        baselineAcceptedOnFirst: 9,
+        baselineCompletedWithAttempts: 10,
+        periodFrom: null,
+        periodTo: null,
+      }),
+    ).toBeNull();
+    expect(
+      assessLowFirstTimeRight({
+        dimensions: [{ key: 'workType', value: '', label: 'Пусто' }],
+        completedAcceptedOnFirst: 0,
+        completedWithAttempts: 6,
+        completedDefects: 6,
+        baselineAcceptedOnFirst: 20,
+        baselineCompletedWithAttempts: 26,
+        periodFrom: null,
+        periodTo: null,
+      }),
+    ).toBeNull();
+  });
+});
+
+describe('insight snapshot identity', () => {
+  it('hashes only canonical filters and changes when support changes', () => {
+    const filters = canonicalAnalyticsFilter({
+      dateFrom: '2026-01-01',
+      dateTo: '2026-09-30',
+      source: 'manual',
+      severity: 'high',
+    });
+    expect(filters.snapshot).toEqual({
+      dateFrom: '2026-01-01',
+      dateTo: '2026-09-30',
+      source: 'manual',
+    });
+    expect(filters.serialized).not.toMatch(/session|password|severity/i);
+    const left = insightSnapshotHash({
+      ruleVersion: '2026.10.05.2',
+      signalKey: 'key',
+      filterHash: filters.hash,
+      supportDigest: 'aaa',
+      reason: 'сегмент',
+    });
+    const right = insightSnapshotHash({
+      ruleVersion: '2026.10.05.2',
+      signalKey: 'key',
+      filterHash: filters.hash,
+      supportDigest: 'bbb',
+      reason: 'сегмент',
+    });
+    expect(left).not.toBe(right);
   });
 });

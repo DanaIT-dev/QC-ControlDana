@@ -2,8 +2,11 @@ import type { AnalyticsQuery } from '@sgr-registry/contracts';
 import { Prisma, type PrismaClient } from '@sgr-registry/database';
 import {
   ANALYTICS_RULE_VERSION,
+  assessLowFirstTimeRight,
   assessProportionSignal,
   assessShareSignal,
+  canonicalAnalyticsFilter,
+  insightSnapshotHash,
   signalDisplayLabel,
   type ProportionSignal,
 } from '@sgr-registry/domain';
@@ -41,9 +44,15 @@ export function analyticsScopeStamp(scope: RegistryAccessScope): ScopeStamp {
   return { kind: 'COMPANY', fingerprint: 'company', organizationId: null, userId: null };
 }
 
+interface BuiltSignal {
+  signal: ProportionSignal;
+  reason: string;
+  members: Sql;
+}
+
 export async function refreshAnalyticsPatterns(
   raw: Raw,
-  prisma: Pick<PrismaClient, 'analyticsInsight'>,
+  prisma: Pick<PrismaClient, 'analyticsInsight' | 'analyticsInsightDefect' | '$transaction'>,
   input: {
     where: Sql;
     query: AnalyticsQuery;
@@ -54,75 +63,99 @@ export async function refreshAnalyticsPatterns(
 ): Promise<void> {
   const signals = await collectSignals(raw, input);
   const stamp = analyticsScopeStamp(input.scope);
-  const keys: string[] = [];
+  const filters = canonicalAnalyticsFilter(input.query);
+  const keptKeys = new Set<string>();
   const now = new Date();
-  for (const signal of signals) {
-    keys.push(signal.signalKey);
-    await prisma.analyticsInsight.upsert({
-      where: {
-        signalKey_scopeFingerprint: {
-          signalKey: signal.signalKey,
+  for (const built of signals) {
+    const digestRow = await raw<{ n: number; digest: string }>(Prisma.sql`
+      WITH members AS (${built.members})
+      SELECT count(*)::int AS n,
+             encode(sha256(convert_to(coalesce(string_agg(id, ',' ORDER BY id), ''), 'UTF8')), 'hex') AS digest
+      FROM members
+    `);
+    const digest = digestRow[0];
+    const supportCount = num(digest?.n);
+    if (!digest || supportCount !== built.signal.supportCount) {
+      continue;
+    }
+    keptKeys.add(built.signal.signalKey);
+    const snapshotHash = insightSnapshotHash({
+      ruleVersion: ANALYTICS_RULE_VERSION,
+      signalKey: built.signal.signalKey,
+      filterHash: filters.hash,
+      supportDigest: digest.digest,
+      reason: built.reason,
+    });
+    const existing = await prisma.analyticsInsight.findFirst({
+      where: { scopeFingerprint: stamp.fingerprint, snapshotHash, active: true },
+      select: { id: true },
+    });
+    if (existing) {
+      continue;
+    }
+    await prisma.$transaction(async (tx) => {
+      const created = await tx.analyticsInsight.create({
+        data: {
+          signalKey: built.signal.signalKey,
+          signalType: built.signal.signalType,
+          title: built.signal.title,
+          plainLanguageExplanation: built.signal.plainLanguageExplanation,
+          dimensions: built.signal.dimensions,
+          supportCount,
+          totalCount: built.signal.totalCount,
+          observedValue: built.signal.observedValue.toFixed(6),
+          baselineValue: built.signal.baselineValue.toFixed(6),
+          lift: built.signal.lift == null ? null : built.signal.lift.toFixed(6),
+          confidence: built.signal.confidence,
+          sampleCoverage:
+            built.signal.sampleCoverage == null ? null : built.signal.sampleCoverage.toFixed(4),
+          periodFrom: input.query.dateFrom
+            ? new Date(`${input.query.dateFrom}T00:00:00.000+03:00`)
+            : null,
+          periodTo: input.query.dateTo
+            ? new Date(`${input.query.dateTo}T00:00:00.000+03:00`)
+            : null,
+          generatedAt: now,
+          ruleVersion: ANALYTICS_RULE_VERSION,
+          status: 'NEW',
+          statisticallyStable: built.signal.statisticallyStable,
+          active: true,
+          scopeKind: stamp.kind,
           scopeFingerprint: stamp.fingerprint,
+          scopeOrganizationId: stamp.organizationId,
+          scopeUserId: stamp.userId,
+          filterSnapshot: filters.snapshot,
+          filterHash: filters.hash,
+          snapshotHash,
+          supportAvailable: true,
         },
-      },
-      create: {
-        signalKey: signal.signalKey,
-        signalType: signal.signalType,
-        title: signal.title,
-        plainLanguageExplanation: signal.plainLanguageExplanation,
-        dimensions: signal.dimensions,
-        supportCount: signal.supportCount,
-        totalCount: signal.totalCount,
-        observedValue: signal.observedValue,
-        baselineValue: signal.baselineValue,
-        lift: signal.lift,
-        confidence: signal.confidence,
-        sampleCoverage: signal.sampleCoverage,
-        periodFrom: input.query.dateFrom
-          ? new Date(`${input.query.dateFrom}T00:00:00.000+03:00`)
-          : null,
-        periodTo: input.query.dateTo ? new Date(`${input.query.dateTo}T00:00:00.000+03:00`) : null,
-        generatedAt: now,
-        ruleVersion: ANALYTICS_RULE_VERSION,
-        status: 'NEW',
-        statisticallyStable: signal.statisticallyStable,
-        active: true,
-        scopeKind: stamp.kind,
-        scopeFingerprint: stamp.fingerprint,
-        scopeOrganizationId: stamp.organizationId,
-        scopeUserId: stamp.userId,
-      },
-      update: {
-        title: signal.title,
-        plainLanguageExplanation: signal.plainLanguageExplanation,
-        dimensions: signal.dimensions,
-        supportCount: signal.supportCount,
-        totalCount: signal.totalCount,
-        observedValue: signal.observedValue,
-        baselineValue: signal.baselineValue,
-        lift: signal.lift,
-        confidence: signal.confidence,
-        sampleCoverage: signal.sampleCoverage,
-        generatedAt: now,
-        ruleVersion: ANALYTICS_RULE_VERSION,
-        statisticallyStable: signal.statisticallyStable,
-        active: true,
-      },
+      });
+      await tx.$executeRaw`
+        INSERT INTO public.analytics_insight_defects (
+          id, "insightId", "defectItemId", "contributionReason", "observedAt", "createdAt"
+        )
+        SELECT gen_random_uuid(), ${created.id}::uuid, members.id::uuid, ${built.reason}, ${now}, ${now}
+        FROM (${built.members}) members
+      `;
+      await tx.analyticsInsight.updateMany({
+        where: {
+          scopeFingerprint: stamp.fingerprint,
+          signalKey: built.signal.signalKey,
+          filterHash: filters.hash,
+          active: true,
+          id: { not: created.id },
+        },
+        data: { active: false },
+      });
     });
-  }
-  if (keys.length === 0) {
-    await prisma.analyticsInsight.updateMany({
-      where: { scopeFingerprint: stamp.fingerprint, status: 'NEW', active: true },
-      data: { active: false },
-    });
-    return;
   }
   await prisma.analyticsInsight.updateMany({
     where: {
       scopeFingerprint: stamp.fingerprint,
-      status: 'NEW',
+      filterHash: filters.hash,
       active: true,
-      signalKey: { notIn: keys },
+      supportAvailable: true,
+      ...(keptKeys.size === 0 ? {} : { signalKey: { notIn: [...keptKeys] } }),
     },
     data: { active: false },
   });
@@ -136,12 +169,17 @@ async function collectSignals(
     financial: boolean;
     crossOrganization: boolean;
   },
-): Promise<ProportionSignal[]> {
+): Promise<BuiltSignal[]> {
   const period = {
     periodFrom: input.query.dateFrom ?? null,
     periodTo: input.query.dateTo ?? null,
   };
-  const signals: ProportionSignal[] = [];
+  const signals: BuiltSignal[] = [];
+  const remember = (signal: ProportionSignal | null, reason: string, members: Sql) => {
+    if (signal) {
+      signals.push({ signal, reason, members });
+    }
+  };
   const rework = await raw<GroupRow>(Prisma.sql`
     WITH scoped AS (
       SELECT d.id, d.status::text AS status, d."defectTypeId" AS type_id, dt.name AS type_name,
@@ -180,8 +218,24 @@ async function collectSignals(
     LIMIT 25
   `);
   for (const row of rework) {
-    const signal = proportion(row, 'HIGH_REWORK', 'liableOrganization', 'defectType', period, true);
-    if (signal) signals.push(signal);
+    remember(
+      proportion(row, 'HIGH_REWORK', 'liableOrganization', 'defectType', period, true),
+      'Завершённый дефект с записанной попыткой проверки в сегменте повторного устранения',
+      Prisma.sql`
+        SELECT d.id::text AS id
+        ${scopedFrom(input.where)}
+        AND d.status::text = 'COMPLETED'
+        AND EXISTS (
+          SELECT 1 FROM public.defect_inspection_attempts attempt
+          WHERE attempt."defectItemId" = d.id
+        )
+        AND EXISTS (
+          SELECT 1 FROM public.defect_item_liable_organizations link
+          WHERE link."defectItemId" = d.id AND link."organizationId" = ${row.dim_id}::uuid
+        )
+        AND d."defectTypeId" = ${row.dim2_id}::uuid
+      `,
+    );
   }
 
   const overdue = await raw<GroupRow>(Prisma.sql`
@@ -206,8 +260,15 @@ async function collectSignals(
     LIMIT 25
   `);
   for (const row of overdue) {
-    const signal = proportion(row, 'OVERDUE_CONCENTRATION', 'propertyObject', null, period, true);
-    if (signal) signals.push(signal);
+    remember(
+      proportion(row, 'OVERDUE_CONCENTRATION', 'propertyObject', null, period, true),
+      'Дефект объекта, по которому сравнивается доля просрочки',
+      Prisma.sql`
+        SELECT d.id::text AS id
+        ${scopedFrom(input.where)}
+        AND a."objectId" = ${row.dim_id}::uuid
+      `,
+    );
   }
 
   const repeated = await raw<GroupRow>(Prisma.sql`
@@ -241,7 +302,17 @@ async function collectSignals(
       ...period,
       higherIsSignal: true,
     });
-    if (signal && num(row.objects) >= 2) signals.push(signal);
+    if (signal && num(row.objects) >= 2) {
+      remember(
+        signal,
+        'Дефект типа, который встречается на нескольких объектах',
+        Prisma.sql`
+          SELECT d.id::text AS id
+          ${scopedFrom(input.where)}
+          AND d."defectTypeId" = ${row.dim_id}::uuid
+        `,
+      );
+    }
   }
 
   const responsibility = await raw<GroupRow>(Prisma.sql`
@@ -279,7 +350,20 @@ async function collectSignals(
       sampleCoverage: null,
       ...period,
     });
-    if (signal) signals.push(signal);
+    if (signal) {
+      remember(
+        signal,
+        'Дефект, связанный с организацией в сравнении долей',
+        Prisma.sql`
+          SELECT d.id::text AS id
+          ${scopedFrom(input.where)}
+          AND EXISTS (
+            SELECT 1 FROM public.defect_item_liable_organizations link
+            WHERE link."defectItemId" = d.id AND link."organizationId" = ${row.dim_id}::uuid
+          )
+        `,
+      );
+    }
   }
 
   if (input.crossOrganization) {
@@ -319,8 +403,19 @@ async function collectSignals(
       LIMIT 25
     `);
     for (const row of bottleneck) {
-      const signal = proportion(row, 'INSPECTION_BOTTLENECK', 'propertyObject', null, period, true);
-      if (signal) signals.push(signal);
+      remember(
+        proportion(row, 'INSPECTION_BOTTLENECK', 'propertyObject', null, period, true),
+        'Дефект объекта с записанным ожиданием проверки',
+        Prisma.sql`
+          SELECT d.id::text AS id
+          ${scopedFrom(input.where)}
+          AND a."objectId" = ${row.dim_id}::uuid
+          AND EXISTS (
+            SELECT 1 FROM public.defect_inspection_attempts attempt
+            WHERE attempt."defectItemId" = d.id
+          )
+        `,
+      );
     }
   }
 
@@ -355,8 +450,17 @@ async function collectSignals(
     LIMIT 25
   `);
   for (const row of slow) {
-    const signal = proportion(row, 'SLOW_RESOLUTION', 'defectType', null, period, true);
-    if (signal) signals.push(signal);
+    remember(
+      proportion(row, 'SLOW_RESOLUTION', 'defectType', null, period, true),
+      'Завершённый дефект типа с известным временем закрытия',
+      Prisma.sql`
+        SELECT d.id::text AS id
+        ${scopedFrom(input.where)}
+        AND d.status::text = 'COMPLETED'
+        AND d."readyAt" IS NOT NULL
+        AND d."defectTypeId" = ${row.dim_id}::uuid
+      `,
+    );
   }
 
   const quality = await raw<{ missing: number; total: number }>(Prisma.sql`
@@ -388,7 +492,11 @@ async function collectSignals(
       ...period,
       higherIsSignal: true,
     });
-    if (signal) signals.push(signal);
+    remember(
+      signal,
+      'Дефект выборки, в которой оценивается заполненность вида работ и виновной организации',
+      Prisma.sql`SELECT d.id::text AS id ${scopedFrom(input.where)}`,
+    );
   }
 
   if (input.financial) {
@@ -435,9 +543,140 @@ async function collectSignals(
         ...period,
         higherIsSignal: true,
       });
-      if (signal && num(row.baseline_total) > num(row.support))
-        signals.push({ ...signal, supportCount: num(row.support) });
+      if (signal && num(row.baseline_total) > num(row.support)) {
+        remember(
+          { ...signal, supportCount: num(row.support) },
+          'Дефект типа с подтверждёнными затратами компании',
+          Prisma.sql`
+            SELECT d.id::text AS id
+            ${scopedFrom(input.where)}
+            AND d."defectTypeId" = ${row.dim_id}::uuid
+            AND EXISTS (
+              SELECT 1 FROM public.defect_financial_impacts impact
+              WHERE impact."defectItemId" = d.id
+                AND impact.status::text = 'CONFIRMED'
+                AND impact."amountType"::text = 'ACTUAL_COST'
+                AND impact."payerType"::text = 'COMPANY'
+            )
+          `,
+        );
+      }
     }
+  }
+
+  const lowFirstTimeRight = await raw<
+    GroupRow & { dim_key: string; completed: number; baseline_completed: number }
+  >(
+    Prisma.sql`
+      WITH scoped AS (
+        SELECT d.id, d.status::text AS status, d."defectTypeId" AS type_id, dt.name AS type_name,
+               d."workTypeId" AS work_id, wt.name AS work_name,
+               a."objectId" AS object_id, po.name AS object_name
+        ${scopedFrom(
+          input.where,
+          Prisma.sql`JOIN public.defect_types dt ON dt.id = d."defectTypeId"
+            JOIN public.property_objects po ON po.id = a."objectId"
+            LEFT JOIN public.work_types wt ON wt.id = d."workTypeId"`,
+        )}
+      ),
+      flags AS (
+        SELECT attempt."defectItemId" AS id,
+               bool_or(attempt.status::text = 'ACCEPTED' AND attempt."attemptNumber" = 1) AS first_accept
+        FROM public.defect_inspection_attempts attempt
+        GROUP BY attempt."defectItemId"
+      ),
+      base AS (
+        SELECT count(*) FILTER (WHERE scoped.status = 'COMPLETED' AND flags.id IS NOT NULL)::int AS with_attempts,
+               count(*) FILTER (WHERE scoped.status = 'COMPLETED' AND flags.first_accept)::int AS first_accept,
+               count(*) FILTER (WHERE scoped.status = 'COMPLETED')::int AS completed
+        FROM scoped
+        LEFT JOIN flags ON flags.id = scoped.id
+      )
+      SELECT * FROM (
+        SELECT 'liableOrganization' AS dim_key, org.id::text AS dim_id, org."officialName" AS dim_label,
+               count(*) FILTER (WHERE scoped.status = 'COMPLETED' AND flags.id IS NOT NULL)::int AS support,
+               count(*) FILTER (WHERE scoped.status = 'COMPLETED' AND flags.first_accept)::int AS positive,
+               count(*) FILTER (WHERE scoped.status = 'COMPLETED')::int AS completed,
+               max(base.with_attempts)::int AS baseline_total,
+               max(base.first_accept)::int AS baseline_positive,
+               max(base.completed)::int AS baseline_completed
+        FROM scoped
+        LEFT JOIN flags ON flags.id = scoped.id
+        JOIN public.defect_item_liable_organizations link ON link."defectItemId" = scoped.id
+        JOIN public.organizations org ON org.id = link."organizationId"
+        CROSS JOIN base
+        GROUP BY org.id, org."officialName"
+        UNION ALL
+        SELECT 'defectType', type_id::text, type_name,
+               count(*) FILTER (WHERE status = 'COMPLETED' AND flags.id IS NOT NULL)::int,
+               count(*) FILTER (WHERE status = 'COMPLETED' AND flags.first_accept)::int,
+               count(*) FILTER (WHERE status = 'COMPLETED')::int,
+               max(base.with_attempts)::int, max(base.first_accept)::int, max(base.completed)::int
+        FROM scoped
+        LEFT JOIN flags ON flags.id = scoped.id
+        CROSS JOIN base
+        GROUP BY type_id, type_name
+        UNION ALL
+        SELECT 'workType', work_id::text, work_name,
+               count(*) FILTER (WHERE status = 'COMPLETED' AND flags.id IS NOT NULL)::int,
+               count(*) FILTER (WHERE status = 'COMPLETED' AND flags.first_accept)::int,
+               count(*) FILTER (WHERE status = 'COMPLETED')::int,
+               max(base.with_attempts)::int, max(base.first_accept)::int, max(base.completed)::int
+        FROM scoped
+        LEFT JOIN flags ON flags.id = scoped.id
+        CROSS JOIN base
+        WHERE work_id IS NOT NULL AND work_name IS NOT NULL
+        GROUP BY work_id, work_name
+        UNION ALL
+        SELECT 'propertyObject', object_id::text, object_name,
+               count(*) FILTER (WHERE status = 'COMPLETED' AND flags.id IS NOT NULL)::int,
+               count(*) FILTER (WHERE status = 'COMPLETED' AND flags.first_accept)::int,
+               count(*) FILTER (WHERE status = 'COMPLETED')::int,
+               max(base.with_attempts)::int, max(base.first_accept)::int, max(base.completed)::int
+        FROM scoped
+        LEFT JOIN flags ON flags.id = scoped.id
+        CROSS JOIN base
+        GROUP BY object_id, object_name
+      ) segments
+      WHERE support >= 5
+      LIMIT 40
+    `,
+  );
+  for (const row of lowFirstTimeRight) {
+    const signal = assessLowFirstTimeRight({
+      dimensions: [{ key: row.dim_key, value: row.dim_id, label: row.dim_label }],
+      completedAcceptedOnFirst: num(row.positive),
+      completedWithAttempts: num(row.support),
+      completedDefects: num(row.completed),
+      baselineAcceptedOnFirst: num(row.baseline_positive),
+      baselineCompletedWithAttempts: num(row.baseline_total),
+      ...period,
+    });
+    const predicate =
+      row.dim_key === 'liableOrganization'
+        ? Prisma.sql`EXISTS (
+            SELECT 1 FROM public.defect_item_liable_organizations link
+            WHERE link."defectItemId" = d.id AND link."organizationId" = ${row.dim_id}::uuid
+          )`
+        : row.dim_key === 'defectType'
+          ? Prisma.sql`d."defectTypeId" = ${row.dim_id}::uuid`
+          : row.dim_key === 'workType'
+            ? Prisma.sql`d."workTypeId" = ${row.dim_id}::uuid`
+            : Prisma.sql`a."objectId" = ${row.dim_id}::uuid`;
+    remember(
+      signal,
+      'Завершённый дефект с реальной попыткой проверки в сегменте First-Time-Right',
+      Prisma.sql`
+        SELECT d.id::text AS id
+        ${scopedFrom(input.where)}
+        AND d.status::text = 'COMPLETED'
+        AND EXISTS (
+          SELECT 1 FROM public.defect_inspection_attempts attempt
+          WHERE attempt."defectItemId" = d.id
+        )
+        AND ${predicate}
+      `,
+    );
   }
 
   return signals;

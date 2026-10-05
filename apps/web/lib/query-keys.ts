@@ -38,6 +38,8 @@ export const queryKeys = {
     patterns: (query: string) => ['analytics', 'patterns', query] as const,
     quality: (query: string) => ['analytics', 'quality', query] as const,
     drilldown: (query: string) => ['analytics', 'drilldown', query] as const,
+    support: (insightId: string, query: string) =>
+      ['analytics', 'support', insightId, query] as const,
     filters: (query: string) => ['analytics', 'filters', query] as const,
     financials: (defectItemId: string) => ['analytics', 'financials', defectItemId] as const,
   },
