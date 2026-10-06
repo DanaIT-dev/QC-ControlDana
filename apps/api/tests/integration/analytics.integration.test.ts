@@ -178,6 +178,7 @@ describe('analytics API', () => {
         customerOrganizationId: customerId,
         issuedOn: new Date('2026-05-01T00:00:00.000Z'),
         status: 'IN_PROGRESS',
+        createdAt: new Date('2026-05-01T00:00:00.000Z'),
         startedAt: new Date('2026-05-01T00:00:00.000Z'),
         officialNumber: marker,
       },
@@ -193,7 +194,8 @@ describe('analytics API', () => {
         status: 'COMPLETED',
         location: 'Чужой',
         claimDetails: 'чужой',
-        readyAt: new Date(),
+        createdAt: new Date('2026-05-01T00:00:00.000Z'),
+        readyAt: new Date('2026-06-01T00:00:00.000Z'),
       },
     });
     ownDefectId = ownDefect.id;
@@ -229,8 +231,26 @@ describe('analytics API', () => {
     await prisma.defectItemLiableOrganization.deleteMany({
       where: { defectItem: { actId } },
     });
-    await prisma.defectItem.deleteMany({ where: { actId } });
-    await prisma.act.deleteMany({ where: { id: actId } });
+    const customerActIds = customerId
+      ? (
+          await prisma.act.findMany({
+            where: { customerOrganizationId: customerId },
+            select: { id: true },
+          })
+        ).map((row) => row.id)
+      : [];
+    const actIds = [...new Set([actId, ...customerActIds].filter(Boolean))];
+    if (actIds.length > 0) {
+      await prisma.analyticsInsightDefect.deleteMany({
+        where: { defectItem: { actId: { in: actIds } } },
+      });
+      await prisma.defectItemLiableOrganization.deleteMany({
+        where: { defectItem: { actId: { in: actIds } } },
+      });
+      await prisma.proposal.deleteMany({ where: { defectItem: { actId: { in: actIds } } } });
+      await prisma.defectItem.deleteMany({ where: { actId: { in: actIds } } });
+      await prisma.act.deleteMany({ where: { id: { in: actIds } } });
+    }
     await prisma.userOrganizationMembership.deleteMany({ where: { userId: { in: userIds } } });
     await prisma.propertyObjectEngineer.deleteMany({ where: { userId: { in: userIds } } });
     await prisma.auditLog
@@ -261,24 +281,21 @@ describe('analytics API', () => {
       where: { role: 'SUPER_ADMIN' },
       orderBy: { status: 'asc' },
     });
-    if (!existingSuperAdmin) {
-      throw new Error('super admin is required');
-    }
-    if (existingSuperAdmin.status !== 'ACTIVE') {
+    const superAdmin = existingSuperAdmin ?? (await createUser('SUPER_ADMIN'));
+    if (existingSuperAdmin && existingSuperAdmin.status !== 'ACTIVE') {
       await prisma.user.update({
         where: { id: existingSuperAdmin.id },
         data: { status: 'ACTIVE', archivedAt: null },
       });
     }
     await prisma.user.update({
-      where: { id: existingSuperAdmin.id },
+      where: { id: superAdmin.id },
       data: { mustChangePassword: false },
     });
     await upsertUserCredentials(prisma, {
-      userId: existingSuperAdmin.id,
+      userId: superAdmin.id,
       passwordHash: await hashArgon2id(PASSWORD, { memoryCost: 4096, timeCost: 1 }),
     });
-    const superAdmin = existingSuperAdmin;
     await prisma.propertyObjectEngineer.create({
       data: { propertyObjectId: objectId, userId: responsible.id },
     });
@@ -406,6 +423,7 @@ describe('analytics API', () => {
           status: 'COMPLETED',
           location,
           claimDetails: location,
+          createdAt: new Date('2026-05-01T00:00:00.000Z'),
           readyAt: new Date('2026-06-01T00:00:00.000Z'),
         },
       });
@@ -491,5 +509,400 @@ describe('analytics API', () => {
       }
     ).confirmedFinancialExposure;
     expect(exposure?.netConfirmedExposureByn).toBe('25.50');
+  });
+
+  it('counts new insights through support intersection and drops reversed durations', async () => {
+    const leftoverDefects = await prisma.defectItem.findMany({
+      where: {
+        location: {
+          in: [
+            'filter-primary',
+            'filter-second',
+            'filter-object',
+            'filter-org',
+            'filter-completed',
+            'reversed-duration',
+          ],
+        },
+      },
+      select: { id: true },
+    });
+    const leftoverIds = leftoverDefects.map((row) => row.id);
+    if (leftoverIds.length > 0) {
+      await prisma.analyticsInsightDefect.deleteMany({
+        where: { defectItemId: { in: leftoverIds } },
+      });
+      await prisma.defectItemLiableOrganization.deleteMany({
+        where: { defectItemId: { in: leftoverIds } },
+      });
+      await prisma.defectItem.deleteMany({ where: { id: { in: leftoverIds } } });
+    }
+    await prisma.act.deleteMany({ where: { officialNumber: { endsWith: '-filter' } } });
+    const admin = await prisma.user.findFirstOrThrow({
+      where: { email: `${marker}.admin@example.sgr.local` },
+    });
+    const contractor = await prisma.user.findFirstOrThrow({
+      where: { email: `${marker}.contractor_engineer@example.sgr.local` },
+    });
+    const responsible = await prisma.user.findFirstOrThrow({
+      where: { email: `${marker}.responsible_engineer@example.sgr.local` },
+    });
+    const workType = await prisma.workType.create({
+      data: { code: `${marker}-filter`, name: `${marker} work filter`, sortOrder: 8 },
+    });
+    const otherObject = await prisma.propertyObject.create({
+      data: { name: `${marker} other object`, address: 'Минск' },
+    });
+    const otherAct = await prisma.act.create({
+      data: {
+        formCode: 'S1',
+        year: 2097,
+        sequence: Math.floor(Math.random() * 700_000) + 100_000,
+        objectId: otherObject.id,
+        customerOrganizationId: customerId,
+        issuedOn: new Date('2026-04-01T00:00:00.000Z'),
+        createdAt: new Date('2026-04-01T00:00:00.000Z'),
+        status: 'IN_PROGRESS',
+        startedAt: new Date('2026-04-01T00:00:00.000Z'),
+        officialNumber: `${marker}-filter`,
+      },
+    });
+    async function defect(
+      targetActId: string,
+      location: string,
+      options: {
+        orgId: string;
+        status?: 'IN_PROGRESS' | 'COMPLETED';
+        workTypeId?: string;
+        createdAt: Date;
+      },
+    ) {
+      return prisma.defectItem.create({
+        data: {
+          actId: targetActId,
+          defectTypeId,
+          workTypeId: options.workTypeId,
+          status: options.status ?? 'IN_PROGRESS',
+          location,
+          claimDetails: location,
+          createdAt: options.createdAt,
+          readyAt: options.status === 'COMPLETED' ? new Date('2026-04-20T00:00:00.000Z') : null,
+          liableOrganizations: { create: { organizationId: options.orgId } },
+        },
+      });
+    }
+    const primary = await defect(actId, 'filter-primary', {
+      orgId: ownOrgId,
+      workTypeId: workType.id,
+      createdAt: new Date('2026-04-10T00:00:00.000Z'),
+    });
+    const secondSupport = await defect(actId, 'filter-second', {
+      orgId: ownOrgId,
+      workTypeId: workType.id,
+      createdAt: new Date('2026-04-16T00:00:00.000Z'),
+    });
+    const otherObjectDefect = await defect(otherAct.id, 'filter-object', {
+      orgId: ownOrgId,
+      createdAt: new Date('2026-04-12T00:00:00.000Z'),
+    });
+    const otherOrgDefect = await defect(actId, 'filter-org', {
+      orgId: foreignOrgId,
+      workTypeId: workType.id,
+      createdAt: new Date('2026-04-11T00:00:00.000Z'),
+    });
+    const completed = await defect(actId, 'filter-completed', {
+      orgId: ownOrgId,
+      status: 'COMPLETED',
+      workTypeId: workType.id,
+      createdAt: new Date('2026-04-18T00:00:00.000Z'),
+    });
+    async function insight(
+      key: string,
+      defectIds: string[],
+      scope: {
+        kind: 'COMPANY' | 'ORGANIZATION' | 'ASSIGNED';
+        fingerprint: string;
+        userId?: string;
+      },
+      options: { supportAvailable?: boolean; status?: 'NEW' | 'CONFIRMED' } = {},
+    ) {
+      return prisma.analyticsInsight.create({
+        data: {
+          signalKey: `${marker}:${key}`,
+          signalType: 'DATA_QUALITY_RISK',
+          title: key,
+          plainLanguageExplanation: marker,
+          dimensions: [],
+          supportCount: defectIds.length,
+          totalCount: Math.max(defectIds.length, 1),
+          observedValue: '1',
+          baselineValue: '1',
+          confidence: 'low',
+          generatedAt: new Date('2026-04-11T00:00:00.000Z'),
+          ruleVersion: '2026.10.05.2',
+          scopeKind: scope.kind,
+          scopeFingerprint: scope.fingerprint,
+          scopeUserId: scope.userId,
+          filterHash: 'not-a-current-filter',
+          snapshotHash: `${marker}:${key}`,
+          supportAvailable: options.supportAvailable ?? true,
+          status: options.status ?? 'NEW',
+          defects: {
+            create: defectIds.map((defectItemId) => ({
+              defectItemId,
+              contributionReason: 'пересечение фильтра',
+              observedAt: new Date('2026-04-11T00:00:00.000Z'),
+            })),
+          },
+        },
+      });
+    }
+    const shared = await insight('shared', [primary.id, secondSupport.id], {
+      kind: 'COMPANY',
+      fingerprint: 'company',
+    });
+    const objectInsight = await insight('object', [otherObjectDefect.id], {
+      kind: 'COMPANY',
+      fingerprint: 'company',
+    });
+    const orgInsight = await insight('org', [otherOrgDefect.id], {
+      kind: 'COMPANY',
+      fingerprint: 'company',
+    });
+    const completedInsight = await insight('completed', [completed.id], {
+      kind: 'COMPANY',
+      fingerprint: 'company',
+    });
+    await insight(
+      'legacy',
+      [],
+      { kind: 'COMPANY', fingerprint: 'company' },
+      { supportAvailable: false },
+    );
+    await insight('foreign-scope', [primary.id], {
+      kind: 'ORGANIZATION',
+      fingerprint: `org:${foreignOrgId}`,
+    });
+    const contractorForeign = await insight('contractor-foreign', [otherOrgDefect.id], {
+      kind: 'ORGANIZATION',
+      fingerprint: `org:${ownOrgId}`,
+    });
+    await insight('assigned-hidden', [otherObjectDefect.id], {
+      kind: 'ASSIGNED',
+      fingerprint: `user:${responsible.id}`,
+      userId: responsible.id,
+    });
+    await prisma.$executeRaw`ALTER TABLE public.defect_items DROP CONSTRAINT IF EXISTS defect_items_ready_not_before_created`;
+    const reversed = await prisma.defectItem.create({
+      data: {
+        actId,
+        defectTypeId,
+        status: 'COMPLETED',
+        location: 'reversed-duration',
+        claimDetails: 'reversed-duration',
+        createdAt: new Date('2026-04-10T00:00:00.000Z'),
+        readyAt: new Date('2026-04-01T00:00:00.000Z'),
+      },
+    });
+    await prisma.$executeRaw`
+      ALTER TABLE public.defect_items
+      ADD CONSTRAINT defect_items_ready_not_before_created
+      CHECK ("readyAt" IS NULL OR "readyAt" >= "createdAt") NOT VALID
+    `;
+
+    const adminSession = await login(admin.email);
+    const oneDay = (
+      await read(adminSession, '/api/analytics/overview?dateFrom=2026-04-16&dateTo=2026-04-16')
+    ).json() as { newInsights: number };
+    const oneDayPatterns = (
+      await read(adminSession, '/api/analytics/patterns?dateFrom=2026-04-16&dateTo=2026-04-16')
+    ).json() as { items: Array<{ status: string }> };
+    expect(oneDay.newInsights).toBe(
+      oneDayPatterns.items.filter((item) => item.status === 'NEW').length,
+    );
+    expect(oneDay.newInsights).toBe(1);
+    const combined = (
+      await read(
+        adminSession,
+        `/api/analytics/overview?dateFrom=2026-04-01&dateTo=2026-04-30&propertyObjectId=${objectId}&liableOrganizationId=${ownOrgId}&defectTypeId=${defectTypeId}&workTypeId=${workType.id}&status=IN_PROGRESS`,
+      )
+    ).json() as { newInsights: number };
+    expect(combined.newInsights).toBe(1);
+    const april = '/api/analytics/overview?dateFrom=2026-04-01&dateTo=2026-04-30';
+    const aprilBody = (await read(adminSession, april)).json() as {
+      newInsights: number;
+      medianClosureMs: number | null;
+      p90ClosureMs: number | null;
+    };
+    const aprilPatterns = (
+      await read(adminSession, '/api/analytics/patterns?dateFrom=2026-04-01&dateTo=2026-04-30')
+    ).json() as { items: Array<{ id: string; status: string }> };
+    expect(aprilPatterns.items.filter((item) => item.status === 'NEW').length).toBe(
+      aprilBody.newInsights,
+    );
+    expect(aprilBody.newInsights).toBeGreaterThanOrEqual(4);
+    const empty = (
+      await read(adminSession, '/api/analytics/overview?dateFrom=2099-01-01&dateTo=2099-01-02')
+    ).json() as { newInsights: number };
+    const emptyPatterns = (
+      await read(adminSession, '/api/analytics/patterns?dateFrom=2099-01-01&dateTo=2099-01-02')
+    ).json() as { items: unknown[] };
+    expect(empty.newInsights).toBe(0);
+    expect(emptyPatterns.items).toEqual([]);
+    const period = 'dateFrom=2026-04-01&dateTo=2026-04-30';
+    async function newSignalIds(query: string) {
+      const overview = (await read(adminSession, `/api/analytics/overview?${query}`)).json() as {
+        newInsights: number;
+      };
+      const patterns = (await read(adminSession, `/api/analytics/patterns?${query}`)).json() as {
+        items: Array<{ id: string; status: string }>;
+      };
+      const ids = patterns.items.filter((item) => item.status === 'NEW').map((item) => item.id);
+      expect(ids.length).toBe(overview.newInsights);
+      return ids;
+    }
+    const objectIds = await newSignalIds(`${period}&propertyObjectId=${objectId}`);
+    const otherObjectIds = await newSignalIds(`${period}&propertyObjectId=${otherObject.id}`);
+    expect(objectIds).toContain(shared.id);
+    expect(objectIds).not.toContain(objectInsight.id);
+    expect(otherObjectIds).toContain(objectInsight.id);
+    expect(otherObjectIds).not.toContain(shared.id);
+    const orgIds = await newSignalIds(`${period}&liableOrganizationId=${ownOrgId}`);
+    const foreignOrgIds = await newSignalIds(`${period}&liableOrganizationId=${foreignOrgId}`);
+    expect(orgIds).toContain(shared.id);
+    expect(orgIds).not.toContain(orgInsight.id);
+    expect(foreignOrgIds).toContain(orgInsight.id);
+    expect(foreignOrgIds).not.toContain(shared.id);
+    const typeIds = await newSignalIds(`${period}&defectTypeId=${defectTypeId}`);
+    expect(typeIds).toContain(shared.id);
+    const absentType = await prisma.defectType.create({
+      data: { code: `${marker}-other`, name: `${marker} other type`, sortOrder: 92 },
+    });
+    expect(await newSignalIds(`${period}&defectTypeId=${absentType.id}`)).toEqual([]);
+    await prisma.defectType.delete({ where: { id: absentType.id } });
+    const workIds = await newSignalIds(`${period}&workTypeId=${workType.id}`);
+    expect(workIds).toContain(shared.id);
+    expect(workIds).not.toContain(objectInsight.id);
+    const completedIds = await newSignalIds(`${period}&status=COMPLETED`);
+    const progressIds = await newSignalIds(`${period}&status=IN_PROGRESS`);
+    expect(completedIds).toContain(completedInsight.id);
+    expect(completedIds).not.toContain(shared.id);
+    expect(progressIds).toContain(shared.id);
+    expect(progressIds).not.toContain(completedInsight.id);
+    const unfiltered = (await read(adminSession, '/api/analytics/overview')).json() as {
+      newInsights: number;
+      medianClosureMs: number | null;
+      p90ClosureMs: number | null;
+    };
+    expect(unfiltered.newInsights).toBeGreaterThanOrEqual(aprilBody.newInsights);
+    expect(unfiltered.medianClosureMs == null || unfiltered.medianClosureMs >= 0).toBe(true);
+    expect(unfiltered.p90ClosureMs == null || unfiltered.p90ClosureMs >= 0).toBe(true);
+    const quality = (
+      await read(adminSession, '/api/analytics/data-quality?dateFrom=2026-04-01&dateTo=2026-04-30')
+    ).json() as {
+      invalidTemporalRecords: number;
+      coverage: Array<{ metric: string; covered: number; total: number }>;
+    };
+    expect(quality.invalidTemporalRecords).toBeGreaterThan(0);
+    const temporal = quality.coverage.find((item) => item.metric === 'temporalOrder');
+    expect(temporal?.covered).toBe(temporal!.total - quality.invalidTemporalRecords);
+    const drill = (
+      await read(
+        adminSession,
+        '/api/analytics/drilldown?metric=invalidTemporal&dateFrom=2026-04-01&dateTo=2026-04-30',
+      )
+    ).json() as { items: Array<{ label?: string; location?: string }> };
+    expect(JSON.stringify(drill)).toContain(reversed.id);
+    const process = (await read(adminSession, '/api/analytics/process')).json() as {
+      contractor: { median: number | null; mean: number | null };
+      inspection: { median: number | null };
+      rework: { median: number | null };
+      total: { median: number | null; mean: number | null };
+    };
+    for (const value of [
+      process.contractor.median,
+      process.contractor.mean,
+      process.inspection.median,
+      process.rework.median,
+      process.total.median,
+      process.total.mean,
+    ]) {
+      expect(value == null || value >= 0).toBe(true);
+    }
+    const contractorSession = await login(contractor.email);
+    const contractorView = (
+      await read(contractorSession, '/api/analytics/overview?dateFrom=2026-04-01&dateTo=2026-04-30')
+    ).json() as { newInsights: number };
+    const contractorPatterns = (
+      await read(contractorSession, '/api/analytics/patterns?dateFrom=2026-04-01&dateTo=2026-04-30')
+    ).json() as { items: Array<{ id: string; status: string }> };
+    const contractorNewIds = contractorPatterns.items
+      .filter((item) => item.status === 'NEW')
+      .map((item) => item.id);
+    expect(contractorNewIds.length).toBe(contractorView.newInsights);
+    expect(contractorNewIds).not.toContain(shared.id);
+    expect(contractorNewIds).not.toContain(contractorForeign.id);
+    const contractorForeignOrg = (
+      await read(
+        contractorSession,
+        `/api/analytics/overview?dateFrom=2026-04-01&dateTo=2026-04-30&liableOrganizationId=${foreignOrgId}`,
+      )
+    ).json() as { newInsights: number; defects: number };
+    expect(contractorForeignOrg.defects).toBe(0);
+    expect(contractorForeignOrg.newInsights).toBe(0);
+    const responsibleView = (
+      await read(
+        await login(responsible.email),
+        `/api/analytics/overview?dateFrom=2026-04-01&dateTo=2026-04-30&propertyObjectId=${otherObject.id}`,
+      )
+    ).json() as { newInsights: number; defects: number };
+    expect(responsibleView.defects).toBe(0);
+    expect(responsibleView.newInsights).toBe(0);
+    await prisma.analyticsInsightDefect.deleteMany({
+      where: {
+        OR: [
+          { insight: { snapshotHash: { startsWith: `${marker}:` } } },
+          { defectItemId: reversed.id },
+          {
+            defectItem: {
+              location: {
+                in: [
+                  'filter-primary',
+                  'filter-second',
+                  'filter-object',
+                  'filter-org',
+                  'filter-completed',
+                ],
+              },
+            },
+          },
+        ],
+      },
+    });
+    await prisma.analyticsInsight.deleteMany({
+      where: { snapshotHash: { startsWith: `${marker}:` } },
+    });
+    await prisma.defectItemLiableOrganization.deleteMany({
+      where: {
+        defectItem: { actId: { in: [actId, otherAct.id] }, location: { startsWith: 'filter-' } },
+      },
+    });
+    await prisma.defectItem.deleteMany({ where: { id: reversed.id } });
+    await prisma.defectItem.deleteMany({
+      where: {
+        location: {
+          in: [
+            'filter-primary',
+            'filter-second',
+            'filter-object',
+            'filter-org',
+            'filter-completed',
+          ],
+        },
+      },
+    });
+    await prisma.act.deleteMany({ where: { id: otherAct.id } });
+    await prisma.propertyObject.deleteMany({ where: { id: otherObject.id } });
+    await prisma.workType.deleteMany({ where: { id: workType.id } });
   });
 });

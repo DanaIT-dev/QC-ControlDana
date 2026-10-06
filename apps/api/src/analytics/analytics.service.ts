@@ -16,19 +16,30 @@ import {
   type AnalyticsQuery,
   type AnalyticsSupportDrilldown,
 } from '@sgr-registry/contracts';
-import { Prisma } from '@sgr-registry/database';
+import {
+  confirmedExposureSql,
+  dropAnalyticsScopeSql,
+  indexAnalyticsScopeSql,
+  invalidTemporalPredicate,
+  matchingInsightIdsSql,
+  materializeAnalyticsScopeSql,
+  overviewBundleSql,
+  processClocksSql,
+  riskWeightedBacklogSql,
+  supportDrilldownSql,
+  topRisksSql,
+  Prisma,
+} from '@sgr-registry/database';
 import {
   ANALYTICS_DRILLDOWN_PAGE_SIZE,
   ANALYTICS_INSPECTION_WAIT_DAYS,
   ANALYTICS_MIN_ORG_SAMPLE,
-  ANALYTICS_TOP_RISK_LIMIT,
   BACKLOG_RISK_FORMULA_VERSION,
   MISSING_ANALYTICS_DIMENSIONS,
   SHARE_WITHOUT_EXPOSURE_LABEL,
   UNAVAILABLE_METRIC_TEXT,
   ValidationError,
   assertAnalyticsRange,
-  canonicalAnalyticsFilter,
   durationStats,
   firstTimeRight,
   formatCoverage,
@@ -49,7 +60,11 @@ import {
   resolveRegistryAccessScope,
   type RegistryAccessScope,
 } from '../registry/registry-access-scope.js';
-import { analyticsDefectWhere, scopedFrom } from './analytics-filter.js';
+import {
+  analyticsDefectWhere,
+  scopedFrom,
+  withMaterializedAnalyticsScope,
+} from './analytics-filter.js';
 import { analyticsScopeStamp, refreshAnalyticsPatterns } from './analytics-patterns.js';
 
 @Injectable()
@@ -62,128 +77,83 @@ export class AnalyticsService {
 
   async overview(user: AuthenticatedUser, raw: unknown): Promise<AnalyticsOverview> {
     const ctx = await this.context(user, raw);
-    await this.refresh(ctx);
     const where = ctx.where;
-    const [counts, closure, attempts, seriesOpened, seriesClosed, aging, risks, orgs, insights] =
-      await Promise.all([
-        this.one<{
-          acts: number;
-          defects: number;
-          open_defects: number;
-          overdue_defects: number;
-          no_responsible: number;
-          no_liable: number;
-          no_movement: number;
-          closed_in_period: number;
-        }>(Prisma.sql`
-          SELECT
-            count(DISTINCT a.id)::int AS acts,
-            count(*)::int AS defects,
-            count(*) FILTER (WHERE d.status::text IN ('IN_PROGRESS', 'PENDING_INSPECTION'))::int AS open_defects,
-            count(*) FILTER (WHERE d.status::text <> 'COMPLETED' AND d."effectiveDeadline" IS NOT NULL AND d."effectiveDeadline" < now())::int AS overdue_defects,
-            count(*) FILTER (WHERE NOT EXISTS (SELECT 1 FROM public.defect_item_engineers engineer WHERE engineer."defectItemId" = d.id))::int AS no_responsible,
-            count(*) FILTER (WHERE NOT EXISTS (SELECT 1 FROM public.defect_item_liable_organizations liable WHERE liable."defectItemId" = d.id))::int AS no_liable,
-            count(*) FILTER (WHERE d.status::text = 'IN_PROGRESS' AND d."updatedAt" < now() - make_interval(days => 14))::int AS no_movement,
-            count(*) FILTER (WHERE d.status::text = 'COMPLETED' ${closureWindow(ctx.query)})::int AS closed_in_period
-          ${scopedFrom(where)}
-        `),
-        this.one<{ median: number | null; p90: number | null; sample: number }>(Prisma.sql`
-          SELECT
-            percentile_cont(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (d."readyAt" - d."createdAt")) * 1000) AS median,
-            percentile_cont(0.9) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (d."readyAt" - d."createdAt")) * 1000) AS p90,
-            count(d."readyAt")::int AS sample
-          ${scopedFrom(where)}
-          AND d.status::text = 'COMPLETED' AND d."readyAt" IS NOT NULL
-        `),
-        this.attemptSummary(where),
-        this.many<{ period: string; n: number }>(Prisma.sql`
-          SELECT to_char(d."createdAt" AT TIME ZONE 'Europe/Minsk', 'YYYY-MM') AS period, count(*)::int AS n
-          ${scopedFrom(where)}
-          GROUP BY 1 ORDER BY 1
-        `),
-        this.many<{ period: string; n: number }>(Prisma.sql`
-          SELECT to_char(d."readyAt" AT TIME ZONE 'Europe/Minsk', 'YYYY-MM') AS period, count(*)::int AS n
-          ${scopedFrom(where)}
-          AND d.status::text = 'COMPLETED' AND d."readyAt" IS NOT NULL
-          GROUP BY 1 ORDER BY 1
-        `),
-        this.aging(where),
-        this.topRisks(where),
-        ctx.financial && ctx.cross
-          ? this.many<{ id: string; name: string; amount: string }>(Prisma.sql`
-              SELECT org.id::text AS id, org."officialName" AS name, sum(impact."amountByn")::text AS amount
-              ${scopedFrom(
-                where,
-                Prisma.sql`JOIN public.defect_financial_impacts impact ON impact."defectItemId" = d.id
-                  AND impact.status::text = 'CONFIRMED'
-                  AND impact."amountType"::text = 'ACTUAL_COST'
-                  AND impact."payerType"::text = 'COMPANY'
-                JOIN public.defect_item_liable_organizations link ON link."defectItemId" = d.id
-                JOIN public.organizations org ON org.id = link."organizationId"`,
-              )}
-              GROUP BY org.id, org."officialName"
-              ORDER BY sum(impact."amountByn") DESC
-              LIMIT 5
-            `)
-          : Promise.resolve([]),
-        this.one<{ n: number }>(Prisma.sql`
-          SELECT count(*)::int AS n
-          FROM public.analytics_insights insight
-          WHERE insight."scopeFingerprint" = ${analyticsScopeStamp(ctx.scope).fingerprint}
-            AND insight.status::text = 'NEW'
-            AND insight.active = true
-        `),
-      ]);
-    const ftr = attempts;
-    const periods = new Map<string, { opened: number; closed: number }>();
-    for (const row of seriesOpened) {
-      periods.set(row.period, { opened: num(row.n), closed: 0 });
-    }
-    for (const row of seriesClosed) {
-      const current = periods.get(row.period) ?? { opened: 0, closed: 0 };
-      current.closed = num(row.n);
-      periods.set(row.period, current);
-    }
-    return {
-      filters: ctx.query,
-      acts: num(counts?.acts),
-      defects: num(counts?.defects),
-      openDefects: num(counts?.open_defects),
-      overdueDefects: num(counts?.overdue_defects),
-      noResponsible: num(counts?.no_responsible),
-      noLiableOrganization: num(counts?.no_liable),
-      noMovement: num(counts?.no_movement),
-      closedInPeriod: num(counts?.closed_in_period),
-      medianClosureMs: numOrNull(closure?.median),
-      p90ClosureMs: numOrNull(closure?.p90),
-      closureSampleSize: num(closure?.sample),
-      firstTimeRight: {
-        numerator: ftr.numerator,
-        denominator: ftr.denominator,
-        rate: ftr.rate,
-        coverageText: formatCoverage(ftr.coverageNumerator, ftr.coverageDenominator),
-      },
-      averageAttempts: attempts.averageAttempts,
-      newInsights: num(insights?.n),
-      openedClosed: [...periods.entries()].map(([period, value]) => ({ period, ...value })),
-      backlogAge: aging,
-      topRisks: risks,
-      financialVisible: ctx.financial,
-      crossOrganizationVisible: ctx.cross,
-      canReviewInsights: ctx.review,
-      ...(ctx.financial
-        ? {
-            companyActualCostByn: await this.moneySum(where, 'COMPANY'),
-            topOrganizations: orgs.map((row) => ({
-              organizationId: row.id,
-              name: row.name,
-              amountByn: row.amount,
-            })),
-            confirmedFinancialExposure: await this.confirmedExposure(where, ctx.query),
-            riskWeightedOpenBacklog: await this.riskWeightedBacklog(where),
-          }
-        : {}),
-    };
+    return this.withFilteredScope(where, analyticsStaffRole(user.role), async () => {
+      await this.refresh(ctx);
+      const row = await this.one<{ payload: unknown }>(
+        overviewBundleSql({
+          closureFrom: ctx.query.dateFrom
+            ? new Date(`${ctx.query.dateFrom}T00:00:00.000+03:00`)
+            : null,
+          closureTo: ctx.query.dateTo ? new Date(`${ctx.query.dateTo}T23:59:59.999+03:00`) : null,
+          scopeFingerprint: analyticsScopeStamp(ctx.scope).fingerprint,
+          excludedTypes: hiddenSignalTypes(ctx),
+          financial: ctx.financial,
+          crossOrganization: ctx.cross,
+        }),
+      );
+      const payload = overviewPayload(row?.payload);
+      const attempts = firstTimeRight({
+        completedAcceptedOnFirstAttempt: num(payload.accepted_first),
+        completedWithAttempts: num(payload.with_attempts),
+        completedDefects: num(payload.completed),
+      });
+      const order = ['0–3', '4–7', '8–14', '15–30', '31–60', '60+'];
+      const exposure = exposureFromPayload(payload, ctx.query);
+      const backlog = backlogFromPayload(payload);
+      return {
+        filters: ctx.query,
+        acts: num(payload.acts),
+        defects: num(payload.defects),
+        openDefects: num(payload.open_defects),
+        overdueDefects: num(payload.overdue_defects),
+        noResponsible: num(payload.no_responsible),
+        noLiableOrganization: num(payload.no_liable),
+        noMovement: num(payload.no_movement),
+        closedInPeriod: num(payload.closed_in_period),
+        medianClosureMs: numOrNull(payload.median),
+        p90ClosureMs: numOrNull(payload.p90),
+        closureSampleSize: num(payload.closure_sample),
+        firstTimeRight: {
+          numerator: attempts.numerator,
+          denominator: attempts.denominator,
+          rate: attempts.rate,
+          coverageText: formatCoverage(attempts.coverageNumerator, attempts.coverageDenominator),
+        },
+        averageAttempts: ratio(num(payload.attempt_sum), num(payload.attempt_defects)),
+        newInsights: num(payload.new_insights),
+        openedClosed: payload.series.map((point) => ({
+          period: String(point.period),
+          opened: num(point.opened),
+          closed: num(point.closed),
+        })),
+        backlogAge: order.map((bucket) => ({
+          bucket,
+          count: num(payload.aging.find((item) => item.bucket === bucket)?.count),
+        })),
+        topRisks: payload.top_risks.map((item) => ({
+          defectItemId: String(item.id),
+          actId: String(item.act_id),
+          label: String(item.label ?? ''),
+          score: String(item.score),
+        })),
+        financialVisible: ctx.financial,
+        crossOrganizationVisible: ctx.cross,
+        canReviewInsights: ctx.review,
+        ...(ctx.financial
+          ? {
+              companyActualCostByn: payload.company_cost,
+              topOrganizations: payload.top_organizations.map((item) => ({
+                organizationId: String(item.id),
+                name: String(item.name),
+                amountByn: String(item.amount),
+              })),
+              confirmedFinancialExposure: exposure,
+              riskWeightedOpenBacklog: backlog,
+            }
+          : {}),
+      };
+    });
   }
 
   async costs(user: AuthenticatedUser, raw: unknown): Promise<AnalyticsCosts> {
@@ -388,7 +358,9 @@ export class AnalyticsService {
              percentile_cont(0.5) WITHIN GROUP (
                ORDER BY EXTRACT(EPOCH FROM (scoped.ready_at - scoped.created_at)) / 86400.0
              ) FILTER (
-               WHERE scoped.status = 'COMPLETED' AND scoped.ready_at IS NOT NULL
+               WHERE scoped.status = 'COMPLETED'
+                 AND scoped.ready_at IS NOT NULL
+                 AND scoped.ready_at >= scoped.created_at
              ) AS median_days
       FROM scoped
       JOIN public.defect_item_liable_organizations link ON link."defectItemId" = scoped.id
@@ -495,70 +467,7 @@ export class AnalyticsService {
         total_mean: number | null;
         total_sample: number;
         total_population: number;
-      }>(Prisma.sql`
-        WITH attempts AS (
-          SELECT attempt."defectItemId", attempt."attemptNumber", attempt."submittedAt", attempt."reviewedAt",
-                 lag(attempt."reviewedAt") OVER (PARTITION BY attempt."defectItemId" ORDER BY attempt."attemptNumber") AS prev_reviewed
-          FROM public.defect_inspection_attempts attempt
-        ),
-        samples AS (
-          SELECT
-            CASE
-              WHEN attempts."attemptNumber" = 1 THEN EXTRACT(EPOCH FROM (attempts."submittedAt" - COALESCE(a."startedAt", d."createdAt"))) * 1000
-              WHEN attempts.prev_reviewed IS NOT NULL THEN EXTRACT(EPOCH FROM (attempts."submittedAt" - attempts.prev_reviewed)) * 1000
-              ELSE NULL
-            END AS contractor_ms,
-            CASE
-              WHEN attempts."reviewedAt" IS NULL THEN EXTRACT(EPOCH FROM (now() - attempts."submittedAt")) * 1000
-              ELSE EXTRACT(EPOCH FROM (attempts."reviewedAt" - attempts."submittedAt")) * 1000
-            END AS inspection_ms,
-            CASE
-              WHEN attempts."attemptNumber" > 1 AND attempts.prev_reviewed IS NOT NULL
-                THEN EXTRACT(EPOCH FROM (attempts."submittedAt" - attempts.prev_reviewed)) * 1000
-              ELSE NULL
-            END AS rework_ms,
-            CASE
-              WHEN d.status::text = 'COMPLETED' AND d."readyAt" IS NOT NULL
-                THEN EXTRACT(EPOCH FROM (d."readyAt" - d."createdAt")) * 1000
-              ELSE NULL
-            END AS total_ms
-          ${scopedFrom(ctx.where, Prisma.sql`JOIN attempts ON attempts."defectItemId" = d.id`)}
-        )
-        SELECT
-          percentile_cont(0.5) WITHIN GROUP (ORDER BY contractor_ms) AS contractor_median,
-          percentile_cont(0.75) WITHIN GROUP (ORDER BY contractor_ms) AS contractor_p75,
-          percentile_cont(0.9) WITHIN GROUP (ORDER BY contractor_ms) AS contractor_p90,
-          min(contractor_ms) AS contractor_min,
-          max(contractor_ms) AS contractor_max,
-          avg(contractor_ms) AS contractor_mean,
-          count(contractor_ms)::int AS contractor_sample,
-          count(*)::int AS contractor_population,
-          percentile_cont(0.5) WITHIN GROUP (ORDER BY inspection_ms) AS inspection_median,
-          percentile_cont(0.75) WITHIN GROUP (ORDER BY inspection_ms) AS inspection_p75,
-          percentile_cont(0.9) WITHIN GROUP (ORDER BY inspection_ms) AS inspection_p90,
-          min(inspection_ms) AS inspection_min,
-          max(inspection_ms) AS inspection_max,
-          avg(inspection_ms) AS inspection_mean,
-          count(inspection_ms)::int AS inspection_sample,
-          count(*)::int AS inspection_population,
-          percentile_cont(0.5) WITHIN GROUP (ORDER BY rework_ms) AS rework_median,
-          percentile_cont(0.75) WITHIN GROUP (ORDER BY rework_ms) AS rework_p75,
-          percentile_cont(0.9) WITHIN GROUP (ORDER BY rework_ms) AS rework_p90,
-          min(rework_ms) AS rework_min,
-          max(rework_ms) AS rework_max,
-          avg(rework_ms) AS rework_mean,
-          count(rework_ms)::int AS rework_sample,
-          count(*)::int AS rework_population,
-          percentile_cont(0.5) WITHIN GROUP (ORDER BY total_ms) AS total_median,
-          percentile_cont(0.75) WITHIN GROUP (ORDER BY total_ms) AS total_p75,
-          percentile_cont(0.9) WITHIN GROUP (ORDER BY total_ms) AS total_p90,
-          min(total_ms) AS total_min,
-          max(total_ms) AS total_max,
-          avg(total_ms) AS total_mean,
-          count(total_ms)::int AS total_sample,
-          count(*)::int AS total_population
-        FROM samples
-      `),
+      }>(processClocksSql(ctx.where)),
       this.aging(ctx.where),
       this.one<{ n: number }>(Prisma.sql`
         SELECT count(*)::int AS n
@@ -590,23 +499,23 @@ export class AnalyticsService {
 
   async patterns(user: AuthenticatedUser, raw: unknown): Promise<AnalyticsPatterns> {
     const ctx = await this.context(user, raw);
-    await this.refresh(ctx);
-    const stamp = analyticsScopeStamp(ctx.scope);
-    const rows = await this.prisma.analyticsInsight.findMany({
-      where: {
-        scopeFingerprint: stamp.fingerprint,
-        filterHash: canonicalAnalyticsFilter(ctx.query).hash,
-        active: true,
-      },
-      orderBy: [{ supportCount: 'desc' }, { generatedAt: 'desc' }],
-      take: 50,
-      include: { reviewedBy: { select: { fullName: true } } },
-    });
-    return {
-      items: rows
-        .filter((row) => ctx.financial || row.signalType !== 'COST_CONCENTRATION')
-        .filter((row) => ctx.cross || row.signalType !== 'INSPECTION_BOTTLENECK')
-        .map((row) => ({
+    return this.withFilteredScope(ctx.where, analyticsStaffRole(user.role), async () => {
+      await this.refresh(ctx);
+      const stamp = analyticsScopeStamp(ctx.scope);
+      const matched = await this.many<{ id: string }>(
+        matchingInsightIdsSql(stamp.fingerprint, ctx.where, hiddenSignalTypes(ctx)),
+      );
+      const rows =
+        matched.length === 0
+          ? []
+          : await this.prisma.analyticsInsight.findMany({
+              where: { id: { in: matched.map((row) => row.id) } },
+              orderBy: [{ supportCount: 'desc' }, { generatedAt: 'desc' }],
+              take: 50,
+              include: { reviewedBy: { select: { fullName: true } } },
+            });
+      return {
+        items: rows.map((row) => ({
           id: row.id,
           signalType: row.signalType,
           title: signalDisplayLabel(row.status),
@@ -632,7 +541,8 @@ export class AnalyticsService {
           canReview: ctx.review,
           supportAvailable: row.supportAvailable,
         })),
-    };
+      };
+    });
   }
 
   async review(user: AuthenticatedUser, insightId: string, body: unknown, request: FastifyRequest) {
@@ -681,6 +591,7 @@ export class AnalyticsService {
       imported: number;
       incomplete: number;
       unresolved: number;
+      invalid_temporal: number;
     }>(Prisma.sql`
       SELECT
         count(*)::int AS total,
@@ -699,7 +610,8 @@ export class AnalyticsService {
           SELECT 1 FROM public.imported_engineer_references reference
           WHERE reference."defectItemId" = d.id
             AND reference."resolutionStatus"::text IN ('UNMATCHED', 'AMBIGUOUS')
-        ))::int AS unresolved
+        ))::int AS unresolved,
+        count(*) FILTER (WHERE ${invalidTemporalPredicate})::int AS invalid_temporal
       ${scopedFrom(ctx.where)}
     `);
     const exposure = await this.one<{ n: number }>(Prisma.sql`
@@ -723,6 +635,7 @@ export class AnalyticsService {
       unresolvedEngineers: num(row?.unresolved),
       importedRecords: num(row?.imported),
       incompleteTimestamps: num(row?.incomplete),
+      invalidTemporalRecords: num(row?.invalid_temporal),
       unavailableDimensions: [...MISSING_ANALYTICS_DIMENSIONS],
       defects: total,
       coverage: [
@@ -747,6 +660,11 @@ export class AnalyticsService {
             : { covered: 0, total, rate: null }),
         },
         { metric: 'timestamps', label: 'Время завершения', ...covered(num(row?.incomplete)) },
+        {
+          metric: 'temporalOrder',
+          label: 'Корректная последовательность событий',
+          ...covered(num(row?.invalid_temporal)),
+        },
         {
           metric: 'workExposure',
           label: 'Объём выполненных работ',
@@ -830,35 +748,17 @@ export class AnalyticsService {
       deadline: Date | null;
       attempts: number;
       reason: string;
-    }>(Prisma.sql`
-      SELECT d.id::text AS defect_id,
-             coalesce(nullif(d.location, ''), dt.name) AS label,
-             a.id::text AS act_id,
-             a."officialNumber" AS act_number,
-             po.name AS object_name,
-             dt.name AS defect_type,
-             wt.name AS work_type,
-             ${
-               cross || scope.organizationScoped
-                 ? Prisma.sql`(
-                     SELECT string_agg(org."officialName", ', ' ORDER BY org."officialName")
-                     FROM public.defect_item_liable_organizations liable
-                     JOIN public.organizations org ON org.id = liable."organizationId"
-                     WHERE liable."defectItemId" = d.id
-                   )`
-                 : Prisma.sql`NULL::text`
-             } AS orgs,
-             d.status::text AS status,
-             d."effectiveDeadline" AS deadline,
-             (
-               SELECT count(*)::int FROM public.defect_inspection_attempts attempt
-               WHERE attempt."defectItemId" = d.id
-             ) AS attempts,
-             link."contributionReason" AS reason
-      ${from}
-      ORDER BY ${order} ${directionSql}, d.id ASC
-      LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}
-    `);
+    }>(
+      supportDrilldownSql({
+        insightId,
+        where,
+        order,
+        direction: directionSql,
+        pageSize,
+        offset: (page - 1) * pageSize,
+        includeOrganizations: cross || scope.organizationScoped,
+      }),
+    );
     return {
       ...empty,
       supportCount: num(totalRow?.n),
@@ -909,6 +809,7 @@ export class AnalyticsService {
       act_id: string;
       act_number: string | null;
       object_name: string;
+      label: string | null;
       orgs: string | null;
       status: string;
       created_at: Date;
@@ -920,6 +821,7 @@ export class AnalyticsService {
                    a.id::text AS act_id,
                    a."officialNumber" AS act_number,
                    po.name AS object_name,
+                   NULL::text AS label,
                    NULL::text AS orgs,
                    min(d.status::text) AS status,
                    min(d."createdAt") AS created_at,
@@ -934,6 +836,7 @@ export class AnalyticsService {
                    a.id::text AS act_id,
                    a."officialNumber" AS act_number,
                    po.name AS object_name,
+                   coalesce(nullif(d.location, ''), '') AS label,
                    (
                      SELECT string_agg(org."officialName", ', ' ORDER BY org."officialName")
                      FROM public.defect_item_liable_organizations link
@@ -959,6 +862,7 @@ export class AnalyticsService {
         actId: row.act_id,
         actNumber: row.act_number,
         objectName: row.object_name,
+        label: row.label,
         liableOrganizations: row.orgs ? row.orgs.split(', ') : [],
         status: row.status,
         createdAt: row.created_at.toISOString(),
@@ -1034,6 +938,18 @@ export class AnalyticsService {
     if (!ctx.financial) {
       throw new ForbiddenException('Недостаточно прав');
     }
+  }
+
+  private async withFilteredScope<T>(
+    where: Prisma.Sql,
+    staff: boolean,
+    run: () => Promise<T>,
+  ): Promise<T> {
+    await this.prisma.$executeRaw(dropAnalyticsScopeSql());
+    await this.prisma.$executeRaw(materializeAnalyticsScopeSql(where, staff));
+    await this.prisma.$executeRaw(indexAnalyticsScopeSql());
+    await this.prisma.$executeRaw`ANALYZE analytics_scope_defects`;
+    return withMaterializedAnalyticsScope(run);
   }
 
   private async refresh(ctx: {
@@ -1135,84 +1051,7 @@ export class AnalyticsService {
 
   private async topRisks(where: Prisma.Sql) {
     const rows = await this.many<{ id: string; act_id: string; label: string; score: string }>(
-      Prisma.sql`
-      WITH population AS MATERIALIZED (
-        SELECT d.id, d."defectTypeId", d.status::text AS status, d."createdAt", d."effectiveDeadline",
-               a.id AS act_id, coalesce(d.location, dt.name) AS label
-        ${scopedFrom(where, Prisma.sql`JOIN public.defect_types dt ON dt.id = d."defectTypeId"`)}
-      ),
-      type_counts AS (
-        SELECT "defectTypeId", count(*)::int AS type_count
-        FROM population
-        GROUP BY "defectTypeId"
-      ),
-      open_defects AS (
-        SELECT id, act_id, label, "createdAt", "effectiveDeadline", "defectTypeId"
-        FROM population
-        WHERE status <> 'COMPLETED'
-      ),
-      attempts AS (
-        SELECT attempt."defectItemId" AS id,
-               count(*) FILTER (WHERE attempt.status::text = 'REJECTED')::int AS rejections,
-               count(*)::int AS attempt_count
-        FROM public.defect_inspection_attempts attempt
-        JOIN open_defects ON open_defects.id = attempt."defectItemId"
-        GROUP BY attempt."defectItemId"
-      ),
-      costs AS (
-        SELECT impact."defectItemId" AS id, sum(impact."amountByn") AS cost
-        FROM public.defect_financial_impacts impact
-        JOIN open_defects ON open_defects.id = impact."defectItemId"
-        WHERE impact.status::text = 'CONFIRMED'
-          AND impact."amountType"::text = 'ACTUAL_COST'
-          AND impact."payerType"::text = 'COMPANY'
-        GROUP BY impact."defectItemId"
-      ),
-      liable AS (
-        SELECT DISTINCT link."defectItemId" AS id
-        FROM public.defect_item_liable_organizations link
-        JOIN open_defects ON open_defects.id = link."defectItemId"
-      ),
-      engineers AS (
-        SELECT DISTINCT engineer."defectItemId" AS id
-        FROM public.defect_item_engineers engineer
-        JOIN open_defects ON open_defects.id = engineer."defectItemId"
-      )
-      SELECT ranked.id, ranked.act_id, ranked.label, ranked.score::text AS score
-      FROM (
-        SELECT open_defects.id::text AS id,
-               open_defects.act_id::text AS act_id,
-               open_defects.label,
-               round((
-                 LEAST(3, EXTRACT(EPOCH FROM (now() - open_defects."createdAt")) / 86400 / 30)
-                 + CASE
-                     WHEN open_defects."effectiveDeadline" IS NULL THEN 0
-                     WHEN open_defects."effectiveDeadline" < now() THEN 2
-                     ELSE 0
-                   END
-                 + CASE
-                     WHEN attempts.attempt_count IS NULL THEN 0
-                     ELSE LEAST(3, attempts.rejections)
-                   END
-                 + CASE WHEN liable.id IS NULL THEN 1 ELSE 0 END
-                 + CASE WHEN engineers.id IS NULL THEN 1 ELSE 0 END
-                 + CASE
-                     WHEN costs.cost IS NOT NULL AND costs.cost > 0
-                     THEN LEAST(3, log(10, costs.cost + 1))
-                     ELSE 0
-                   END
-                 + CASE WHEN coalesce(type_counts.type_count, 0) >= 3 THEN 1 ELSE 0 END
-               )::numeric, 4) AS score
-        FROM open_defects
-        LEFT JOIN attempts ON attempts.id = open_defects.id
-        LEFT JOIN costs ON costs.id = open_defects.id
-        LEFT JOIN type_counts ON type_counts."defectTypeId" = open_defects."defectTypeId"
-        LEFT JOIN liable ON liable.id = open_defects.id
-        LEFT JOIN engineers ON engineers.id = open_defects.id
-      ) ranked
-      ORDER BY ranked.score DESC, ranked.id ASC
-      LIMIT ${ANALYTICS_TOP_RISK_LIMIT}
-    `,
+      topRisksSql(where),
     );
     return rows.map((row) => ({
       defectItemId: row.id,
@@ -1227,29 +1066,7 @@ export class AnalyticsService {
     query: AnalyticsQuery,
   ): Promise<NonNullable<AnalyticsOverview['confirmedFinancialExposure']>> {
     const row = await this.one<{ gross: string | null; recovery: string | null; records: number }>(
-      Prisma.sql`
-      SELECT
-        sum(impact."amountByn") FILTER (
-          WHERE impact.status::text = 'CONFIRMED'
-            AND impact."amountType"::text = 'ACTUAL_COST'
-            AND impact."payerType"::text = 'COMPANY'
-        )::text AS gross,
-        sum(impact."amountByn") FILTER (
-          WHERE impact.status::text = 'CONFIRMED'
-            AND impact."amountType"::text = 'RECOVERY'
-        )::text AS recovery,
-        count(*) FILTER (
-          WHERE impact.status::text = 'CONFIRMED'
-            AND (
-              (impact."amountType"::text = 'ACTUAL_COST' AND impact."payerType"::text = 'COMPANY')
-              OR impact."amountType"::text = 'RECOVERY'
-            )
-        )::int AS records
-      ${scopedFrom(
-        where,
-        Prisma.sql`JOIN public.defect_financial_impacts impact ON impact."defectItemId" = d.id`,
-      )}
-    `,
+      confirmedExposureSql(where),
     );
     const records = num(row?.records);
     if (records === 0 || (row?.gross == null && row?.recovery == null)) {
@@ -1281,58 +1098,7 @@ export class AnalyticsService {
       evaluated: number;
       unweighted: string | null;
       weighted: string | null;
-    }>(Prisma.sql`
-      WITH open_defects AS (
-        SELECT d.id, d.status::text AS status, d."effectiveDeadline" AS deadline
-        ${scopedFrom(where)}
-        AND d.status::text IN ('IN_PROGRESS', 'PENDING_INSPECTION')
-      ),
-      approved AS (
-        SELECT DISTINCT ON (impact."defectItemId") impact."defectItemId" AS id, impact."amountByn" AS amount
-        FROM public.defect_financial_impacts impact
-        WHERE impact.status::text = 'CONFIRMED' AND impact."amountType"::text = 'APPROVED_AMOUNT'
-        ORDER BY impact."defectItemId", impact."occurredAt" DESC, impact.id DESC
-      ),
-      estimate AS (
-        SELECT DISTINCT ON (impact."defectItemId") impact."defectItemId" AS id, impact."amountByn" AS amount
-        FROM public.defect_financial_impacts impact
-        WHERE impact.status::text = 'CONFIRMED' AND impact."amountType"::text = 'ESTIMATE'
-        ORDER BY impact."defectItemId", impact."occurredAt" DESC, impact.id DESC
-      ),
-      attempts AS (
-        SELECT attempt."defectItemId" AS id,
-               count(*) FILTER (WHERE attempt.status::text = 'REJECTED')::int AS rejections,
-               bool_or(
-                 attempt.status::text = 'PENDING'
-                 AND attempt."submittedAt" < now() - make_interval(days => ${ANALYTICS_INSPECTION_WAIT_DAYS})
-               ) AS waiting
-        FROM public.defect_inspection_attempts attempt
-        GROUP BY attempt."defectItemId"
-      ),
-      priced AS (
-        SELECT open_defects.id,
-               coalesce(approved.amount, estimate.amount) AS base_amount,
-               LEAST(
-                 2.00,
-                 1.00
-                 + CASE WHEN open_defects.deadline IS NOT NULL AND open_defects.deadline < now() THEN 0.25 ELSE 0 END
-                 + 0.15 * GREATEST(coalesce(attempts.rejections, 0) - 1, 0)
-                 + CASE
-                     WHEN open_defects.status = 'PENDING_INSPECTION' AND coalesce(attempts.waiting, false)
-                     THEN 0.20 ELSE 0
-                   END
-               ) AS coefficient
-        FROM open_defects
-        LEFT JOIN approved ON approved.id = open_defects.id
-        LEFT JOIN estimate ON estimate.id = open_defects.id
-        LEFT JOIN attempts ON attempts.id = open_defects.id
-      )
-      SELECT (SELECT count(*)::int FROM open_defects) AS open_count,
-             count(base_amount)::int AS evaluated,
-             sum(base_amount)::text AS unweighted,
-             sum(round(base_amount * coefficient, 2))::text AS weighted
-      FROM priced
-    `);
+    }>(riskWeightedBacklogSql(where));
     const openDefects = num(row?.open_count);
     const evaluated = num(row?.evaluated);
     return {
@@ -1437,15 +1203,116 @@ function normalizeQuery(raw: unknown): Record<string, unknown> {
   return next;
 }
 
-function closureWindow(query: AnalyticsQuery): Prisma.Sql {
-  const parts: Prisma.Sql[] = [];
-  if (query.dateFrom) {
-    parts.push(Prisma.sql`AND d."readyAt" >= ${new Date(`${query.dateFrom}T00:00:00.000+03:00`)}`);
+interface OverviewBundle {
+  acts: number;
+  defects: number;
+  open_defects: number;
+  overdue_defects: number;
+  no_responsible: number;
+  no_liable: number;
+  no_movement: number;
+  closed_in_period: number;
+  median: number | null;
+  p90: number | null;
+  closure_sample: number;
+  accepted_first: number;
+  with_attempts: number;
+  completed: number;
+  attempt_sum: number;
+  attempt_defects: number;
+  new_insights: number;
+  series: Array<{ period: string; opened: number; closed: number }>;
+  aging: Array<{ bucket: string; count: number }>;
+  top_risks: Array<{ id: string; act_id: string; label: string | null; score: string }>;
+  company_cost: string | null;
+  gross: string | null;
+  recovery: string | null;
+  exposure_records: number;
+  backlog_open: number;
+  backlog_evaluated: number;
+  backlog_unweighted: string | null;
+  backlog_weighted: string | null;
+  top_organizations: Array<{ id: string; name: string; amount: string }>;
+}
+
+function overviewPayload(value: unknown): OverviewBundle {
+  const parsed: unknown = typeof value === 'string' ? JSON.parse(value) : value;
+  const payload = (parsed ?? {}) as Partial<OverviewBundle>;
+  return {
+    acts: payload.acts ?? 0,
+    defects: payload.defects ?? 0,
+    open_defects: payload.open_defects ?? 0,
+    overdue_defects: payload.overdue_defects ?? 0,
+    no_responsible: payload.no_responsible ?? 0,
+    no_liable: payload.no_liable ?? 0,
+    no_movement: payload.no_movement ?? 0,
+    closed_in_period: payload.closed_in_period ?? 0,
+    median: payload.median ?? null,
+    p90: payload.p90 ?? null,
+    closure_sample: payload.closure_sample ?? 0,
+    accepted_first: payload.accepted_first ?? 0,
+    with_attempts: payload.with_attempts ?? 0,
+    completed: payload.completed ?? 0,
+    attempt_sum: payload.attempt_sum ?? 0,
+    attempt_defects: payload.attempt_defects ?? 0,
+    new_insights: payload.new_insights ?? 0,
+    series: Array.isArray(payload.series) ? payload.series : [],
+    aging: Array.isArray(payload.aging) ? payload.aging : [],
+    top_risks: Array.isArray(payload.top_risks) ? payload.top_risks : [],
+    company_cost: payload.company_cost ?? null,
+    gross: payload.gross ?? null,
+    recovery: payload.recovery ?? null,
+    exposure_records: payload.exposure_records ?? 0,
+    backlog_open: payload.backlog_open ?? 0,
+    backlog_evaluated: payload.backlog_evaluated ?? 0,
+    backlog_unweighted: payload.backlog_unweighted ?? null,
+    backlog_weighted: payload.backlog_weighted ?? null,
+    top_organizations: Array.isArray(payload.top_organizations) ? payload.top_organizations : [],
+  };
+}
+
+function exposureFromPayload(
+  payload: OverviewBundle,
+  query: AnalyticsQuery,
+): NonNullable<AnalyticsOverview['confirmedFinancialExposure']> {
+  const records = num(payload.exposure_records);
+  if (records === 0 || (payload.gross == null && payload.recovery == null)) {
+    return {
+      available: false,
+      currency: 'BYN',
+      periodFrom: query.dateFrom ?? null,
+      periodTo: query.dateTo ?? null,
+      recordCount: 0,
+    };
   }
-  if (query.dateTo) {
-    parts.push(Prisma.sql`AND d."readyAt" <= ${new Date(`${query.dateTo}T23:59:59.999+03:00`)}`);
-  }
-  return parts.length === 0 ? Prisma.empty : Prisma.join(parts, ' ');
+  const gross = payload.gross ?? '0.00';
+  const recovery = payload.recovery ?? '0.00';
+  return {
+    available: true,
+    currency: 'BYN',
+    grossCompanyCostByn: gross,
+    confirmedRecoveryByn: recovery,
+    netConfirmedExposureByn: subtractMoney(gross, recovery),
+    recordCount: records,
+    periodFrom: query.dateFrom ?? null,
+    periodTo: query.dateTo ?? null,
+  };
+}
+
+function backlogFromPayload(payload: OverviewBundle) {
+  const openDefects = num(payload.backlog_open);
+  const evaluated = num(payload.backlog_evaluated);
+  return {
+    available: evaluated > 0,
+    weightedByn: evaluated > 0 ? payload.backlog_weighted : null,
+    unweightedByn: evaluated > 0 ? payload.backlog_unweighted : null,
+    evaluatedDefects: evaluated,
+    openDefects,
+    monetaryCoverage: openDefects === 0 ? null : evaluated / openDefects,
+    formulaVersion: BACKLOG_RISK_FORMULA_VERSION,
+    calculatedAt: new Date().toISOString(),
+    inspectionWaitDays: ANALYTICS_INSPECTION_WAIT_DAYS,
+  };
 }
 
 function sqlDuration(row: Record<string, number | null> | null, prefix: string): AnalyticsDuration {
@@ -1474,5 +1341,19 @@ function numOrNull(value: unknown): number | null {
     return null;
   }
   const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return null;
+  }
+  return parsed;
+}
+
+function analyticsStaffRole(role: string): boolean {
+  return role === 'ADMIN' || role === 'MANAGER' || role === 'SGR_MANAGER';
+}
+
+function hiddenSignalTypes(ctx: { financial: boolean; cross: boolean }): string[] {
+  return [
+    ...(ctx.financial ? [] : ['COST_CONCENTRATION']),
+    ...(ctx.cross ? [] : ['INSPECTION_BOTTLENECK']),
+  ];
 }

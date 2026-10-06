@@ -771,6 +771,7 @@ function QualityPane({
     ['Несопоставленные инженеры', data.unresolvedEngineers, 'defects'],
     ['Импортированные записи', data.importedRecords, 'defects'],
     ['Неполные timestamps', data.incompleteTimestamps, 'defects'],
+    ['Некорректная последовательность событий', data.invalidTemporalRecords, 'invalidTemporal'],
   ];
   return (
     <div className="grid gap-4">
@@ -949,7 +950,7 @@ function DrilldownPane({
         <table className="w-full min-w-[640px] text-sm">
           <thead>
             <tr className="border-b text-left">
-              {['Акт', 'Объект', 'Организации', 'Статус'].map((column) => (
+              {['Акт', 'Запись', 'Объект', 'Организации', 'Статус'].map((column) => (
                 <th key={column} className="px-2 py-2 font-medium">
                   {column}
                 </th>
@@ -964,6 +965,7 @@ function DrilldownPane({
                     {item.actNumber ?? 'Акт'}
                   </Link>
                 </td>
+                <td className="max-w-48 truncate px-2 py-2">{item.label || '—'}</td>
                 <td className="max-w-48 truncate px-2 py-2" title={item.objectName}>
                   {item.objectName}
                 </td>
@@ -1141,7 +1143,8 @@ function formatRate(value: number | null): string {
 }
 
 function formatDuration(value: number | null): string {
-  if (value == null) return 'Нет данных';
+  if (value == null || !Number.isFinite(value)) return 'Нет данных';
+  if (value < 0) return 'Некорректная последовательность событий';
   const days = value / 86_400_000;
   return `${days.toLocaleString('ru-RU', { maximumFractionDigits: 1 })} дн.`;
 }

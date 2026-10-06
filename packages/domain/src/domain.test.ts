@@ -30,6 +30,8 @@ import {
   acceptDefectRepair,
   assertDirectCompletionAllowed,
   completeDefectItem,
+  resolveCompletionInstant,
+  assertInstantNotBefore,
   computeActStatus,
   createDefectItem,
   InvalidTransitionError,
@@ -96,6 +98,39 @@ describe('DefectItem lifecycle', () => {
     const completed = completeDefectItem(item, { now });
     expect(completed.status).toBe('COMPLETED');
     expect(completed.readyAt).toEqual(now);
+  });
+
+  it('allows a completion instant equal to creation and rejects an earlier calendar day', () => {
+    const createdAt = new Date('2026-08-26T16:00:00.000Z');
+    const sameInstant = resolveCompletionInstant(createdAt, createdAt, createdAt);
+    expect(sameInstant).toEqual(createdAt);
+    const later = resolveCompletionInstant(
+      new Date('2026-08-27T12:00:00.000Z'),
+      createdAt,
+      new Date('2026-08-27T18:00:00.000Z'),
+    );
+    expect(later).toEqual(new Date('2026-08-27T12:00:00.000Z'));
+    const sameDayNoon = resolveCompletionInstant(
+      new Date('2026-08-26T12:00:00.000Z'),
+      createdAt,
+      createdAt,
+    );
+    expect(sameDayNoon).toEqual(createdAt);
+    expect(() =>
+      resolveCompletionInstant(
+        new Date('2026-08-25T12:00:00.000Z'),
+        createdAt,
+        new Date('2026-08-26T18:00:00.000Z'),
+      ),
+    ).toThrow(InvalidTransitionError);
+  });
+
+  it('rejects an inspection result, acceptance, or rejection before its start', () => {
+    const started = new Date('2026-08-26T12:00:00.000Z');
+    expect(() => assertInstantNotBefore(started, started)).not.toThrow();
+    expect(() => assertInstantNotBefore(new Date('2026-08-26T11:00:00.000Z'), started)).toThrow(
+      InvalidTransitionError,
+    );
   });
 
   it('moves a contractor defect through inspection and back to work', () => {

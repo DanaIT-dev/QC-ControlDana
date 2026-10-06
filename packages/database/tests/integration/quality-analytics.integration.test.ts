@@ -1,10 +1,36 @@
 import { randomUUID } from 'node:crypto';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { Prisma } from '@prisma/client';
+import type { AnalyticsQuery } from '@sgr-registry/contracts';
 import { CONFIRMED_LAST_FIRST_TOKEN_ORDER, personNameWriteFields } from '@sgr-registry/domain';
 import {
+  refreshAnalyticsPatterns,
+  scopedFrom,
+  withMaterializedAnalyticsScope,
+} from '../../../../apps/api/src/analytics/analytics-patterns.js';
+import {
+  confirmedExposureSql,
   createOwnerPrismaClient,
   createPrismaClient,
+  dropAnalyticsScopeSql,
+  explainStatement,
+  indexAnalyticsScopeSql,
+  invalidTemporalCountSql,
+  lowFirstTimeRightSql,
+  matchingInsightIdsSql,
+  materializeAnalyticsScopeSql,
+  newInsightsCountSql,
+  overviewBundleSql,
+  overviewClosureSql,
+  overviewCountsSql,
+  processClocksSql,
+  riskWeightedBacklogSql,
   signUserRlsContext,
+  statementFingerprint,
+  supportDrilldownSql,
+  topRisksSql,
   withAuthenticatedDbContext,
 } from '../../src/index';
 import { assertSafeTestDatabaseUrl } from '../../src/test-database';
@@ -100,6 +126,7 @@ describe('quality analytics invariants', () => {
         customerOrganizationId: organizationId,
         issuedOn: new Date('2026-03-01T00:00:00.000Z'),
         status: 'IN_PROGRESS',
+        createdAt: new Date('2026-03-01T00:00:00.000Z'),
         startedAt: new Date('2026-03-01T00:00:00.000Z'),
         officialNumber: marker,
       },
@@ -408,7 +435,7 @@ describe('quality analytics invariants', () => {
           generatedAt: new Date(),
           ruleVersion: '2026.10.05.2',
           scopeKind: 'COMPANY',
-          scopeFingerprint: `perf:${marker}`,
+          scopeFingerprint: 'company',
           filterHash: marker,
           snapshotHash: `${marker}:perf`,
           supportAvailable: true,
@@ -421,10 +448,134 @@ describe('quality analytics invariants', () => {
           SELECT id FROM public.defect_items WHERE "actId" = ${actId}::uuid ORDER BY "createdAt" LIMIT 1000
         ) d
       `;
-      await owner.$executeRaw`ANALYZE public.defect_items`;
-      await owner.$executeRaw`ANALYZE public.defect_inspection_attempts`;
-      await owner.$executeRaw`ANALYZE public.defect_financial_impacts`;
-      await owner.$executeRaw`ANALYZE public.analytics_insight_defects`;
+      const workType = await owner.workType.create({
+        data: { code: marker.slice(0, 20), name: marker, sortOrder: 4 },
+      });
+      const otherType = await owner.defectType.create({
+        data: {
+          code: `${marker}-b`.slice(0, 24).toUpperCase(),
+          name: `${marker} b`,
+          sortOrder: 91,
+        },
+      });
+      const otherObject = await owner.propertyObject.create({
+        data: { name: `${marker} object 2`, address: 'Минск' },
+      });
+      const otherAct = await owner.act.create({
+        data: {
+          formCode: 'S1',
+          year: 2098,
+          sequence: Math.floor(Math.random() * 800_000) + 100_000,
+          objectId: otherObject.id,
+          customerOrganizationId: otherOrganizationId,
+          issuedOn: new Date('2020-01-01T00:00:00.000Z'),
+          createdAt: new Date('2020-01-01T00:00:00.000Z'),
+          status: 'IN_PROGRESS',
+          startedAt: new Date('2020-01-01T00:00:00.000Z'),
+          officialNumber: `${marker}-b`,
+        },
+      });
+      await owner.$executeRaw`
+        UPDATE public.defect_items
+        SET "workTypeId" = ${workType.id}::uuid
+        WHERE id IN (
+          SELECT id FROM public.defect_items
+          WHERE "actId" = ${actId}::uuid
+          ORDER BY "createdAt" DESC
+          LIMIT 2000
+        )
+      `;
+      await owner.$executeRaw`
+        UPDATE public.defect_items
+        SET "defectTypeId" = ${otherType.id}::uuid, "actId" = ${otherAct.id}::uuid
+        WHERE id IN (
+          SELECT id FROM public.defect_items
+          WHERE "actId" = ${actId}::uuid AND id <> ${defectId}::uuid AND id <> ${riskyId}::uuid
+          ORDER BY "createdAt" DESC
+          OFFSET 2000
+          LIMIT 2000
+        )
+      `;
+      await owner.$executeRaw`
+        UPDATE public.defect_items
+        SET status = 'COMPLETED'::"DefectItemStatus",
+            "readyAt" = "createdAt" + interval '10 days'
+        WHERE id IN (
+          SELECT id FROM public.defect_items
+          WHERE "actId" = ${actId}::uuid AND id <> ${defectId}::uuid AND id <> ${riskyId}::uuid
+          ORDER BY "createdAt"
+          OFFSET 20000
+          LIMIT 2000
+        )
+      `;
+      await owner.$executeRaw`
+        INSERT INTO public.defect_item_liable_organizations ("defectItemId", "organizationId")
+        SELECT id, ${organizationId}::uuid
+        FROM public.defect_items
+        WHERE "actId" = ${actId}::uuid AND id <> ${defectId}::uuid
+        ORDER BY "createdAt"
+        LIMIT 5000
+        ON CONFLICT DO NOTHING
+      `;
+      await owner.$executeRaw`
+        INSERT INTO public.defect_financial_impacts (
+          id, "defectItemId", "amountType", "payerType", "amountOriginal", currency, "exchangeRateToByn", "amountByn",
+          "occurredAt", status, source, "createdByUserId", "confirmedByUserId", "confirmedAt", "createdAt", "updatedAt"
+        )
+        SELECT gen_random_uuid(), d.id, 'APPROVED_AMOUNT'::"FinancialAmountType", 'COMPANY'::"FinancialPayerType",
+               20.00, 'BYN', 1, 20.00, now(), 'CONFIRMED'::"FinancialRecordStatus", 'SYNTHETIC',
+               ${adminId}::uuid, ${adminId}::uuid, now(), now(), now()
+        FROM (
+          SELECT id FROM public.defect_items
+          WHERE "actId" = ${actId}::uuid AND status::text <> 'COMPLETED' AND id <> ${riskyId}::uuid
+          ORDER BY "createdAt"
+          OFFSET 30000
+          LIMIT 5000
+        ) d
+      `;
+      await owner.$executeRaw`ALTER TABLE public.defect_items DROP CONSTRAINT IF EXISTS defect_items_ready_not_before_created`;
+      await owner.$executeRaw`ALTER TABLE public.defect_inspection_attempts DISABLE TRIGGER defect_inspection_attempts_guard`;
+      await owner.$executeRaw`ALTER TABLE public.defect_inspection_attempts DROP CONSTRAINT IF EXISTS defect_inspection_attempts_review_not_before_submit`;
+      await owner.$executeRaw`
+        UPDATE public.defect_items
+        SET status = 'COMPLETED'::"DefectItemStatus",
+            "readyAt" = "createdAt" - interval '2 days'
+        WHERE id IN (
+          SELECT id FROM public.defect_items
+          WHERE "actId" = ${actId}::uuid AND id <> ${defectId}::uuid AND id <> ${riskyId}::uuid
+          ORDER BY "createdAt"
+          OFFSET 40000
+          LIMIT 100
+        )
+      `;
+      await owner.$executeRaw`
+        UPDATE public.defect_inspection_attempts
+        SET "reviewedAt" = "submittedAt" - interval '1 hour'
+        WHERE id IN (
+          SELECT attempt.id
+          FROM public.defect_inspection_attempts attempt
+          JOIN public.defect_items d ON d.id = attempt."defectItemId"
+          WHERE d."actId" = ${actId}::uuid
+          ORDER BY attempt."createdAt"
+          LIMIT 50
+        )
+      `;
+      await owner.$executeRaw`
+        ALTER TABLE public.defect_items
+        ADD CONSTRAINT defect_items_ready_not_before_created
+        CHECK ("readyAt" IS NULL OR "readyAt" >= "createdAt") NOT VALID
+      `;
+      await owner.$executeRaw`
+        ALTER TABLE public.defect_inspection_attempts
+        ADD CONSTRAINT defect_inspection_attempts_review_not_before_submit
+        CHECK ("reviewedAt" IS NULL OR "reviewedAt" >= "submittedAt") NOT VALID
+      `;
+      await owner.$executeRaw`ALTER TABLE public.defect_inspection_attempts ENABLE TRIGGER defect_inspection_attempts_guard`;
+      await owner.$executeRawUnsafe('VACUUM (ANALYZE) public.defect_items');
+      await owner.$executeRawUnsafe('VACUUM (ANALYZE) public.acts');
+      await owner.$executeRawUnsafe('VACUUM (ANALYZE) public.defect_inspection_attempts');
+      await owner.$executeRawUnsafe('VACUUM (ANALYZE) public.defect_financial_impacts');
+      await owner.$executeRawUnsafe('VACUUM (ANALYZE) public.analytics_insight_defects');
       const plan = await owner.$queryRaw<Array<{ 'QUERY PLAN': string }>>`
         EXPLAIN (ANALYZE, FORMAT TEXT)
         SELECT count(*)::int
@@ -446,143 +597,369 @@ describe('quality analytics invariants', () => {
       `;
       expect(oldest.map((row) => row.id)).not.toContain(riskyId);
       const token = signUserRlsContext({ userId: adminId, sessionVersion: 1 }, secret);
+      const where = Prisma.sql`d."actId" IN (${actId}::uuid, ${otherAct.id}::uuid)`;
+      const filtered = Prisma.sql`TRUE AND d."createdAt" >= ${new Date('2020-01-01T00:00:00.000Z')} AND d."createdAt" < ${new Date('2020-02-01T00:00:00.000Z')} AND a."objectId" = ${objectId}::uuid AND d."defectTypeId" = ${defectTypeId}::uuid AND d.status::text = 'IN_PROGRESS'`;
+      const rankingTemplate = (
+        topRisksSql(where) as Prisma.Sql & { strings: readonly string[] }
+      ).strings.join('');
+      expect(rankingTemplate.indexOf('LIMIT')).toBeGreaterThan(rankingTemplate.indexOf('AS score'));
+      const openCte = rankingTemplate.slice(
+        rankingTemplate.indexOf('open_defects AS ('),
+        rankingTemplate.indexOf('attempts AS ('),
+      );
+      expect(openCte).not.toContain('LIMIT');
       const measured = await app.$transaction(
         async (tx) => {
+          await tx.$executeRaw`SELECT set_config('statement_timeout', '8000', true)`;
           await tx.$executeRaw`SELECT sgr_set_request_context(${token})`;
-          const topStarted = Date.now();
-          const top = await tx.$queryRaw<Array<{ id: string }>>`
-            WITH population AS MATERIALIZED (
-              SELECT d.id, d."defectTypeId", d.status::text AS status, d."createdAt", d."effectiveDeadline"
-              FROM public.defect_items d
-              JOIN public.acts a ON a.id = d."actId"
-              WHERE d."actId" = ${actId}::uuid
-            ),
-            type_counts AS (
-              SELECT "defectTypeId", count(*)::int AS type_count FROM population GROUP BY "defectTypeId"
-            ),
-            open_defects AS (
-              SELECT id, "createdAt", "effectiveDeadline", "defectTypeId"
-              FROM population
-              WHERE status <> 'COMPLETED'
-            ),
-            attempts AS (
-              SELECT attempt."defectItemId" AS id,
-                     count(*) FILTER (WHERE attempt.status::text = 'REJECTED')::int AS rejections,
-                     count(*)::int AS attempt_count
-              FROM public.defect_inspection_attempts attempt
-              JOIN open_defects ON open_defects.id = attempt."defectItemId"
-              GROUP BY attempt."defectItemId"
-            ),
-            costs AS (
-              SELECT impact."defectItemId" AS id, sum(impact."amountByn") AS cost
-              FROM public.defect_financial_impacts impact
-              JOIN open_defects ON open_defects.id = impact."defectItemId"
-              WHERE impact.status::text = 'CONFIRMED'
-                AND impact."amountType"::text = 'ACTUAL_COST'
-                AND impact."payerType"::text = 'COMPANY'
-              GROUP BY impact."defectItemId"
-            ),
-            liable AS (
-              SELECT DISTINCT link."defectItemId" AS id
-              FROM public.defect_item_liable_organizations link
-              JOIN open_defects ON open_defects.id = link."defectItemId"
-            ),
-            engineers AS (
-              SELECT DISTINCT engineer."defectItemId" AS id
-              FROM public.defect_item_engineers engineer
-              JOIN open_defects ON open_defects.id = engineer."defectItemId"
-            ),
-            ranked AS (
-              SELECT open_defects.id::text AS id,
-                     round((
-                       LEAST(3, EXTRACT(EPOCH FROM (now() - open_defects."createdAt")) / 86400 / 30)
-                       + CASE
-                           WHEN open_defects."effectiveDeadline" IS NULL THEN 0
-                           WHEN open_defects."effectiveDeadline" < now() THEN 2
-                           ELSE 0
-                         END
-                       + CASE
-                           WHEN attempts.attempt_count IS NULL THEN 0
-                           ELSE LEAST(3, attempts.rejections)
-                         END
-                       + CASE WHEN liable.id IS NULL THEN 1 ELSE 0 END
-                       + CASE WHEN engineers.id IS NULL THEN 1 ELSE 0 END
-                       + CASE
-                           WHEN costs.cost IS NOT NULL AND costs.cost > 0
-                           THEN LEAST(3, log(10, costs.cost + 1))
-                           ELSE 0
-                         END
-                       + CASE WHEN coalesce(type_counts.type_count, 0) >= 3 THEN 1 ELSE 0 END
-                     )::numeric, 4) AS score
-              FROM open_defects
-              LEFT JOIN attempts ON attempts.id = open_defects.id
-              LEFT JOIN costs ON costs.id = open_defects.id
-              LEFT JOIN type_counts ON type_counts."defectTypeId" = open_defects."defectTypeId"
-              LEFT JOIN liable ON liable.id = open_defects.id
-              LEFT JOIN engineers ON engineers.id = open_defects.id
-            )
-            SELECT id FROM ranked ORDER BY score DESC, id ASC LIMIT 10
-          `;
-          const topMs = Date.now() - topStarted;
-          const exposureStarted = Date.now();
-          await tx.$queryRaw`
-            SELECT sum(impact."amountByn") FILTER (
-              WHERE impact.status::text = 'CONFIRMED'
-                AND impact."amountType"::text = 'ACTUAL_COST'
-                AND impact."payerType"::text = 'COMPANY'
-            )::text
-            FROM public.defect_items d
-            JOIN public.acts a ON a.id = d."actId"
-            JOIN public.defect_financial_impacts impact ON impact."defectItemId" = d.id
-            WHERE d."actId" = ${actId}::uuid
-          `;
-          const exposureMs = Date.now() - exposureStarted;
-          const backlogStarted = Date.now();
-          await tx.$queryRaw`
-            SELECT count(*)::int
-            FROM public.defect_items d
-            JOIN public.acts a ON a.id = d."actId"
-            WHERE d."actId" = ${actId}::uuid
-              AND d.status::text IN ('IN_PROGRESS', 'PENDING_INSPECTION')
-          `;
-          const backlogMs = Date.now() - backlogStarted;
-          const supportStarted = Date.now();
-          const supportCount = await tx.$queryRaw<Array<{ n: number }>>`
-            SELECT count(*)::int AS n
-            FROM public.analytics_insight_defects link
-            JOIN public.defect_items d ON d.id = link."defectItemId"
-            WHERE link."insightId" = ${insight.id}::uuid
-          `;
-          const supportMs = Date.now() - supportStarted;
-          const plan = await tx.$queryRaw<Array<{ 'QUERY PLAN': string }>>`
-            EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)
-            SELECT d.id
-            FROM public.defect_items d
-            JOIN public.acts a ON a.id = d."actId"
-            WHERE d."actId" = ${actId}::uuid AND d.status::text <> 'COMPLETED'
-            ORDER BY d."createdAt" DESC
-            LIMIT 10
-          `;
-          return { top, topMs, exposureMs, backlogMs, supportCount, supportMs, plan };
+          const statements = {
+            overviewCounts: overviewCountsSql(where, Prisma.empty),
+            overviewClosure: overviewClosureSql(where),
+            exposure: confirmedExposureSql(where),
+            backlog: riskWeightedBacklogSql(where),
+            process: processClocksSql(where),
+            patterns: matchingInsightIdsSql('company', where),
+            lowFirstTimeRight: lowFirstTimeRightSql(where),
+            supportDrilldown: supportDrilldownSql({
+              insightId: insight.id,
+              where: Prisma.sql`TRUE`,
+              order: Prisma.sql`d."createdAt"`,
+              direction: Prisma.sql`DESC`,
+              pageSize: 50,
+              offset: 0,
+              includeOrganizations: true,
+            }),
+            topRisks: topRisksSql(where),
+            newInsights: newInsightsCountSql('company', filtered),
+            invalidTemporal: invalidTemporalCountSql(where),
+          };
+          const statementRecords: Array<Record<string, unknown>> = [];
+          for (const [name, sql] of Object.entries(statements)) {
+            const fingerprint = statementFingerprint(sql);
+            const started = Date.now();
+            let rows: Array<Record<string, unknown>>;
+            try {
+              rows = await tx.$queryRaw<Array<Record<string, unknown>>>(sql);
+            } catch (error) {
+              const message = error instanceof Error ? error.message : 'query failed';
+              throw new Error(`${name} failed: ${message}`, { cause: error });
+            }
+            const elapsedMs = Date.now() - started;
+            const explained = await tx.$queryRaw<Array<{ 'QUERY PLAN': unknown }>>(
+              explainStatement(sql),
+            );
+            const planFingerprint = statementFingerprint(sql);
+            if (planFingerprint !== fingerprint) {
+              throw new Error(`plan fingerprint diverged for ${name}`);
+            }
+            const plan = explained[0]?.['QUERY PLAN'];
+            const planText = JSON.stringify(plan);
+            if (!planText.includes('Execution Time') && !planText.includes('Planning Time')) {
+              throw new Error(`missing analyze plan for ${name}`);
+            }
+            statementRecords.push({
+              name,
+              elapsedMs,
+              fingerprint,
+              planFingerprint,
+              rows: ['topRisks', 'invalidTemporal', 'backlog', 'newInsights'].includes(name)
+                ? rows.slice(0, 1)
+                : undefined,
+              performanceRisk: elapsedMs > 2000,
+              plan,
+            });
+          }
+          const bundleSql = overviewBundleSql({
+            closureFrom: null,
+            closureTo: null,
+            scopeFingerprint: 'company',
+            excludedTypes: [],
+            financial: true,
+            crossOrganization: true,
+          });
+          const materializeSql = materializeAnalyticsScopeSql(where, true);
+          const scope = {
+            organizationScoped: false,
+            objectScoped: false,
+            organizationIds: [] as readonly string[],
+            userId: adminId,
+          };
+          const runs: number[] = [];
+          let payload: Record<string, unknown> = {};
+          let serializationMs = 0;
+          let responseBytes = 0;
+          for (let run = 0; run < 6; run += 1) {
+            const started = Date.now();
+            let phase = 'materialize';
+            try {
+              await tx.$executeRaw(dropAnalyticsScopeSql());
+              await tx.$executeRaw(materializeSql);
+              await tx.$executeRaw(indexAnalyticsScopeSql());
+              await tx.$executeRaw`ANALYZE analytics_scope_defects`;
+              phase = 'probe';
+              const probe = await withMaterializedAnalyticsScope(() =>
+                tx.$queryRaw<Array<{ 'QUERY PLAN': string }>>(
+                  Prisma.sql`EXPLAIN SELECT count(*)::int ${scopedFrom(Prisma.sql`TRUE`)}`,
+                ),
+              );
+              const probeText = probe.map((row) => row['QUERY PLAN']).join('\n');
+              if (!probeText.includes('analytics_scope_defects')) {
+                throw new Error(`scope probe missed the temp table: ${probeText}`);
+              }
+              phase = 'refresh';
+              const refreshStarted = Date.now();
+              await withMaterializedAnalyticsScope(() =>
+                refreshAnalyticsPatterns((query) => tx.$queryRaw(query), tx, {
+                  where,
+                  query: {} as AnalyticsQuery,
+                  scope: scope as never,
+                  financial: true,
+                  crossOrganization: true,
+                }),
+              );
+              phase = 'bundle';
+              const refreshMs = Date.now() - refreshStarted;
+              const bundleStarted = Date.now();
+              const rows =
+                await tx.$queryRaw<Array<{ payload: Record<string, unknown> }>>(bundleSql);
+              console.log(
+                JSON.stringify({
+                  run,
+                  refreshMs,
+                  bundleMs: Date.now() - bundleStarted,
+                  totalMs: Date.now() - started,
+                }),
+              );
+              payload = rows[0]?.payload ?? {};
+              const serialStarted = Date.now();
+              const body = JSON.stringify(payload);
+              serializationMs = Date.now() - serialStarted;
+              responseBytes = Buffer.byteLength(body);
+              runs.push(Date.now() - started);
+            } catch (error) {
+              const message = error instanceof Error ? error.message : 'overview failed';
+              throw new Error(
+                `overview run ${run} phase ${phase} failed after ${Date.now() - started}ms: ${message}`,
+                { cause: error },
+              );
+            }
+          }
+          const coldMs = runs[0] ?? 0;
+          const warmMs = runs.slice(1);
+          const overviewMs = percentile(warmMs, 50);
+          const overviewP95Ms = percentile(warmMs, 95);
+          const bundlePlan = await tx.$queryRaw<Array<{ 'QUERY PLAN': unknown }>>(
+            explainStatement(bundleSql),
+          );
+          await tx.$executeRaw(dropAnalyticsScopeSql());
+          const materializePlan = await tx.$queryRaw<Array<{ 'QUERY PLAN': unknown }>>(
+            explainStatement(materializeSql),
+          );
+          const databaseMs =
+            executionMs(materializePlan[0]?.['QUERY PLAN']) +
+            executionMs(bundlePlan[0]?.['QUERY PLAN']);
+          const materializeFingerprint = statementFingerprint(materializeSql);
+          const bundleFingerprint = statementFingerprint(bundleSql);
+          if (statementFingerprint(materializeSql) !== materializeFingerprint) {
+            throw new Error('materialize plan fingerprint diverged');
+          }
+          if (statementFingerprint(bundleSql) !== bundleFingerprint) {
+            throw new Error('bundle plan fingerprint diverged');
+          }
+          const records: Array<Record<string, unknown>> = [
+            {
+              name: 'overview',
+              elapsedMs: overviewMs,
+              coldMs,
+              warmMs,
+              p95Ms: overviewP95Ms,
+              databaseMs,
+              serializationMs,
+              responseBytes,
+              fingerprint: bundleFingerprint,
+              planFingerprint: bundleFingerprint,
+              materializeFingerprint,
+              performanceRisk: overviewMs > 3000,
+              plan: bundlePlan[0]?.['QUERY PLAN'],
+              materializePlan: materializePlan[0]?.['QUERY PLAN'],
+              defects: payload.defects,
+              invalidTemporal: payload.invalid_temporal,
+              topRiskId: Array.isArray(payload.top_risks)
+                ? (payload.top_risks[0] as { id?: string } | undefined)?.id
+                : undefined,
+            },
+            ...statementRecords,
+          ];
+          return {
+            overviewMs,
+            coldMs,
+            warmMs,
+            overviewP95Ms,
+            databaseMs,
+            serializationMs,
+            responseBytes,
+            records,
+          };
         },
-        { maxWait: 10_000, timeout: 90_000 },
+        { maxWait: 10_000, timeout: 360_000 },
       );
-      process.stderr.write(
-        `analytics top-risks ${measured.topMs} ms; exposure ${measured.exposureMs} ms; backlog ${measured.backlogMs} ms; support-drilldown ${measured.supportMs} ms\n${measured.plan.map((row) => row['QUERY PLAN']).join('\n')}\n`,
+      const artifactDir = resolve(
+        import.meta.dirname,
+        '../../../../test-results/analytics-performance',
       );
-      expect(measured.topMs).toBeLessThan(8000);
-      expect(measured.top[0]?.id).toBe(riskyId);
-      expect(measured.supportCount[0]?.n).toBe(1000);
+      mkdirSync(artifactDir, { recursive: true });
+      const manifest = measured.records.map((record) => {
+        const plan = JSON.parse(
+          JSON.stringify(record.plan ?? null).replace(
+            /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi,
+            '[redacted]',
+          ),
+        );
+        if (record.fingerprint) {
+          writeFileSync(
+            resolve(artifactDir, `${record.name}.${record.fingerprint}.json`),
+            JSON.stringify(
+              {
+                fingerprint: record.fingerprint,
+                plan,
+                materializeFingerprint: record.materializeFingerprint ?? null,
+                materializePlan: record.materializePlan ?? null,
+              },
+              null,
+              2,
+            ),
+          );
+        }
+        return {
+          name: record.name,
+          elapsedMs: record.elapsedMs,
+          coldMs: record.coldMs,
+          warmMs: record.warmMs,
+          p95Ms: record.p95Ms,
+          databaseMs: record.databaseMs,
+          serializationMs: record.serializationMs,
+          responseBytes: record.responseBytes,
+          fingerprint: record.fingerprint,
+          planFingerprint: record.planFingerprint,
+          materializeFingerprint: record.materializeFingerprint,
+          performanceRisk: record.performanceRisk ?? false,
+        };
+      });
+      writeFileSync(
+        resolve(artifactDir, 'manifest.json'),
+        JSON.stringify(
+          {
+            role: 'sgr_app',
+            statementTimeoutMs: 8000,
+            preLimit: false,
+            rls: true,
+            overviewMs: measured.overviewMs,
+            coldMs: measured.coldMs,
+            warmMs: measured.warmMs,
+            p95Ms: measured.overviewP95Ms,
+            databaseMs: measured.databaseMs,
+            serializationMs: measured.serializationMs,
+            responseBytes: measured.responseBytes,
+            queries: manifest,
+          },
+          null,
+          2,
+        ),
+      );
+      expect(measured.coldMs).toBeLessThan(8000);
+      expect(measured.overviewMs).toBeLessThan(8000);
+      expect(measured.overviewP95Ms).toBeLessThan(8000);
+      for (const elapsed of measured.warmMs) {
+        expect(elapsed).toBeLessThan(8000);
+      }
+      const overview = measured.records.find((record) => record.name === 'overview');
+      expect(Number(overview?.defects)).toBeGreaterThanOrEqual(100_000);
+      expect(overview?.topRiskId).toBe(riskyId);
+      expect(Number(overview?.invalidTemporal)).toBeGreaterThan(0);
+      const overviewPlan = JSON.stringify(overview?.plan ?? '');
+      expect(overviewPlan).toContain('Execution Time');
+      for (const record of manifest) {
+        expect(record.elapsedMs).toBeLessThan(8000);
+        if (record.fingerprint) {
+          expect(record.planFingerprint).toBe(record.fingerprint);
+        }
+      }
+      const top = measured.records.find((record) => record.name === 'topRisks');
+      const topRow = (top?.rows as Array<{ id?: string }> | undefined)?.[0];
+      expect(topRow?.id).toBe(riskyId);
+      const invalid = measured.records.find((record) => record.name === 'invalidTemporal');
+      expect(Number((invalid?.rows as Array<{ n?: number }> | undefined)?.[0]?.n)).toBeGreaterThan(
+        0,
+      );
+      const backlog = measured.records.find((record) => record.name === 'backlog');
+      expect(
+        Number((backlog?.rows as Array<{ evaluated?: number }> | undefined)?.[0]?.evaluated),
+      ).toBeGreaterThan(0);
+      const backlogTemplate = (
+        riskWeightedBacklogSql(where) as Prisma.Sql & { strings: readonly string[] }
+      ).strings.join('');
+      expect(backlogTemplate).toContain('coefficient');
+      expect(backlogTemplate).not.toMatch(/SELECT count\(\*\)::int\s+FROM public.defect_items/);
     } finally {
+      await owner.$executeRaw`
+        DELETE FROM public.analytics_insight_defects link
+        USING public.defect_items d, public.acts a
+        WHERE link."defectItemId" = d.id
+          AND d."actId" = a.id
+          AND a."officialNumber" IN (${marker}, ${`${marker}-b`})
+      `;
+      await owner.$executeRaw`
+        DELETE FROM public.analytics_insights insight
+        WHERE insight."scopeFingerprint" = 'company'
+          AND insight."generatedAt" > now() - interval '6 hours'
+          AND NOT EXISTS (
+            SELECT 1 FROM public.analytics_insight_defects link WHERE link."insightId" = insight.id
+          )
+      `;
       await owner.analyticsInsightDefect.deleteMany({
-        where: { defectItem: { actId } },
+        where: { insight: { snapshotHash: `${marker}:perf` } },
       });
       await owner.analyticsInsight.deleteMany({ where: { snapshotHash: `${marker}:perf` } });
       await owner.$executeRaw`ALTER TABLE public.defect_financial_impacts DISABLE TRIGGER defect_financial_impacts_guard`;
-      await owner.defectFinancialImpact.deleteMany({ where: { defectItem: { actId } } });
+      await owner.defectFinancialImpact.deleteMany({
+        where: { defectItem: { act: { officialNumber: { in: [marker, `${marker}-b`] } } } },
+      });
       await owner.$executeRaw`ALTER TABLE public.defect_financial_impacts ENABLE TRIGGER defect_financial_impacts_guard`;
-      await owner.defectItem.deleteMany({ where: { actId, id: { not: defectId } } });
+      await owner.defectInspectionAttempt.deleteMany({
+        where: { defectItem: { act: { officialNumber: { in: [marker, `${marker}-b`] } } } },
+      });
+      await owner.defectItemLiableOrganization.deleteMany({
+        where: { defectItem: { act: { officialNumber: { in: [marker, `${marker}-b`] } } } },
+      });
+      await owner.defectItem.deleteMany({
+        where: {
+          act: { officialNumber: { in: [marker, `${marker}-b`] } },
+          id: { not: defectId },
+        },
+      });
+      await owner.act.deleteMany({ where: { officialNumber: `${marker}-b` } });
+      await owner.workType
+        .deleteMany({ where: { code: marker.slice(0, 20) } })
+        .catch(() => undefined);
+      await owner.defectType
+        .deleteMany({ where: { code: `${marker}-b`.slice(0, 24).toUpperCase() } })
+        .catch(() => undefined);
+      await owner.propertyObject
+        .deleteMany({ where: { name: `${marker} object 2` } })
+        .catch(() => undefined);
+      await owner.$executeRaw`ALTER TABLE public.defect_inspection_attempts ENABLE TRIGGER defect_inspection_attempts_guard`;
       await owner.$executeRaw`ALTER TABLE public.defect_items ENABLE TRIGGER trg_sgr_refresh_act_status_from_defects`;
     }
-  }, 180_000);
+  }, 480_000);
 });
+
+function percentile(values: number[], p: number): number {
+  const sorted = [...values].sort((left, right) => left - right);
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1));
+  return sorted[index] ?? 0;
+}
+
+function executionMs(plan: unknown): number {
+  const match = /"Execution Time":\s*([0-9.]+)/.exec(JSON.stringify(plan ?? ''));
+  return match ? Number(match[1]) : 0;
+}

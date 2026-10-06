@@ -1,5 +1,5 @@
 import type { AnalyticsQuery } from '@sgr-registry/contracts';
-import { Prisma, type PrismaClient } from '@sgr-registry/database';
+import { lowFirstTimeRightSql, Prisma, type PrismaClient } from '@sgr-registry/database';
 import {
   ANALYTICS_RULE_VERSION,
   assessLowFirstTimeRight,
@@ -11,7 +11,9 @@ import {
   type ProportionSignal,
 } from '@sgr-registry/domain';
 import type { RegistryAccessScope } from '../registry/registry-access-scope.js';
-import { scopedFrom } from './analytics-filter.js';
+import { scopedFrom, withMaterializedAnalyticsScope } from './analytics-filter.js';
+
+export { scopedFrom, withMaterializedAnalyticsScope };
 
 type Sql = Prisma.Sql;
 type Raw = <T>(query: Sql) => Promise<T[]>;
@@ -130,13 +132,14 @@ export async function refreshAnalyticsPatterns(
           supportAvailable: true,
         },
       });
-      await tx.$executeRaw`
-        INSERT INTO public.analytics_insight_defects (
-          id, "insightId", "defectItemId", "contributionReason", "observedAt", "createdAt"
-        )
-        SELECT gen_random_uuid(), ${created.id}::uuid, members.id::uuid, ${built.reason}, ${now}, ${now}
-        FROM (${built.members}) members
-      `;
+      await tx.$queryRaw(Prisma.sql`
+        SELECT public.sgr_insert_insight_support(
+          ${created.id}::uuid,
+          ${built.reason},
+          ${now}::timestamptz,
+          COALESCE(ARRAY(SELECT members.id::uuid FROM (${built.members}) AS members), ARRAY[]::uuid[])
+        ) AS inserted
+      `);
       await tx.analyticsInsight.updateMany({
         where: {
           scopeFingerprint: stamp.fingerprint,
@@ -374,8 +377,12 @@ async function collectSignals(
       ),
       waits AS (
         SELECT attempt."defectItemId" AS id,
-               EXTRACT(EPOCH FROM (coalesce(attempt."reviewedAt", now()) - attempt."submittedAt")) AS seconds
+               EXTRACT(EPOCH FROM (attempt."reviewedAt" - attempt."submittedAt")) AS seconds
         FROM public.defect_inspection_attempts attempt
+        JOIN public.defect_items item ON item.id = attempt."defectItemId"
+        WHERE attempt."reviewedAt" IS NOT NULL
+          AND attempt."reviewedAt" >= attempt."submittedAt"
+          AND attempt."submittedAt" >= item."createdAt"
       ),
       joined AS (
         SELECT scoped.object_id, scoped.object_name, waits.seconds
@@ -427,7 +434,7 @@ async function collectSignals(
         input.where,
         Prisma.sql`JOIN public.defect_types dt ON dt.id = d."defectTypeId"`,
       )}
-      AND d.status::text = 'COMPLETED' AND d."readyAt" IS NOT NULL
+      AND d.status::text = 'COMPLETED' AND d."readyAt" IS NOT NULL AND d."readyAt" >= d."createdAt"
     ),
     median AS (
       SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY seconds) AS median_seconds, count(*)::int AS total
@@ -458,6 +465,7 @@ async function collectSignals(
         ${scopedFrom(input.where)}
         AND d.status::text = 'COMPLETED'
         AND d."readyAt" IS NOT NULL
+        AND d."readyAt" >= d."createdAt"
         AND d."defectTypeId" = ${row.dim_id}::uuid
       `,
     );
@@ -501,31 +509,27 @@ async function collectSignals(
 
   if (input.financial) {
     const costs = await raw<GroupRow>(Prisma.sql`
-      WITH scoped AS (
-        SELECT d.id, d."defectTypeId" AS type_id, dt.name AS type_name
-        ${scopedFrom(input.where, Prisma.sql`JOIN public.defect_types dt ON dt.id = d."defectTypeId"`)}
-      ),
-      money AS (
-        SELECT impact."defectItemId" AS id, sum(impact."amountByn") AS amount
-        FROM public.defect_financial_impacts impact
-        WHERE impact.status::text = 'CONFIRMED'
-          AND impact."amountType"::text = 'ACTUAL_COST'
-          AND impact."payerType"::text = 'COMPANY'
-        GROUP BY impact."defectItemId"
-      ),
-      joined AS (
-        SELECT scoped.type_id, scoped.type_name, money.amount
-        FROM scoped JOIN money ON money.id = scoped.id
-      ),
-      base AS (SELECT coalesce(sum(amount), 0) AS total_amount, count(*)::int AS total FROM joined)
+      WITH per_defect AS (
+        SELECT d.id, d."defectTypeId" AS type_id, dt.name AS type_name,
+               sum(impact."amountByn") AS amount
+        ${scopedFrom(
+          input.where,
+          Prisma.sql`JOIN public.defect_types dt ON dt.id = d."defectTypeId"
+            JOIN public.defect_financial_impacts impact ON impact."defectItemId" = d.id
+              AND impact.status::text = 'CONFIRMED'
+              AND impact."amountType"::text = 'ACTUAL_COST'
+              AND impact."payerType"::text = 'COMPANY'`,
+        )}
+        GROUP BY d.id, d."defectTypeId", dt.name
+      )
       SELECT type_id::text AS dim_id, type_name AS dim_label, NULL::text AS dim2_id, NULL::text AS dim2_label,
              count(*)::int AS support,
              1::int AS positive,
              1::int AS objects,
-             max(base.total)::int AS baseline_total,
+             sum(count(*)) OVER ()::int AS baseline_total,
              1::int AS baseline_positive
-      FROM joined CROSS JOIN base
-      GROUP BY type_id, type_name, base.total_amount, base.total
+      FROM per_defect
+      GROUP BY type_id, type_name
       HAVING sum(amount) > 0 AND count(*) >= 3
       LIMIT 25
     `);
@@ -566,82 +570,7 @@ async function collectSignals(
 
   const lowFirstTimeRight = await raw<
     GroupRow & { dim_key: string; completed: number; baseline_completed: number }
-  >(
-    Prisma.sql`
-      WITH scoped AS (
-        SELECT d.id, d.status::text AS status, d."defectTypeId" AS type_id, dt.name AS type_name,
-               d."workTypeId" AS work_id, wt.name AS work_name,
-               a."objectId" AS object_id, po.name AS object_name
-        ${scopedFrom(
-          input.where,
-          Prisma.sql`JOIN public.defect_types dt ON dt.id = d."defectTypeId"
-            JOIN public.property_objects po ON po.id = a."objectId"
-            LEFT JOIN public.work_types wt ON wt.id = d."workTypeId"`,
-        )}
-      ),
-      flags AS (
-        SELECT attempt."defectItemId" AS id,
-               bool_or(attempt.status::text = 'ACCEPTED' AND attempt."attemptNumber" = 1) AS first_accept
-        FROM public.defect_inspection_attempts attempt
-        GROUP BY attempt."defectItemId"
-      ),
-      base AS (
-        SELECT count(*) FILTER (WHERE scoped.status = 'COMPLETED' AND flags.id IS NOT NULL)::int AS with_attempts,
-               count(*) FILTER (WHERE scoped.status = 'COMPLETED' AND flags.first_accept)::int AS first_accept,
-               count(*) FILTER (WHERE scoped.status = 'COMPLETED')::int AS completed
-        FROM scoped
-        LEFT JOIN flags ON flags.id = scoped.id
-      )
-      SELECT * FROM (
-        SELECT 'liableOrganization' AS dim_key, org.id::text AS dim_id, org."officialName" AS dim_label,
-               count(*) FILTER (WHERE scoped.status = 'COMPLETED' AND flags.id IS NOT NULL)::int AS support,
-               count(*) FILTER (WHERE scoped.status = 'COMPLETED' AND flags.first_accept)::int AS positive,
-               count(*) FILTER (WHERE scoped.status = 'COMPLETED')::int AS completed,
-               max(base.with_attempts)::int AS baseline_total,
-               max(base.first_accept)::int AS baseline_positive,
-               max(base.completed)::int AS baseline_completed
-        FROM scoped
-        LEFT JOIN flags ON flags.id = scoped.id
-        JOIN public.defect_item_liable_organizations link ON link."defectItemId" = scoped.id
-        JOIN public.organizations org ON org.id = link."organizationId"
-        CROSS JOIN base
-        GROUP BY org.id, org."officialName"
-        UNION ALL
-        SELECT 'defectType', type_id::text, type_name,
-               count(*) FILTER (WHERE status = 'COMPLETED' AND flags.id IS NOT NULL)::int,
-               count(*) FILTER (WHERE status = 'COMPLETED' AND flags.first_accept)::int,
-               count(*) FILTER (WHERE status = 'COMPLETED')::int,
-               max(base.with_attempts)::int, max(base.first_accept)::int, max(base.completed)::int
-        FROM scoped
-        LEFT JOIN flags ON flags.id = scoped.id
-        CROSS JOIN base
-        GROUP BY type_id, type_name
-        UNION ALL
-        SELECT 'workType', work_id::text, work_name,
-               count(*) FILTER (WHERE status = 'COMPLETED' AND flags.id IS NOT NULL)::int,
-               count(*) FILTER (WHERE status = 'COMPLETED' AND flags.first_accept)::int,
-               count(*) FILTER (WHERE status = 'COMPLETED')::int,
-               max(base.with_attempts)::int, max(base.first_accept)::int, max(base.completed)::int
-        FROM scoped
-        LEFT JOIN flags ON flags.id = scoped.id
-        CROSS JOIN base
-        WHERE work_id IS NOT NULL AND work_name IS NOT NULL
-        GROUP BY work_id, work_name
-        UNION ALL
-        SELECT 'propertyObject', object_id::text, object_name,
-               count(*) FILTER (WHERE status = 'COMPLETED' AND flags.id IS NOT NULL)::int,
-               count(*) FILTER (WHERE status = 'COMPLETED' AND flags.first_accept)::int,
-               count(*) FILTER (WHERE status = 'COMPLETED')::int,
-               max(base.with_attempts)::int, max(base.first_accept)::int, max(base.completed)::int
-        FROM scoped
-        LEFT JOIN flags ON flags.id = scoped.id
-        CROSS JOIN base
-        GROUP BY object_id, object_name
-      ) segments
-      WHERE support >= 5
-      LIMIT 40
-    `,
-  );
+  >(lowFirstTimeRightSql(input.where));
   for (const row of lowFirstTimeRight) {
     const signal = assessLowFirstTimeRight({
       dimensions: [{ key: row.dim_key, value: row.dim_id, label: row.dim_label }],

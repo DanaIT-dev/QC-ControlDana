@@ -86,6 +86,7 @@ export const analyticsQuerySchema = z
         'withoutAttempts',
         'confirmedExposure',
         'riskWeightedBacklog',
+        'invalidTemporal',
       ])
       .optional(),
     page: z.coerce.number().int().positive().max(10_000).optional(),
@@ -333,6 +334,7 @@ export interface AnalyticsDataQuality {
   unresolvedEngineers: number;
   importedRecords: number;
   incompleteTimestamps: number;
+  invalidTemporalRecords: number;
   unavailableDimensions: string[];
   unavailableMetrics: Array<{ metric: string; reason: string }>;
   workExposureRecords: number;
@@ -357,6 +359,7 @@ export interface AnalyticsDrilldown {
     actId: string;
     actNumber: string | null;
     objectName: string;
+    label: string | null;
     liableOrganizations: string[];
     status: string;
     createdAt: string;

@@ -56,6 +56,7 @@ async function main(): Promise<void> {
       customerOrganizationId: customer.id,
       issuedOn: new Date('2026-10-01T00:00:00.000Z'),
       status: 'IN_PROGRESS',
+      createdAt: new Date('2026-10-01T00:00:00.000Z'),
       startedAt: new Date('2026-10-01T00:00:00.000Z'),
       officialNumber: marker,
     },
@@ -70,6 +71,7 @@ async function main(): Promise<void> {
         status: 'COMPLETED',
         location,
         claimDetails: location,
+        createdAt: new Date('2026-10-01T00:00:00.000Z'),
         readyAt: new Date('2026-10-04T00:00:00.000Z'),
         liableOrganizations: { create: { organizationId: orgId } },
       },
@@ -112,6 +114,25 @@ async function main(): Promise<void> {
     await completed(ownOrg.id, `rework-${index}`, true);
   }
   await completed(ownOrg.id, 'legacy-without-attempt', false);
+  await owner.$executeRaw`ALTER TABLE public.defect_items DROP CONSTRAINT IF EXISTS defect_items_ready_not_before_created`;
+  await owner.defectItem.create({
+    data: {
+      actId: act.id,
+      defectTypeId: defectType.id,
+      workTypeId: workType.id,
+      status: 'COMPLETED',
+      location: 'invalid-sequence',
+      claimDetails: 'invalid-sequence',
+      createdAt: new Date('2026-10-01T00:00:00.000Z'),
+      readyAt: new Date('2026-09-01T00:00:00.000Z'),
+      liableOrganizations: { create: { organizationId: ownOrg.id } },
+    },
+  });
+  await owner.$executeRaw`
+    ALTER TABLE public.defect_items
+    ADD CONSTRAINT defect_items_ready_not_before_created
+    CHECK ("readyAt" IS NULL OR "readyAt" >= "createdAt") NOT VALID
+  `;
   console.log(JSON.stringify({ seeded: true, actId: act.id, support: 6 }));
 }
 

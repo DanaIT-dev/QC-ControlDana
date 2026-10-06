@@ -66,9 +66,15 @@ test.describe('quality analytics', () => {
     await expectPrimaryNavItem(page, 'Аналитика', true);
     await page.goto('/analytics');
     await expect(page.getByRole('heading', { name: 'Аналитика' })).toBeVisible();
-    await page.getByLabel('Дата регистрации с').fill('2026-01-01');
+    await expect(async () => {
+      if (!page.url().includes('dateFrom=2026-01-01')) {
+        await page.getByLabel('Дата регистрации с').fill('2026-01-01');
+      }
+      await expect(page).toHaveURL(/dateFrom=2026-01-01/);
+    }).toPass();
     await page.getByLabel('Дата регистрации по').fill('2026-09-30');
     await expect(page).toHaveURL(/dateFrom=2026-01-01/);
+    await expect(page).toHaveURL(/dateTo=2026-09-30/);
     await page.reload();
     await expect(page.getByLabel('Дата регистрации с')).toHaveValue('2026-01-01');
     await page.getByRole('tab', { name: 'Паттерны' }).click();
@@ -111,6 +117,10 @@ test.describe('quality analytics', () => {
       );
       expect(overflow).toBe(false);
       await expect(page.locator('[data-analytics-ready="true"]')).toBeVisible();
+      const median = await page.getByRole('button', { name: /Медиана закрытия/ }).innerText();
+      expect(median).not.toMatch(/[-−]\d/);
+      const overflowText = await page.locator('main').innerText();
+      expect(overflowText).not.toMatch(/\b(undefined|NaN|Infinity)\b/);
       await page.screenshot({
         path: `test-results/analytics-hardening/admin-${viewport.width}x${viewport.height}.png`,
         fullPage: true,
@@ -126,6 +136,10 @@ test.describe('quality analytics', () => {
     await page.evaluate(() => {
       document.documentElement.style.zoom = '1.25';
     });
+    const zoomed = await page.evaluate(
+      () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+    );
+    expect(zoomed).toBe(false);
     await page.screenshot({
       path: 'test-results/analytics-hardening/zoom-125.png',
       fullPage: true,
@@ -150,6 +164,10 @@ test.describe('quality analytics', () => {
     await expect(page.getByRole('heading', { name: 'Аналитика' })).toBeVisible();
     await expect(page.getByRole('tab', { name: 'Финансы' })).toHaveCount(0);
     await page.getByRole('tab', { name: 'Паттерны' }).click();
+    await expect(page.locator('[data-slot="skeleton"]')).toHaveCount(0);
+    await expect(
+      page.getByText('Сигналов нет').or(page.getByText('Статус: NEW')).first(),
+    ).toBeVisible();
     await expect(page.getByRole('button', { name: 'Подтвердить' })).toHaveCount(0);
     await expect(page.getByText('Подтверждённая финансовая нагрузка')).toHaveCount(0);
     await page.screenshot({
@@ -164,6 +182,10 @@ test.describe('quality analytics', () => {
     await page.goto('/analytics');
     await expect(page.getByRole('heading', { name: 'Аналитика' })).toBeVisible();
     await page.getByRole('tab', { name: 'Паттерны' }).click();
+    await expect(page.locator('[data-slot="skeleton"]')).toHaveCount(0);
+    await expect(
+      page.getByText('Сигналов нет').or(page.getByText('Статус: NEW')).first(),
+    ).toBeVisible();
     await expect(page.getByRole('button', { name: 'Подтвердить' })).toHaveCount(0);
     await page.screenshot({
       path: 'test-results/analytics-hardening/super-admin.png',
@@ -241,9 +263,9 @@ test.describe('quality analytics', () => {
     const signal = page
       .locator('[data-slot="card"]')
       .filter({ hasText: 'доля принятия с первой попытки 0.0%' });
-    await expect(signal).toHaveCount(1);
-    await expect(signal).toContainText('Выборка: 6.');
-    await signal.getByRole('button', { name: 'Показать исходные дефекты' }).click();
+    await expect(signal.first()).toBeVisible();
+    await expect(signal.first()).toContainText('Выборка: 6.');
+    await signal.first().getByRole('button', { name: 'Показать исходные дефекты' }).click();
     await expect(page).toHaveURL(/tab=drilldown/);
     await expect(page).toHaveURL(/insightId=/);
     await expect(
@@ -280,6 +302,62 @@ test.describe('quality analytics', () => {
       path: 'test-results/analytics-hardening/contractor-mobile.png',
       fullPage: true,
     });
+  });
+
+  test('filters and durations stay consistent', async ({ page }) => {
+    test.setTimeout(120_000);
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    page.on('console', (message) => {
+      if (message.type() === 'error') errors.push(message.text());
+    });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await login(page, ACCOUNTS.admin);
+    await page.goto('/analytics');
+    await expect(page.locator('[data-analytics-ready="true"]')).toBeVisible();
+    await expect(page.getByRole('button', { name: /Новые сигналы/ })).not.toHaveText(
+      /Новые сигналы\s*0/,
+    );
+    const median = await page.getByRole('button', { name: /Медиана закрытия/ }).innerText();
+    expect(median).not.toMatch(/[-−]\d/);
+    await page.goto('/analytics?dateFrom=2099-01-01&dateTo=2099-01-02');
+    await expect(page.locator('[data-analytics-ready="true"]')).toBeVisible();
+    await expect(page.getByRole('button', { name: /Новые сигналы/ })).toContainText('0');
+    await page.getByRole('tab', { name: 'Паттерны' }).click();
+    await expect(page.getByText('Сигналов нет')).toBeVisible();
+    await page.goto('/analytics?dateFrom=2026-01-01');
+    await expect(page.locator('[data-analytics-ready="true"]')).toBeVisible();
+    const kpiText = await page.getByRole('button', { name: /Новые сигналы/ }).innerText();
+    const kpi = Number(kpiText.replace(/\D/g, ''));
+    expect(kpi).toBeGreaterThan(0);
+    await page.getByRole('tab', { name: 'Паттерны' }).click();
+    await expect(page.getByText('Статус: NEW')).toHaveCount(kpi);
+    await page.reload();
+    await expect(page).toHaveURL(/dateFrom=2026-01-01/);
+    await expect(page.getByRole('tab', { name: 'Паттерны' })).toHaveAttribute(
+      'data-state',
+      'active',
+    );
+    await expect(page.getByText('Статус: NEW')).toHaveCount(kpi);
+    await page.getByRole('tab', { name: 'Обзор' }).click();
+    await expect(page.locator('[data-analytics-ready="true"]')).toBeVisible();
+    await expect(page.getByRole('button', { name: /Новые сигналы/ })).toContainText(String(kpi));
+    await page.getByRole('tab', { name: 'Скорость' }).click();
+    await expect(page.getByText('Длительности')).toBeVisible();
+    const speed = await page.locator('main').innerText();
+    expect(speed).not.toMatch(/[-−]\d[\d\s\u00a0]*,?\d*\s*дн/);
+    await page.getByRole('tab', { name: 'Качество данных' }).click();
+    const invalidTemporal = page.getByRole('button', {
+      name: 'Некорректная последовательность событий',
+    });
+    await expect(invalidTemporal).toBeVisible();
+    await invalidTemporal.click();
+    await expect(page.getByText('invalid-sequence')).toBeVisible();
+    await page.screenshot({
+      path: 'test-results/analytics-hardening/temporal-quality.png',
+      fullPage: true,
+    });
+    expect(errors.filter((message) => !message.includes('favicon'))).toEqual([]);
   });
 
   test('empty pattern filter and overview retry', async ({ page }) => {

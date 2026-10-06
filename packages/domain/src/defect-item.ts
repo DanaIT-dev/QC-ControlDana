@@ -23,6 +23,8 @@ export function createDefectItem(input: CreateDefectItemInput): DefectItemState 
   };
 }
 
+export const TEMPORAL_ORDER_MESSAGE = 'Некорректная последовательность событий';
+
 export function assertReadyAtNotFuture(
   readyAt: Date,
   now: Date = new Date(),
@@ -33,6 +35,27 @@ export function assertReadyAtNotFuture(
   if (readyDate > today) {
     throw new DefectItemCompletionError('Дата исполнения не может быть позже сегодняшнего дня');
   }
+}
+
+export function assertInstantNotBefore(eventAt: Date, boundaryAt: Date): void {
+  if (eventAt.getTime() < boundaryAt.getTime()) {
+    throw new InvalidTransitionError(TEMPORAL_ORDER_MESSAGE);
+  }
+}
+
+export function resolveCompletionInstant(
+  readyAt: Date,
+  createdAt: Date,
+  now: Date = new Date(),
+  timeZone: string = BUSINESS_TIME_ZONE,
+): Date {
+  assertReadyAtNotFuture(readyAt, now, timeZone);
+  const readyDate = calendarDateInTimeZone(readyAt, timeZone);
+  const createdDate = calendarDateInTimeZone(createdAt, timeZone);
+  if (readyDate < createdDate) {
+    throw new InvalidTransitionError(TEMPORAL_ORDER_MESSAGE);
+  }
+  return readyAt.getTime() < createdAt.getTime() ? createdAt : readyAt;
 }
 
 export function completeDefectItem(

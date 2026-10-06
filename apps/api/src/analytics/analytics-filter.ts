@@ -1,5 +1,6 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type { AnalyticsQuery } from '@sgr-registry/contracts';
-import { Prisma } from '@sgr-registry/database';
+import { invalidTemporalPredicate, Prisma } from '@sgr-registry/database';
 import {
   ANALYTICS_NO_MOVEMENT_DAYS,
   minskDayEnd,
@@ -222,12 +223,34 @@ function metricSql(metric: AnalyticsMetric, query: AnalyticsQuery): Prisma.Sql {
             AND impact."amountType"::text = 'ESTIMATE'
         )
       )`;
+    case 'invalidTemporal':
+      return invalidTemporalPredicate;
     default:
       return Prisma.sql`TRUE`;
   }
 }
 
+const materializedScopeKey = Symbol.for('sgr.analytics.materialized-scope');
+const materializedScopeHost = globalThis as typeof globalThis & {
+  [materializedScopeKey]?: AsyncLocalStorage<true>;
+};
+const materializedScope =
+  materializedScopeHost[materializedScopeKey] ??
+  (materializedScopeHost[materializedScopeKey] = new AsyncLocalStorage<true>());
+
+export function withMaterializedAnalyticsScope<T>(fn: () => Promise<T>): Promise<T> {
+  return materializedScope.run(true, fn);
+}
+
 export function scopedFrom(where: Prisma.Sql, joins: Prisma.Sql = Prisma.empty): Prisma.Sql {
+  if (materializedScope.getStore()) {
+    return Prisma.sql`
+      FROM analytics_scope_defects d
+      JOIN public.acts a ON a.id = d."actId"
+      ${joins}
+      WHERE ${where}
+    `;
+  }
   return Prisma.sql`
     FROM public.defect_items d
     JOIN public.acts a ON a.id = d."actId"

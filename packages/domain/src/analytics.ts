@@ -58,6 +58,7 @@ export const ANALYTICS_METRICS = [
   'withoutAttempts',
   'confirmedExposure',
   'riskWeightedBacklog',
+  'invalidTemporal',
 ] as const;
 
 export type AnalyticsMetric = (typeof ANALYTICS_METRICS)[number];

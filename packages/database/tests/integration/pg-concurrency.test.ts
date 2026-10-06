@@ -86,6 +86,7 @@ describe('RLS transaction pg concurrency', () => {
         customerOrganizationId: org.id,
         issuedOn: new Date('2026-01-15T12:00:00.000Z'),
         status: 'IN_PROGRESS',
+        createdAt: new Date('2026-01-15T12:00:00.000Z'),
         startedAt: new Date('2026-01-15T12:00:00.000Z'),
       },
     });

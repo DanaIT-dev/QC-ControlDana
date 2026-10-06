@@ -1,4 +1,9 @@
 import type { Prisma } from '@sgr-registry/database';
+import {
+  assertInstantNotBefore,
+  InvalidTransitionError,
+  TEMPORAL_ORDER_MESSAGE,
+} from '@sgr-registry/domain';
 
 type AttemptTx = Prisma.TransactionClient;
 
@@ -18,6 +23,11 @@ export async function openInspectionAttempt(
   if (pending) {
     return pending;
   }
+  const defect = await tx.defectItem.findUniqueOrThrow({
+    where: { id: input.defectItemId },
+    select: { createdAt: true },
+  });
+  assertInstantNotBefore(input.submittedAt, defect.createdAt);
   const max = await tx.defectInspectionAttempt.aggregate({
     where: { defectItemId: input.defectItemId },
     _max: { attemptNumber: true },
@@ -56,8 +66,25 @@ export async function settleInspectionAttempt(
     rejectionReason?: string | null;
   },
 ): Promise<boolean> {
-  const updated = await tx.defectInspectionAttempt.updateMany({
+  const pending = await tx.defectInspectionAttempt.findFirst({
     where: { defectItemId: input.defectItemId, status: 'PENDING' },
+    select: { id: true, submittedAt: true },
+  });
+  if (!pending) {
+    return false;
+  }
+  const defect = await tx.defectItem.findUniqueOrThrow({
+    where: { id: input.defectItemId },
+    select: { createdAt: true },
+  });
+  assertInstantNotBefore(input.reviewedAt, pending.submittedAt);
+  assertInstantNotBefore(input.reviewedAt, defect.createdAt);
+  const updated = await tx.defectInspectionAttempt.updateMany({
+    where: {
+      id: pending.id,
+      status: 'PENDING',
+      submittedAt: { lte: input.reviewedAt },
+    },
     data: {
       status: input.status,
       reviewedByUserId: input.userId,
@@ -65,5 +92,8 @@ export async function settleInspectionAttempt(
       rejectionReason: input.rejectionReason ?? null,
     },
   });
-  return updated.count === 1;
+  if (updated.count !== 1) {
+    throw new InvalidTransitionError(TEMPORAL_ORDER_MESSAGE);
+  }
+  return true;
 }

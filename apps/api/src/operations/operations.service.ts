@@ -38,6 +38,8 @@ import {
   actStatusLabel,
   calendarDateInTimeZone,
   calendarDateToUtcNoon,
+  resolveCompletionInstant,
+  assertInstantNotBefore,
   canViewAssignedHistory,
   canViewFullHistory,
   canViewHistory,
@@ -671,9 +673,10 @@ export class OperationsService {
       where: { defectItemId },
     });
     assertDirectCompletionAllowed(liableCount > 0);
-    const readyAt = input.readyAt
+    const requestedReadyAt = input.readyAt
       ? calendarDateToUtcNoon(input.readyAt)
       : calendarDateToUtcNoon(calendarDateInTimeZone(new Date(), BUSINESS_TIME_ZONE));
+    const readyAt = resolveCompletionInstant(requestedReadyAt, item.createdAt);
     const next = completeDefectItem(
       { id: item.id, actId: item.actId, status: item.status, readyAt: item.readyAt },
       { readyAt, now: new Date() },
@@ -774,6 +777,8 @@ export class OperationsService {
       { id: item.id, actId: item.actId, status: item.status, readyAt: item.readyAt },
       { comment },
     );
+    const submittedAt = new Date();
+    assertInstantNotBefore(submittedAt, item.createdAt);
     const result = await this.prisma.client.$transaction(async (tx) => {
       if (item.version !== input.expectedVersion) {
         const latest = await tx.defectItem.findUnique({ where: { id: defectItemId } });
@@ -791,7 +796,7 @@ export class OperationsService {
         where: { id: defectItemId, version: input.expectedVersion, status: 'IN_PROGRESS' },
         data: {
           status: 'PENDING_INSPECTION',
-          submittedForInspectionAt: new Date(),
+          submittedForInspectionAt: submittedAt,
           submittedByUserId: user.id,
           submissionComment: comment,
           version: { increment: 1 },
@@ -827,7 +832,7 @@ export class OperationsService {
       await openInspectionAttempt(tx, {
         defectItemId,
         userId: user.id,
-        submittedAt: fresh.submittedForInspectionAt ?? new Date(),
+        submittedAt: fresh.submittedForInspectionAt ?? submittedAt,
         comment,
       });
       await writeAuditLog(tx, {
@@ -874,7 +879,16 @@ export class OperationsService {
       status: item.status,
       readyAt: item.readyAt,
     });
-    const readyAt = calendarDateToUtcNoon(calendarDateInTimeZone(new Date(), BUSINESS_TIME_ZONE));
+    const acceptedAt = new Date();
+    if (item.submittedForInspectionAt) {
+      assertInstantNotBefore(acceptedAt, item.submittedForInspectionAt);
+    }
+    assertInstantNotBefore(acceptedAt, item.createdAt);
+    const readyAt = resolveCompletionInstant(
+      calendarDateToUtcNoon(calendarDateInTimeZone(acceptedAt, BUSINESS_TIME_ZONE)),
+      item.createdAt,
+      acceptedAt,
+    );
     const result = await this.prisma.client.$transaction(async (tx) => {
       if (item.version !== input.expectedVersion) {
         const latest = await tx.defectItem.findUnique({ where: { id: defectItemId } });
@@ -893,7 +907,7 @@ export class OperationsService {
         data: {
           status: 'COMPLETED',
           readyAt,
-          acceptedAt: new Date(),
+          acceptedAt,
           acceptedByUserId: user.id,
           version: { increment: 1 },
         },
@@ -914,7 +928,7 @@ export class OperationsService {
         defectItemId,
         status: 'ACCEPTED',
         userId: user.id,
-        reviewedAt: new Date(),
+        reviewedAt: acceptedAt,
       });
       await this.syncActStatus(tx, item.actId);
       const fresh = await tx.defectItem.findUniqueOrThrow({ where: { id: defectItemId } });
@@ -970,6 +984,11 @@ export class OperationsService {
       { id: item.id, actId: item.actId, status: item.status, readyAt: item.readyAt },
       { reason },
     );
+    const rejectedAt = new Date();
+    if (item.submittedForInspectionAt) {
+      assertInstantNotBefore(rejectedAt, item.submittedForInspectionAt);
+    }
+    assertInstantNotBefore(rejectedAt, item.createdAt);
     const result = await this.prisma.client.$transaction(async (tx) => {
       if (item.version !== input.expectedVersion) {
         throw new StaleWriteError();
@@ -978,7 +997,7 @@ export class OperationsService {
         where: { id: defectItemId, version: input.expectedVersion, status: 'PENDING_INSPECTION' },
         data: {
           status: 'IN_PROGRESS',
-          rejectedAt: new Date(),
+          rejectedAt,
           rejectedByUserId: user.id,
           rejectionReason: reason,
           version: { increment: 1 },
@@ -991,7 +1010,7 @@ export class OperationsService {
         defectItemId,
         status: 'REJECTED',
         userId: user.id,
-        reviewedAt: new Date(),
+        reviewedAt: rejectedAt,
         rejectionReason: reason,
       });
       await this.syncActStatus(tx, item.actId);

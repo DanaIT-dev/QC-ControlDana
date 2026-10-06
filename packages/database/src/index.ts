@@ -135,3 +135,23 @@ export {
   ObjectStore,
   resolveAttachmentBucket,
 } from './object-storage';
+export {
+  confirmedExposureSql,
+  dropAnalyticsScopeSql,
+  explainStatement,
+  invalidTemporalCountSql,
+  invalidTemporalPredicate,
+  lowFirstTimeRightSql,
+  indexAnalyticsScopeSql,
+  matchingInsightIdsSql,
+  materializeAnalyticsScopeSql,
+  newInsightsCountSql,
+  overviewBundleSql,
+  overviewClosureSql,
+  overviewCountsSql,
+  processClocksSql,
+  riskWeightedBacklogSql,
+  statementFingerprint,
+  supportDrilldownSql,
+  topRisksSql,
+} from './analytics-statements';

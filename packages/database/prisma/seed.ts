@@ -1029,6 +1029,16 @@ async function ensureDefectItem(
   },
 ) {
   const existing = await tx.defectItem.findUnique({ where: { id: input.id } });
+  const completedAt = input.readyAt ?? null;
+  const act = completedAt
+    ? await tx.act.findUniqueOrThrow({
+        where: { id: input.actId },
+        select: { createdAt: true },
+      })
+    : null;
+  const createdAt =
+    completedAt && act ? (act.createdAt <= completedAt ? act.createdAt : completedAt) : undefined;
+  const chronology = createdAt ? { createdAt, updatedAt: completedAt ?? createdAt } : {};
   if (existing) {
     await tx.defectItem.update({
       where: { id: input.id },
@@ -1039,9 +1049,10 @@ async function ensureDefectItem(
         claimDetails: input.claimDetails,
         plannedDeadline: input.plannedDeadline ?? null,
         claimDeadline: input.claimDeadline ?? null,
-        readyAt: input.readyAt ?? null,
+        readyAt: completedAt,
         thirdPartyDeadline: input.thirdPartyDeadline ?? null,
         notes: input.notes ?? null,
+        ...chronology,
       },
     });
   } else {
@@ -1055,9 +1066,10 @@ async function ensureDefectItem(
         claimDetails: input.claimDetails,
         plannedDeadline: input.plannedDeadline ?? null,
         claimDeadline: input.claimDeadline ?? null,
-        readyAt: input.readyAt ?? null,
+        readyAt: completedAt,
         thirdPartyDeadline: input.thirdPartyDeadline ?? null,
         notes: input.notes ?? null,
+        ...chronology,
       },
     });
   }
