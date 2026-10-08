@@ -351,35 +351,20 @@ describe('analytics API', () => {
     }
 
     const responsibleSession = await login(responsible.email);
-    const responsibleOverview = await read(responsibleSession, '/api/analytics/overview');
-    expect(responsibleOverview.statusCode).toBe(200);
-    expect((responsibleOverview.json() as { financialVisible: boolean }).financialVisible).toBe(
-      false,
-    );
+    expect((await read(responsibleSession, '/api/analytics/overview')).statusCode).toBe(403);
     expect((await read(responsibleSession, '/api/analytics/costs')).statusCode).toBe(403);
 
     const contractorSession = await login(contractor.email);
-    const contractorOverview = await read(contractorSession, '/api/analytics/overview');
-    expect(contractorOverview.statusCode).toBe(200);
-    const contractorBody = contractorOverview.json() as {
-      defects: number;
-      financialVisible: boolean;
-    };
-    expect(contractorBody.financialVisible).toBe(false);
-    expect(contractorBody.defects).toBe(1);
-    expect(contractorOverview.json()).not.toHaveProperty('confirmedFinancialExposure');
-    expect(contractorOverview.json()).not.toHaveProperty('riskWeightedOpenBacklog');
-    expect(contractorOverview.json()).not.toHaveProperty('companyActualCostByn');
-    expect(contractorOverview.json()).not.toHaveProperty('topOrganizations');
-    const filters = await read(contractorSession, '/api/analytics/filters');
-    expect(JSON.stringify(filters.json())).not.toContain(foreignOrgId);
-    expect(JSON.stringify(filters.json())).not.toContain(`${marker} foreign`);
-    const hidden = await read(
-      contractorSession,
-      `/api/analytics/overview?liableOrganizationId=${foreignOrgId}`,
-    );
-    expect(hidden.statusCode).toBe(200);
-    expect((hidden.json() as { defects: number }).defects).toBe(0);
+    expect((await read(contractorSession, '/api/analytics/overview')).statusCode).toBe(403);
+    expect((await read(contractorSession, '/api/analytics/filters')).statusCode).toBe(403);
+    expect(
+      (
+        await read(
+          contractorSession,
+          `/api/analytics/overview?liableOrganizationId=${foreignOrgId}`,
+        )
+      ).statusCode,
+    ).toBe(403);
     expect(
       (await read(contractorSession, `/api/defects/${foreignDefectId}/financials`)).statusCode,
     ).toBe(403);
@@ -501,7 +486,7 @@ describe('analytics API', () => {
     ).toBe(400);
     expect(
       (await read(contractorSession, `/api/analytics/patterns/${low?.id}/defects`)).statusCode,
-    ).toBe(404);
+    ).toBe(403);
     const exposure = (
       (await read(adminSession, '/api/analytics/overview')).json() as {
         confirmedFinancialExposure?: { netConfirmedExposureByn?: string };
@@ -683,7 +668,7 @@ describe('analytics API', () => {
       kind: 'ORGANIZATION',
       fingerprint: `org:${foreignOrgId}`,
     });
-    const contractorForeign = await insight('contractor-foreign', [otherOrgDefect.id], {
+    await insight('contractor-foreign', [otherOrgDefect.id], {
       kind: 'ORGANIZATION',
       fingerprint: `org:${ownOrgId}`,
     });
@@ -830,34 +815,30 @@ describe('analytics API', () => {
       expect(value == null || value >= 0).toBe(true);
     }
     const contractorSession = await login(contractor.email);
-    const contractorView = (
-      await read(contractorSession, '/api/analytics/overview?dateFrom=2026-04-01&dateTo=2026-04-30')
-    ).json() as { newInsights: number };
-    const contractorPatterns = (
-      await read(contractorSession, '/api/analytics/patterns?dateFrom=2026-04-01&dateTo=2026-04-30')
-    ).json() as { items: Array<{ id: string; status: string }> };
-    const contractorNewIds = contractorPatterns.items
-      .filter((item) => item.status === 'NEW')
-      .map((item) => item.id);
-    expect(contractorNewIds.length).toBe(contractorView.newInsights);
-    expect(contractorNewIds).not.toContain(shared.id);
-    expect(contractorNewIds).not.toContain(contractorForeign.id);
-    const contractorForeignOrg = (
-      await read(
-        contractorSession,
-        `/api/analytics/overview?dateFrom=2026-04-01&dateTo=2026-04-30&liableOrganizationId=${foreignOrgId}`,
-      )
-    ).json() as { newInsights: number; defects: number };
-    expect(contractorForeignOrg.defects).toBe(0);
-    expect(contractorForeignOrg.newInsights).toBe(0);
-    const responsibleView = (
-      await read(
-        await login(responsible.email),
-        `/api/analytics/overview?dateFrom=2026-04-01&dateTo=2026-04-30&propertyObjectId=${otherObject.id}`,
-      )
-    ).json() as { newInsights: number; defects: number };
-    expect(responsibleView.defects).toBe(0);
-    expect(responsibleView.newInsights).toBe(0);
+    expect(
+      (
+        await read(
+          contractorSession,
+          '/api/analytics/overview?dateFrom=2026-04-01&dateTo=2026-04-30',
+        )
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await read(
+          contractorSession,
+          '/api/analytics/patterns?dateFrom=2026-04-01&dateTo=2026-04-30',
+        )
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await read(
+          await login(responsible.email),
+          `/api/analytics/overview?dateFrom=2026-04-01&dateTo=2026-04-30&propertyObjectId=${otherObject.id}`,
+        )
+      ).statusCode,
+    ).toBe(403);
     await prisma.analyticsInsightDefect.deleteMany({
       where: {
         OR: [

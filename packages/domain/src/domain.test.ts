@@ -498,12 +498,15 @@ describe('capabilities', () => {
       'DOWNLOAD_ATTACHMENT',
       'VIEW_NOTIFICATIONS',
       'VIEW_DEADLINE_CONTROL',
-      'VIEW_QUALITY_ANALYTICS',
       'CHANGE_OWN_PASSWORD',
       'VIEW_OWN_PROFILE',
     ]);
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).toContain('VIEW_ORGANIZATION_ACTS');
-    expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).toContain('VIEW_QUALITY_ANALYTICS');
+    expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('VIEW_QUALITY_ANALYTICS');
+    expect(capabilitiesForRole('RESPONSIBLE_ENGINEER')).not.toContain('VIEW_QUALITY_ANALYTICS');
+    expect(satisfiesCapability('ADMIN', 'VIEW_QUALITY_ANALYTICS')).toBe(true);
+    expect(satisfiesCapability('MANAGER', 'VIEW_QUALITY_ANALYTICS')).toBe(true);
+    expect(satisfiesCapability('SGR_MANAGER', 'VIEW_QUALITY_ANALYTICS')).toBe(true);
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('VIEW_FINANCIAL_ANALYTICS');
     expect(satisfiesCapability('SUPER_ADMIN', 'VIEW_QUALITY_ANALYTICS')).toBe(true);
     expect(satisfiesCapability('SUPER_ADMIN', 'VIEW_FINANCIAL_ANALYTICS')).toBe(true);

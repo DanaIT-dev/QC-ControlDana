@@ -43,7 +43,7 @@
 | DOWNLOAD_ATTACHMENT               | да    | да          | READY в scope       | READY в scope                            |
 | VIEW_NOTIFICATIONS                | да    | да          | да                  | да, только свой object scope             |
 | VIEW_DEADLINE_CONTROL             | да    | да          | THIRD_PARTY         | GENERAL закреплённых объектов            |
-| VIEW_QUALITY_ANALYTICS            | да    | да          | своя организация    | закреплённые объекты                     |
+| VIEW_QUALITY_ANALYTICS            | да    | да          | нет                 | нет                                      |
 | VIEW_FINANCIAL_ANALYTICS          | да    | да          | нет                 | нет                                      |
 | VIEW_CROSS_ORGANIZATION_ANALYTICS | да    | да          | нет                 | нет                                      |
 | MANAGE_DEFECT_FINANCIALS          | да    | да          | нет                 | нет                                      |
@@ -70,4 +70,4 @@ Capability без доступа к строке недостаточна: RESPO
 
 PostgreSQL RLS дублирует эту матрицу как второй уровень (объектный scope, слот A vs B/C, запрет истории подрядчику, неизменяемый AuditLog, SELECT-only SUPER_ADMIN). Хеш пароля не входит в user directory и недоступен `ADMIN`/`SUPER_ADMIN`. Подробности: [RLS_POLICY_MATRIX.md](../security/RLS_POLICY_MATRIX.md).
 
-`MANAGER` совпадает с `ADMIN` в аналитических capabilities. `SUPER_ADMIN` читает аналитику и финансы через oversight и не подтверждает записи и сигналы. `PENDING_ROLE` не имеет `VIEW_QUALITY_ANALYTICS`.
+`MANAGER` совпадает с `ADMIN` в аналитических capabilities. Страницу «Аналитика» открывают `ADMIN`, `MANAGER`, `SGR_MANAGER` и `SUPER_ADMIN`. `SUPER_ADMIN` читает аналитику и финансы через oversight и не подтверждает записи и сигналы. `CONTRACTOR_ENGINEER`, `RESPONSIBLE_ENGINEER` и `PENDING_ROLE` не имеют `VIEW_QUALITY_ANALYTICS`: пункт меню скрыт, страница уводит в реестр, API возвращает `403`.

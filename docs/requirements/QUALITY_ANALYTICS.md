@@ -141,13 +141,13 @@ Rework Rate = завершённые с хотя бы одной `REJECTED` / з
 
 | Capability                        | ADMIN, MANAGER, SGR_MANAGER | RESPONSIBLE_ENGINEER | CONTRACTOR_ENGINEER   | SUPER_ADMIN          |
 | --------------------------------- | --------------------------- | -------------------- | --------------------- | -------------------- |
-| VIEW_QUALITY_ANALYTICS            | да                          | да, scope объектов   | да, scope организации | read через oversight |
+| VIEW_QUALITY_ANALYTICS            | да                          | нет                  | нет                   | read через oversight |
 | VIEW_FINANCIAL_ANALYTICS          | да                          | нет                  | нет                   | read                 |
 | VIEW_CROSS_ORGANIZATION_ANALYTICS | да                          | нет                  | нет                   | read                 |
 | MANAGE_DEFECT_FINANCIALS          | да                          | нет                  | нет                   | нет                  |
 | REVIEW_ANALYTICS_INSIGHTS         | да                          | нет                  | нет                   | нет                  |
 
-`PENDING_ROLE` раздел не получает. Пустой фильтр не расширяет scope. Подрядчик не видит чужие названия в фильтрах, итогах и карточках: варианты фильтра берутся только из видимых дефектов, чужой UUID даёт пустую выборку без сообщения «организация не найдена».
+`PENDING_ROLE`, `CONTRACTOR_ENGINEER` и `RESPONSIBLE_ENGINEER` раздел не получают. Пустой фильтр не расширяет scope. Чужой UUID в фильтре разрешённой роли даёт пустую выборку без сообщения «организация не найдена».
 
 ## Попытки и доказательства
 

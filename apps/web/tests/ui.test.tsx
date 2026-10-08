@@ -252,7 +252,6 @@ describe('role-aware navigation', () => {
     );
     expect(responsible).toEqual([
       'Реестр',
-      'Аналитика',
       'Объекты',
       'Создать акт',
       'Контроль сроков',
@@ -260,7 +259,7 @@ describe('role-aware navigation', () => {
       'Справочники',
     ]);
     expect(navSectionsForRole('RESPONSIBLE_ENGINEER').administration).toEqual([]);
-    expect(contractor).toEqual(['Реестр', 'Аналитика', 'Контроль сроков', 'Уведомления']);
+    expect(contractor).toEqual(['Реестр', 'Контроль сроков', 'Уведомления']);
     expect(contractor).not.toContain('Справочники');
     expect(contractor).not.toContain('Объекты');
     expect(contractor).not.toContain('Создать акт');

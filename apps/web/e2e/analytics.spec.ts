@@ -157,23 +157,13 @@ test.describe('quality analytics', () => {
     });
   });
 
-  test('contractor does not see finance or review actions', async ({ page }) => {
+  test('contractor does not open analytics', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await login(page, ACCOUNTS.contractor);
+    await expectPrimaryNavItem(page, 'Аналитика', false);
     await page.goto('/analytics');
-    await expect(page.getByRole('heading', { name: 'Аналитика' })).toBeVisible();
-    await expect(page.getByRole('tab', { name: 'Финансы' })).toHaveCount(0);
-    await page.getByRole('tab', { name: 'Паттерны' }).click();
-    await expect(page.locator('[data-slot="skeleton"]')).toHaveCount(0);
-    await expect(
-      page.getByText('Сигналов нет').or(page.getByText('Статус: NEW')).first(),
-    ).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Подтвердить' })).toHaveCount(0);
-    await expect(page.getByText('Подтверждённая финансовая нагрузка')).toHaveCount(0);
-    await page.screenshot({
-      path: 'test-results/analytics-hardening/contractor.png',
-      fullPage: true,
-    });
+    await expect(page).not.toHaveURL(/\/analytics/);
+    await expect(page.getByRole('heading', { name: 'Аналитика' })).toHaveCount(0);
   });
 
   test('super admin has no mutation actions', async ({ page }) => {
@@ -224,11 +214,11 @@ test.describe('quality analytics', () => {
   for (const [role, email] of [
     ['manager', ACCOUNTS.manager],
     ['sgr', ACCOUNTS.sgrManager],
-    ['responsible', ACCOUNTS.responsible],
   ] as const) {
     test(`${role} can open analytics`, async ({ page }) => {
       await page.setViewportSize({ width: 1440, height: 900 });
       await login(page, email);
+      await expectPrimaryNavItem(page, 'Аналитика', true);
       await page.goto('/analytics');
       await expect(page.getByRole('heading', { name: 'Аналитика' })).toBeVisible();
       await expect(page.locator('[data-analytics-ready="true"]')).toBeVisible();
@@ -238,6 +228,15 @@ test.describe('quality analytics', () => {
       });
     });
   }
+
+  test('responsible engineer does not open analytics', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await login(page, ACCOUNTS.responsible);
+    await expectPrimaryNavItem(page, 'Аналитика', false);
+    await page.goto('/analytics');
+    await expect(page).not.toHaveURL(/\/analytics/);
+    await expect(page.getByRole('heading', { name: 'Аналитика' })).toHaveCount(0);
+  });
 
   test('admin opens only the defects that formed a low first-time-right signal', async ({
     page,
@@ -289,19 +288,13 @@ test.describe('quality analytics', () => {
     await expect(page.getByText('Выборка: 6. Правило 2026.10.05.2')).toBeVisible();
   });
 
-  test('contractor does not see the other organization', async ({ page }) => {
+  test('contractor does not see analytics in the compact menu', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await login(page, ACCOUNTS.contractor);
+    await expectPrimaryNavItem(page, 'Аналитика', false);
     await page.goto('/analytics');
-    await expect(page.locator('[data-analytics-ready="true"]')).toBeVisible();
-    await expect(page.getByText('ООО «Оконные системы Бел» (демо)')).toHaveCount(0);
-    await expect(page.getByText('Подтверждённая финансовая нагрузка')).toHaveCount(0);
-    const mainText = await page.locator('main').innerText();
-    expect(mainText).not.toMatch(/@/);
-    await page.screenshot({
-      path: 'test-results/analytics-hardening/contractor-mobile.png',
-      fullPage: true,
-    });
+    await expect(page).not.toHaveURL(/\/analytics/);
+    await expect(page.getByRole('heading', { name: 'Аналитика' })).toHaveCount(0);
   });
 
   test('filters and durations stay consistent', async ({ page }) => {
