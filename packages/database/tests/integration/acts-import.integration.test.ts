@@ -301,6 +301,8 @@ describe('legacy acts importer', () => {
       );
       const multi = imported.find((act) => act.sourceExternalUrl === BITRIX_A);
       const lobby = multi?.defectItems.find((item) => item.location === 'Лобби');
+      expect(lobby?.createdAt.getTime()).toBe(multi?.issuedOn.getTime());
+      expect(multi?.createdAt.getTime()).toBe(multi?.issuedOn.getTime());
       expect(lobby?.claimDetails).toBeNull();
       expect(lobby?.liableOrganizations.length).toBe(2);
       expect(lobby?.responsibleEngineers.map((item) => item.userId).sort()).toEqual(

@@ -541,6 +541,7 @@ export async function importLegacyActs(options: {
           objectId: object.id,
           customerOrganizationId: customerId,
           issuedOn: issuedAt,
+          createdAt: issuedAt,
           signedDocumentRef: actPlan.group.documentUrl,
           status: actPlan.group.status,
           sourceSystem: LEGACY_ACT_SOURCE_SYSTEM,
@@ -600,6 +601,7 @@ export async function importLegacyActs(options: {
             workTypeId: null,
             status: 'IN_PROGRESS',
             claimDetails: null,
+            createdAt: issuedAt,
             plannedDeadline: defectPlan.group.plannedDeadline
               ? calendarDateToUtcNoon(defectPlan.group.plannedDeadline)
               : null,

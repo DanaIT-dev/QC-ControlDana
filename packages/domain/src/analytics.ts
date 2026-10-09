@@ -716,21 +716,21 @@ export function organizationQualityIndex(input: {
   const components: IndexComponent[] = [
     component(
       'firstTimeRight',
-      'First-Time-Right',
+      'Принятие с первой попытки',
       input.firstTimeRight,
       INDEX_WEIGHTS.firstTimeRight,
       (value) => value * 100,
     ),
     component(
       'rework',
-      'Rework Rate',
+      'Доля повторных устранений',
       input.reworkRate,
       INDEX_WEIGHTS.rework,
       (value) => (1 - value) * 100,
     ),
     component(
       'contractorSla',
-      'Contractor SLA',
+      'Соблюдение срока подрядчика',
       input.contractorOnTimeRate,
       INDEX_WEIGHTS.contractorSla,
       (value) => value * 100,
@@ -942,7 +942,7 @@ export function assessLowFirstTimeRight(input: {
   const names = input.dimensions.map((dimension) => dimension.label).join(', ');
   return {
     signalType: 'LOW_FIRST_TIME_RIGHT',
-    title: 'First-Time-Right ниже базового уровня',
+    title: 'Принятие с первой попытки ниже базового уровня',
     plainLanguageExplanation: `В сегменте «${names}» доля принятия с первой попытки ${(observed * 100).toFixed(1)}% при базовом уровне ${(baseline * 100).toFixed(1)}%. Это наблюдаемая связь. Отдельное исследование здесь не проводится.`,
     dimensions: input.dimensions,
     supportCount: input.completedWithAttempts,

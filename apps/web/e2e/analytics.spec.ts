@@ -174,7 +174,7 @@ test.describe('quality analytics', () => {
     await page.getByRole('tab', { name: 'Паттерны' }).click();
     await expect(page.locator('[data-slot="skeleton"]')).toHaveCount(0);
     await expect(
-      page.getByText('Сигналов нет').or(page.getByText('Статус: NEW')).first(),
+      page.getByText('Сигналов нет').or(page.getByText('Статус: Новый')).first(),
     ).toBeVisible();
     await expect(page.getByRole('button', { name: 'Подтвердить' })).toHaveCount(0);
     await page.screenshot({
@@ -247,7 +247,7 @@ test.describe('quality analytics', () => {
     await page.goto('/analytics?dateFrom=2026-01-01');
     await expect(page.locator('[data-analytics-ready="true"]')).toBeVisible();
     const exposure = page.getByRole('button', { name: /Подтверждённая финансовая нагрузка/ });
-    await expect(exposure).toHaveAttribute('title', /ACTUAL_COST/);
+    await expect(exposure).toHaveAttribute('title', /фактические затраты компании/);
     const backlog = page.getByRole('button', { name: /Риск-взвешенный открытый долг/ });
     await expect(backlog).toHaveAttribute('title', /Формула 2026\.10\.05\.2/);
     await page.getByRole('tab', { name: 'Качество данных' }).click();
@@ -268,7 +268,7 @@ test.describe('quality analytics', () => {
     await expect(page).toHaveURL(/tab=drilldown/);
     await expect(page).toHaveURL(/insightId=/);
     await expect(
-      page.getByRole('heading', { name: 'First-Time-Right ниже базового уровня' }),
+      page.getByRole('heading', { name: 'Принятие с первой попытки ниже базового уровня' }),
     ).toBeVisible();
     await expect(page.getByText('Выборка: 6. Правило 2026.10.05.2')).toBeVisible();
     await expect(page.getByRole('link', { name: /Акт / })).toHaveCount(6);
@@ -324,14 +324,14 @@ test.describe('quality analytics', () => {
     const kpi = Number(kpiText.replace(/\D/g, ''));
     expect(kpi).toBeGreaterThan(0);
     await page.getByRole('tab', { name: 'Паттерны' }).click();
-    await expect(page.getByText('Статус: NEW')).toHaveCount(kpi);
+    await expect(page.getByText('Статус: Новый')).toHaveCount(kpi);
     await page.reload();
     await expect(page).toHaveURL(/dateFrom=2026-01-01/);
     await expect(page.getByRole('tab', { name: 'Паттерны' })).toHaveAttribute(
       'data-state',
       'active',
     );
-    await expect(page.getByText('Статус: NEW')).toHaveCount(kpi);
+    await expect(page.getByText('Статус: Новый')).toHaveCount(kpi);
     await page.getByRole('tab', { name: 'Обзор' }).click();
     await expect(page.locator('[data-analytics-ready="true"]')).toBeVisible();
     await expect(page.getByRole('button', { name: /Новые сигналы/ })).toContainText(String(kpi));

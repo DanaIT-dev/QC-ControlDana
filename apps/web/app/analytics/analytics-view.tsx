@@ -2,18 +2,47 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
+  ActStatus,
   AnalyticsCosts,
   AnalyticsOverview,
   AnalyticsPatternCard,
+  DefectItemStatus,
 } from '@sgr-registry/contracts';
+import { ACT_STATUS_LABELS, DEFECT_ITEM_STATUS_LABELS } from '@sgr-registry/domain';
+import { ChevronDownIcon } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
+import {
+  Bar,
+  BarChart as RechartsBarChart,
+  CartesianGrid,
+  Cell,
+  LabelList,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import { PageHeader } from '@/components/page-header';
 import { EmptyState, ErrorState, MetricSkeleton, TableSkeleton } from '@/components/states';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from '@/components/ui/chart';
 import { Input } from '@/components/ui/input';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   fetchAnalyticsCosts,
@@ -28,6 +57,61 @@ import {
   reviewInsight,
 } from '@/lib/analytics-api';
 import { queryKeys } from '@/lib/query-keys';
+
+const UNAVAILABLE_METRIC_LABELS: Record<string, string> = {
+  DetectionToAssignment: 'Время от обнаружения дефекта до назначения ответственного',
+  AssignmentToWorkStart: 'Время от назначения ответственного до начала работ',
+};
+
+const AMOUNT_TYPE_LABELS: Record<string, string> = {
+  ESTIMATE: 'Оценка',
+  APPROVED_AMOUNT: 'Согласованная сумма',
+  ACTUAL_COST: 'Фактические затраты',
+  RECOVERY: 'Возмещение',
+  AVOIDED_LOSS: 'Предотвращённые потери',
+};
+
+const PAYER_TYPE_LABELS: Record<string, string> = {
+  COMPANY: 'Компания',
+  LIABLE_ORGANIZATION: 'Виновная организация',
+  CUSTOMER: 'Заказчик',
+  OTHER: 'Другой',
+};
+
+const CONFIDENCE_LABELS: Record<string, string> = {
+  low: 'низкая',
+  medium: 'средняя',
+  high: 'высокая',
+};
+
+const INSIGHT_STATUS_LABELS: Record<string, string> = {
+  NEW: 'Новый',
+  UNDER_REVIEW: 'На проверке',
+  CONFIRMED: 'Подтверждён',
+  DISMISSED: 'Отклонён',
+};
+
+function named(labels: Record<string, string>, value: string): string {
+  return labels[value] ?? value;
+}
+
+function recordStatus(status: string): string {
+  return (
+    DEFECT_ITEM_STATUS_LABELS[status as DefectItemStatus] ??
+    ACT_STATUS_LABELS[status as ActStatus] ??
+    status
+  );
+}
+
+function readableAnalyticsText(value: string): string {
+  return value
+    .replaceAll(
+      'First-Time-Right ниже базового уровня',
+      'Принятие с первой попытки ниже базового уровня',
+    )
+    .replaceAll('First-Time-Right', 'принятия с первой попытки')
+    .replaceAll('Support snapshot unavailable', 'Снимок исходных дефектов недоступен');
+}
 
 const TABS = [
   ['overview', 'Обзор'],
@@ -94,7 +178,7 @@ export function AnalyticsView({ csrfToken }: { csrfToken: string }) {
     <div className="min-w-0">
       <PageHeader
         title="Аналитика"
-        description="Качество, ответственность и подтверждённые потери. Показатели считаются на сервере в Europe/Minsk и не смешивают предложения с расходами."
+        description="Качество, ответственность и подтверждённые потери. Показатели считаются на сервере по минскому времени и не смешивают предложения с расходами."
       />
       <FilterBar
         dateFrom={params.get('dateFrom') ?? ''}
@@ -220,19 +304,22 @@ function FilterBar({
       </label>
       <label className="grid min-w-40 gap-1 text-xs text-muted-foreground">
         Объект
-        <select
-          className="h-11 rounded-md border bg-background px-2 text-sm text-foreground"
-          value={objectId}
-          aria-label="Объект"
-          onChange={(event) => onChange({ propertyObjectId: event.target.value || null })}
-        >
-          <option value="">Все доступные</option>
-          {objects.map((object) => (
-            <option key={object.id} value={object.id} title={object.label}>
-              {object.label}
-            </option>
-          ))}
-        </select>
+        <div className="relative">
+          <select
+            className="h-11 w-full appearance-none rounded-lg border border-input bg-white py-2 pr-10 pl-3 text-sm text-foreground dark:bg-input/30"
+            value={objectId}
+            aria-label="Объект"
+            onChange={(event) => onChange({ propertyObjectId: event.target.value || null })}
+          >
+            <option value="">Все доступные</option>
+            {objects.map((object) => (
+              <option key={object.id} value={object.id} title={object.label}>
+                {object.label}
+              </option>
+            ))}
+          </select>
+          <ChevronDownIcon className="pointer-events-none absolute top-1/2 right-4 size-4 -translate-y-1/2 text-muted-foreground" />
+        </div>
       </label>
     </div>
   );
@@ -255,11 +342,11 @@ function OverviewPane({
           ],
         ] as const)
       : []),
-    ['Открытый backlog', String(data.openDefects), 'openDefects'],
+    ['Открытые дефекты', String(data.openDefects), 'openDefects'],
     ['Просрочено', String(data.overdueDefects), 'overdueDefects'],
     ['Медиана закрытия', formatDuration(data.medianClosureMs), 'closedInPeriod'],
-    ['p90 закрытия', formatDuration(data.p90ClosureMs), 'closedInPeriod'],
-    ['First-Time-Right', formatRate(data.firstTimeRight.rate), 'firstTimeRight'],
+    ['90% закрытий не дольше', formatDuration(data.p90ClosureMs), 'closedInPeriod'],
+    ['Принятие с первой попытки', formatRate(data.firstTimeRight.rate), 'firstTimeRight'],
     [
       'Среднее число попыток',
       data.averageAttempts == null
@@ -293,6 +380,11 @@ function OverviewPane({
       ) : null}
       <BarChart
         title="Открыто и закрыто"
+        compact
+        valueLabel="Открыто"
+        secondaryLabel="Закрыто"
+        valueColor="var(--error-foreground)"
+        secondaryColor="var(--success-foreground)"
         rows={data.openedClosed.map((row) => ({
           label: row.period,
           value: row.opened,
@@ -300,14 +392,17 @@ function OverviewPane({
         }))}
       />
       <BarChart
-        title="Возраст backlog"
-        rows={data.backlogAge.map((row) => ({ label: row.bucket, value: row.count }))}
+        title="Возраст открытых дефектов"
+        description="Интервалы в днях с даты составления акта."
+        valueLabel="Дефекты"
+        rows={data.backlogAge.map((row) => ({ label: ageDaysLabel(row.bucket), value: row.count }))}
       />
       <SimpleTable
         title="Топ рисков"
-        columns={['Дефект', 'Оценка']}
-        rows={data.topRisks.map((row) => [row.label, row.score])}
-        empty="Нет открытых дефектов в текущем scope."
+        description="Индекс риска открытого дефекта, не сумма в деньгах. Чем выше число, тем выше приоритет. Максимум 14 баллов: возраст до 3 (1 балл за каждые 30 дней), просроченный срок +2, каждое отклонение проверки +1 и не больше 3, нет виновной организации +1, нет ответственного инженера +1, подтверждённые затраты компании до 3, один и тот же вид дефекта встречается 3 раза и чаще +1. В колонке «Дефект» — помещение, а если его нет, вид дефекта."
+        columns={['Дефект', 'Индекс риска']}
+        rows={data.topRisks.map((row) => [row.label, formatRiskScore(row.score)])}
+        empty="Нет открытых дефектов в доступной выборке."
       />
       {data.financialVisible ? (
         <SimpleTable
@@ -334,7 +429,7 @@ function ExposureCard({
     <button
       type="button"
       className="min-h-28 rounded-[10px] border bg-card p-3 text-left"
-      title="Чистая нагрузка = подтверждённые ACTUAL_COST плательщика COMPANY минус подтверждённые RECOVERY. ESTIMATE, APPROVED_AMOUNT, AVOIDED_LOSS, DRAFT и VOIDED не входят."
+      title="Чистая нагрузка — подтверждённые фактические затраты компании минус подтверждённые возмещения. Оценка, согласованная сумма, предотвращённые потери, черновик и аннулированная запись не входят."
       onClick={() => onOpen('confirmedExposure')}
     >
       <p className="text-xs text-muted-foreground">Подтверждённая финансовая нагрузка</p>
@@ -367,7 +462,7 @@ function BacklogCard({
     <button
       type="button"
       className="min-h-28 rounded-[10px] border bg-card p-3 text-left"
-      title={`Сумма базовой оценки открытого дефекта, умноженной на коэффициент риска. База: последняя подтверждённая APPROVED_AMOUNT, иначе ESTIMATE. Коэффициент: 1.00, просрочка +0.25, каждое отклонение после первого +0.15, ожидание проверки дольше ${backlog.inspectionWaitDays} дней +0.20, максимум 2.00. Формула ${backlog.formulaVersion}.`}
+      title={`Сумма базовой оценки открытого дефекта, умноженной на коэффициент риска. База: последняя подтверждённая согласованная сумма, иначе оценка. Коэффициент: 1,00; просрочка +0,25; каждое отклонение после первого +0,15; ожидание проверки дольше ${backlog.inspectionWaitDays} дней +0,20; максимум 2,00. Формула ${backlog.formulaVersion}.`}
       onClick={() => onOpen('riskWeightedBacklog')}
     >
       <p className="text-xs text-muted-foreground">Риск-взвешенный открытый долг</p>
@@ -454,8 +549,8 @@ function CostsPane({
         title="Подтверждённые записи"
         columns={['Тип', 'Плательщик', 'Сумма', 'Дата']}
         rows={data.records.map((row) => [
-          row.amountType,
-          row.payerType,
+          named(AMOUNT_TYPE_LABELS, row.amountType),
+          named(PAYER_TYPE_LABELS, row.payerType),
           formatMoney(row.amountByn),
           row.occurredAt.slice(0, 10),
         ])}
@@ -498,8 +593,8 @@ function LiabilityPane({ search, suffix }: { search: string; suffix: string }) {
               'Организация',
               'Дефекты',
               'Доля среди зарегистрированных дефектов',
-              'First-Time-Right',
-              'Rework',
+              'Принятие с первой попытки',
+              'Доля повторных устранений',
               'Просрочка',
               'Выборка',
               'Индекс',
@@ -559,11 +654,16 @@ function ProcessPane({
     <div className="grid gap-4">
       <BarChart
         title="Воронка статусов"
-        rows={data.funnel.map((row) => ({ label: row.label, value: row.count }))}
+        valueLabel="Дефекты"
+        rows={data.funnel.map((row, index) => ({
+          label: row.label,
+          value: row.count,
+          color: FUNNEL_COLORS[index] ?? 'var(--primary)',
+        }))}
       />
       <SimpleTable
         title="Длительности"
-        columns={['Показатель', 'Медиана', 'p75', 'p90', 'Выборка']}
+        columns={['Показатель', 'Медиана', '75% не дольше', '90% не дольше', 'Выборка']}
         rows={[
           [
             'Время подрядчика',
@@ -597,9 +697,9 @@ function ProcessPane({
         empty="Нет временных меток попыток."
       />
       <p className="text-sm text-muted-foreground">
-        Время ожидания проверки не включается во время подрядчика. DetectionToAssignment: Метрика
-        недоступна: система пока не фиксирует необходимое событие. AssignmentToWorkStart: Метрика
-        недоступна: система пока не фиксирует необходимое событие.
+        Время ожидания проверки не включается во время подрядчика. Время от обнаружения дефекта до
+        назначения ответственного и время от назначения до начала работ пока не считаются: система
+        не фиксирует эти события.
       </p>
       <button
         type="button"
@@ -610,7 +710,9 @@ function ProcessPane({
       </button>
       <BarChart
         title="Возраст открытых дефектов"
-        rows={data.aging.map((row) => ({ label: row.bucket, value: row.count }))}
+        description="Интервалы в днях с даты составления акта."
+        valueLabel="Дефекты"
+        rows={data.aging.map((row) => ({ label: ageDaysLabel(row.bucket), value: row.count }))}
       />
     </div>
   );
@@ -693,7 +795,8 @@ function PatternCard({
         <p className="break-words">{item.plainLanguageExplanation}</p>
         <p>
           Выборка: {item.supportCount}. Базовый уровень: {formatRate(item.baselineValue)}.
-          Достоверность: {item.confidence}. Статус: {item.status}.
+          Достоверность: {named(CONFIDENCE_LABELS, item.confidence)}. Статус:{' '}
+          {named(INSIGHT_STATUS_LABELS, item.status)}.
         </p>
         <p className="text-xs text-muted-foreground">
           Правило {item.ruleVersion}. Рассчитано {item.generatedAt.slice(0, 10)}. Покрытие{' '}
@@ -708,7 +811,7 @@ function PatternCard({
             Показать исходные дефекты
           </button>
         ) : (
-          <p>Support snapshot unavailable</p>
+          <p>Снимок исходных дефектов недоступен</p>
         )}
         {item.canReview ? (
           <div className="grid gap-2">
@@ -770,7 +873,7 @@ function QualityPane({
       : []),
     ['Несопоставленные инженеры', data.unresolvedEngineers, 'defects'],
     ['Импортированные записи', data.importedRecords, 'defects'],
-    ['Неполные timestamps', data.incompleteTimestamps, 'defects'],
+    ['Неполное время событий', data.incompleteTimestamps, 'defects'],
     ['Некорректная последовательность событий', data.invalidTemporalRecords, 'invalidTemporal'],
   ];
   return (
@@ -797,7 +900,10 @@ function QualityPane({
       <SimpleTable
         title="Недоступные метрики"
         columns={['Метрика', 'Причина']}
-        rows={data.unavailableMetrics.map((item) => [item.metric, item.reason])}
+        rows={data.unavailableMetrics.map((item) => [
+          named(UNAVAILABLE_METRIC_LABELS, item.metric),
+          item.reason,
+        ])}
         empty="Все рассчитанные метрики доступны."
       />
       <SimpleTable
@@ -842,7 +948,9 @@ function SupportPane({
       <button type="button" className="min-h-11 w-fit underline" onClick={onBack}>
         Назад к паттернам
       </button>
-      <h2 className="text-lg font-semibold">{data.title ?? 'Сигнал'}</h2>
+      <h2 className="text-lg font-semibold">
+        {data.title ? readableAnalyticsText(data.title) : 'Сигнал'}
+      </h2>
       <p className="text-sm text-muted-foreground">
         Выборка: {data.supportCount}. Правило {data.ruleVersion ?? '—'}. Расчёт{' '}
         {data.observedAt?.slice(0, 10) ?? '—'}. {data.unavailableReason ?? ''}
@@ -869,10 +977,10 @@ function SupportPane({
             item.defectType,
             item.workType ?? '—',
             item.liableOrganizations.join(', ') || '—',
-            item.status,
+            recordStatus(item.status),
             item.deadline ? item.deadline.slice(0, 10) : '—',
             String(item.attemptCount),
-            item.contributionReason ?? '—',
+            item.contributionReason ? readableAnalyticsText(item.contributionReason) : '—',
           ])}
           empty={data.unavailableReason ?? 'В доступной области нет дефектов этого сигнала.'}
         />
@@ -921,7 +1029,7 @@ function DrilldownPane({
     return (
       <EmptyState
         title="Выберите показатель"
-        description="Drill-down открывается из карточки KPI, строки или сигнала."
+        description="Список исходных записей открывается из карточки показателя, строки или сигнала."
       />
     );
   }
@@ -975,7 +1083,7 @@ function DrilldownPane({
                 >
                   {item.liableOrganizations.join(', ') || '—'}
                 </td>
-                <td className="px-2 py-2">{item.status}</td>
+                <td className="px-2 py-2">{recordStatus(item.status)}</td>
               </tr>
             ))}
           </tbody>
@@ -1003,14 +1111,77 @@ function DrilldownPane({
   );
 }
 
-function BarChart({
+const FUNNEL_COLORS = [
+  'var(--primary)',
+  'var(--warning-foreground)',
+  'var(--success-foreground)',
+] as const;
+
+function formatChartNumber(value: number): string {
+  return value.toLocaleString('ru-RU', { maximumFractionDigits: 2 });
+}
+
+function ageDaysLabel(bucket: string): string {
+  return `${bucket} дн.`;
+}
+
+function formatRiskScore(value: string): string {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return value;
+  }
+  return numeric.toLocaleString('ru-RU', { maximumFractionDigits: 1 });
+}
+
+function BarValueLabel(props: {
+  x?: number | string;
+  y?: number | string;
+  width?: number | string;
+  height?: number | string;
+  value?: number | string | null | boolean | readonly (number | string)[];
+}) {
+  const x = Number(props.x ?? 0);
+  const y = Number(props.y ?? 0);
+  const width = Number(props.width ?? 0);
+  const height = Number(props.height ?? 0);
+  const numeric = Number(props.value ?? 0);
+  return (
+    <text
+      x={x + width + 8}
+      y={y + height / 2}
+      fill="var(--foreground)"
+      fontSize={12}
+      dominantBaseline="central"
+    >
+      {formatChartNumber(Number.isFinite(numeric) ? numeric : 0)}
+    </text>
+  );
+}
+
+export function BarChart({
   title,
   rows,
+  description,
+  compact = false,
+  valueLabel = 'Значение',
+  secondaryLabel = 'Вторая серия',
+  valueColor = 'var(--primary)',
+  secondaryColor = 'var(--brand)',
 }: {
   title: string;
-  rows: Array<{ label: string; value: number; secondary?: number }>;
+  rows: Array<{ label: string; value: number; secondary?: number; color?: string }>;
+  description?: string;
+  compact?: boolean;
+  valueLabel?: string;
+  secondaryLabel?: string;
+  valueColor?: string;
+  secondaryColor?: string;
 }) {
-  const max = Math.max(1, ...rows.map((row) => Math.max(row.value, row.secondary ?? 0)));
+  const hasSecondary = rows.some((row) => row.secondary != null);
+  const chartConfig = {
+    value: { label: valueLabel, color: valueColor },
+    compare: { label: secondaryLabel, color: secondaryColor },
+  } satisfies ChartConfig;
   if (rows.length === 0) {
     return (
       <EmptyState
@@ -1019,43 +1190,142 @@ function BarChart({
       />
     );
   }
+  const data = rows.map((row) => ({
+    label: row.label,
+    value: row.value,
+    compare: row.secondary ?? 0,
+  }));
+  const peak = Math.max(1, ...data.map((row) => Math.max(row.value, row.compare)));
+  const height = compact ? 260 : rows.length * (hasSecondary ? 72 : 64) + 40;
+  const minWidth = compact ? Math.max(560, rows.length * 28) : undefined;
+
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-base">{title}</CardTitle>
+        {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}
       </CardHeader>
-      <CardContent className="grid gap-2">
-        {rows.map((row) => (
-          <div key={row.label} className="grid grid-cols-[6rem_1fr] items-center gap-2">
-            <span className="truncate text-xs" title={row.label}>
-              {row.label}
-            </span>
-            <button
-              type="button"
-              className="h-3 rounded-sm bg-[repeating-linear-gradient(90deg,#1f4b99_0_8px,#d7e2f5_8px_10px)]"
-              style={{ width: `${Math.max(4, (row.value / max) * 100)}%` }}
-              aria-label={`${row.label}: ${row.value}`}
-              title={`${row.label}: ${row.value}`}
-            />
-          </div>
-        ))}
-        <table className="mt-2 w-full text-sm">
-          <caption className="sr-only">Таблица для графика {title}</caption>
-          <thead>
-            <tr>
-              <th className="text-left">Сегмент</th>
-              <th className="text-left">Значение</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={`${row.label}-table`}>
-                <td>{row.label}</td>
-                <td>{row.value}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <CardContent className="grid gap-3">
+        <div className={compact ? 'overflow-x-auto' : undefined}>
+          <ChartContainer
+            config={chartConfig}
+            initialDimension={{ width: minWidth ?? 640, height }}
+            className="aspect-auto w-full"
+            style={{ height, minWidth }}
+          >
+            <RechartsBarChart
+              accessibilityLayer
+              data={data}
+              layout={compact ? 'horizontal' : 'vertical'}
+              margin={
+                compact
+                  ? { left: 0, right: 8, top: 8, bottom: 0 }
+                  : { left: 4, right: 48, top: 8, bottom: 4 }
+              }
+              barGap={compact ? 1 : 4}
+            >
+              <CartesianGrid horizontal={compact} vertical={false} stroke="var(--border)" />
+              {compact ? (
+                <XAxis
+                  dataKey="label"
+                  interval={0}
+                  angle={-90}
+                  textAnchor="end"
+                  height={78}
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fill: 'var(--foreground)', fontSize: 11 }}
+                />
+              ) : (
+                <XAxis
+                  type="number"
+                  domain={[0, peak]}
+                  allowDecimals={false}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={(value: number) => formatChartNumber(value)}
+                />
+              )}
+              {compact ? (
+                <YAxis
+                  width={36}
+                  domain={[0, peak]}
+                  allowDecimals={false}
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fill: 'var(--foreground)', fontSize: 11 }}
+                  tickFormatter={(value: number) => formatChartNumber(value)}
+                />
+              ) : (
+                <YAxis
+                  type="category"
+                  dataKey="label"
+                  width={188}
+                  tickLine={false}
+                  axisLine={false}
+                  interval={0}
+                  tick={{ fill: 'var(--foreground)', fontSize: 12 }}
+                />
+              )}
+              <ChartTooltip
+                cursor={{ fill: 'var(--muted)' }}
+                content={<ChartTooltipContent indicator="line" />}
+              />
+              {hasSecondary ? (
+                <ChartLegend
+                  verticalAlign={compact ? 'top' : 'bottom'}
+                  content={<ChartLegendContent />}
+                />
+              ) : null}
+              <Bar
+                dataKey="value"
+                fill="var(--color-value)"
+                radius={compact ? [3, 3, 0, 0] : 4}
+                barSize={compact ? undefined : 16}
+              >
+                {compact
+                  ? null
+                  : rows.map((row) => (
+                      <Cell key={row.label} fill={row.color ?? 'var(--color-value)'} />
+                    ))}
+                {compact ? null : <LabelList dataKey="value" content={BarValueLabel} />}
+              </Bar>
+              {hasSecondary ? (
+                <Bar
+                  dataKey="compare"
+                  fill="var(--color-compare)"
+                  radius={compact ? [3, 3, 0, 0] : 4}
+                  barSize={compact ? undefined : 16}
+                >
+                  {compact ? null : <LabelList dataKey="compare" content={BarValueLabel} />}
+                </Bar>
+              ) : null}
+            </RechartsBarChart>
+          </ChartContainer>
+        </div>
+        <div className={compact ? 'max-h-44 overflow-y-auto' : undefined}>
+          <Table>
+            <caption className="sr-only">Таблица для графика {title}</caption>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Сегмент</TableHead>
+                <TableHead>{valueLabel}</TableHead>
+                {hasSecondary ? <TableHead>{secondaryLabel}</TableHead> : null}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row) => (
+                <TableRow key={`${row.label}-table`}>
+                  <TableCell>{row.label}</TableCell>
+                  <TableCell>{formatChartNumber(row.value)}</TableCell>
+                  {hasSecondary ? (
+                    <TableCell>{formatChartNumber(row.secondary ?? 0)}</TableCell>
+                  ) : null}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       </CardContent>
     </Card>
   );
@@ -1066,17 +1336,24 @@ function SimpleTable({
   columns,
   rows,
   empty,
+  description,
 }: {
   title: string;
   columns: string[];
   rows: string[][];
   empty: string;
+  description?: string;
 }) {
   if (rows.length === 0) return <EmptyState title={title} description={empty} />;
   return (
     <div className="overflow-x-auto rounded-[10px] border">
       <table className="w-full min-w-[480px] text-sm">
-        <caption className="px-3 py-2 text-left font-medium">{title}</caption>
+        <caption className="px-3 py-2 text-left">
+          <span className="font-medium">{title}</span>
+          {description ? (
+            <span className="mt-1 block font-normal text-muted-foreground">{description}</span>
+          ) : null}
+        </caption>
         <thead>
           <tr>
             {columns.map((column) => (

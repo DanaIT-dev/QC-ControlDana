@@ -699,7 +699,7 @@ export class AnalyticsService {
     const empty = {
       insightId,
       supportAvailable: insight.supportAvailable,
-      unavailableReason: insight.supportAvailable ? null : 'Support snapshot unavailable',
+      unavailableReason: insight.supportAvailable ? null : 'Снимок исходных дефектов недоступен',
       signalType: insight.signalType,
       title: insight.title,
       ruleVersion: insight.ruleVersion,
