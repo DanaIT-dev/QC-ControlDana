@@ -252,15 +252,23 @@ export function ReferenceDataView({
         }
       />
       <Tabs value={tab} onValueChange={(value) => setTab(value as TabId)}>
-        <TabsList aria-label="Справочники" className="flex h-auto flex-wrap">
+        <TabsList
+          aria-label="Справочники"
+          className="flex h-auto w-full flex-col items-stretch gap-1 p-1 md:w-fit md:flex-row md:flex-wrap"
+        >
           {visibleTabs.map((item) => (
-            <TabsTrigger key={item.id} value={item.id} role="tab">
+            <TabsTrigger
+              key={item.id}
+              value={item.id}
+              role="tab"
+              className="h-auto min-h-11 w-full flex-none justify-start px-3 py-2 text-left leading-snug whitespace-normal md:min-h-8 md:w-auto md:justify-center md:px-3 md:whitespace-nowrap"
+            >
               {item.label}
             </TabsTrigger>
           ))}
         </TabsList>
       </Tabs>
-      <div className="flex flex-col gap-2 md:flex-row">
+      <div className="flex flex-col gap-2 md:flex-row md:items-center">
         <Input
           aria-label="Поиск справочника"
           placeholder="Поиск"
@@ -279,7 +287,7 @@ export function ReferenceDataView({
           </SelectContent>
         </Select>
         {canMutate ? (
-          <Button type="button" onClick={() => setCreateOpen(true)}>
+          <Button type="button" className="w-full md:w-auto" onClick={() => setCreateOpen(true)}>
             {isConstruction ? 'Добавить организацию' : 'Создать'}
           </Button>
         ) : null}
