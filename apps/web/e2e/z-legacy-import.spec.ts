@@ -252,9 +252,9 @@ test.describe('legacy imported acts', () => {
     await expect(page.getByText('Лазарчик Е.В.').first()).toBeVisible();
     await openFirstVisibleAct(page);
     await expect(page.getByText('Источник: импортированный реестр')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Взять в работу' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Взять в работу' })).toBeVisible();
     await expect(page.getByText('Инженер не сопоставлен').first()).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Сопоставить инженера' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Сопоставить инженера' })).toBeVisible();
     await page.screenshot({
       path: resolve(SCREENSHOT_DIR, 'super-admin-readonly.png'),
       fullPage: true,

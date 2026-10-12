@@ -83,7 +83,7 @@ test.describe('read-only SUPER_ADMIN oversight', () => {
     await restoreManagerIfAdmin(page);
     await expect(page.getByRole('heading', { name: 'Администраторы', exact: true })).toBeVisible();
     await expect(page.getByText('Бизнес-данные реестра недоступны')).toHaveCount(0);
-    await expect(page.getByText('Режим просмотра')).toBeVisible();
+    await expect(page.getByText('Режим просмотра')).toHaveCount(0);
     await expect(page.getByRole('link', { name: 'Реестр' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Справочники' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Уведомления' })).toBeVisible();
@@ -105,7 +105,7 @@ test.describe('read-only SUPER_ADMIN oversight', () => {
     await page.goto('/super-admin');
     await clickAdminNavItem(page, 'Администраторы');
     await expect(page).toHaveURL(/\/super-admin/);
-    await expect(page.getByRole('link', { name: 'Создать акт' })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Создать акт' })).toBeVisible();
     await expect(page.getByText('Удалить администратора')).toHaveCount(0);
     await expect(
       page.getByRole('button', { name: 'Снять права администратора' }).first(),
@@ -120,9 +120,8 @@ test.describe('read-only SUPER_ADMIN oversight', () => {
     await expect(page.getByRole('tab', { name: 'История изменений' })).toBeVisible();
     await expect(page.getByRole('tab', { name: 'Обсуждение' })).toBeVisible();
     await page.getByRole('tab', { name: 'Обсуждение' }).click();
-    await expect(page.getByRole('button', { name: 'Отправить' })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Загрузить' })).toHaveCount(0);
-    await expect(page.getByLabel('Сообщение')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Отправить' })).toBeVisible();
+    await expect(page.getByLabel('Сообщение')).toBeVisible();
     const download = page.getByRole('link', { name: 'Скачать' });
     if ((await download.count()) > 0) {
       const href = await download.first().getAttribute('href');
@@ -134,10 +133,11 @@ test.describe('read-only SUPER_ADMIN oversight', () => {
     await page.goto('/reference-data');
     await expect(page.getByRole('tab', { name: 'Виды работ' })).toBeVisible();
     await expect(page.getByRole('tab', { name: 'Виды дефектов' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Создать' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Создать' })).toBeVisible();
 
     await page.goto('/acts/new');
-    await expect(page.getByText('Недостаточно прав для создания акта.')).toBeVisible();
+    await expect(page.getByText('Недостаточно прав для создания акта.')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Создать акт' })).toBeVisible();
 
     await page.goto('/history');
     await expect(page.getByRole('heading', { name: 'Журнал аудита' })).toBeVisible();
@@ -145,7 +145,7 @@ test.describe('read-only SUPER_ADMIN oversight', () => {
 
     await page.goto('/notifications');
     await expect(page.getByRole('heading', { name: 'Уведомления' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Прочитать все' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Прочитать все' })).toBeVisible();
 
     await page.goto('/users');
     await expect(page.getByRole('button', { name: 'Добавить пользователя' })).toBeVisible();
@@ -289,8 +289,8 @@ test.describe('read-only SUPER_ADMIN oversight', () => {
     await expect(page.getByText('Время последней проверки')).toBeVisible();
     await expect(page.getByText('Исходящие уведомления')).toBeVisible();
     await expect(page.getByText('Настройки уведомлений')).toBeVisible();
-    await expect(page.locator('[data-slot="notification-settings-readonly"]')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Сохранить настройки' })).toHaveCount(0);
+    await expect(page.locator('[data-slot="notification-settings-readonly"]')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Сохранить настройки' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Перезапустить' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Очистить очередь' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Применить миграции' })).toHaveCount(0);

@@ -5,7 +5,7 @@ import {
   type ExecutionContext,
   type CallHandler,
 } from '@nestjs/common';
-import { isOversightRole } from '@sgr-registry/domain';
+import { isReadOnlyRole } from '@sgr-registry/domain';
 import type { FastifyRequest } from 'fastify';
 import type { Observable } from 'rxjs';
 import type { AuthenticatedUser } from '../auth/authenticated-user.js';
@@ -28,7 +28,7 @@ export class SuperAdminReadOnlyInterceptor implements NestInterceptor {
       .switchToHttp()
       .getRequest<FastifyRequest & { user?: AuthenticatedUser }>();
     const role = request.user?.role;
-    if (!role || !isOversightRole(role)) {
+    if (!role || !isReadOnlyRole(role)) {
       return next.handle();
     }
     const method = request.method.toUpperCase();

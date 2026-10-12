@@ -1,6 +1,7 @@
 import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import {
   codedReferenceWriteSchema,
+  constructionWorkProfileWriteSchema,
   organizationWriteSchema,
   propertyObjectWriteSchema,
   referenceListQuerySchema,
@@ -25,6 +26,7 @@ import {
   parseOptionalCalendarDate,
   ValidationError,
   assertOrganizationNotDuplicate,
+  canManageConstructionWorkDirectory,
   canManageReferenceData,
   isNameOnlyWorkSupplier,
   REFERENCE_ADDRESS_MAX,
@@ -48,7 +50,12 @@ import {
 } from '../common/history-cursor.js';
 import { syncObjectEngineers } from './sync-object-engineers.js';
 
-export type ReferenceKind = 'property-objects' | 'organizations' | 'work-types' | 'defect-types';
+export type ReferenceKind =
+  | 'property-objects'
+  | 'organizations'
+  | 'work-types'
+  | 'defect-types'
+  | 'construction-work-organizations';
 
 @Injectable()
 export class ReferenceDataService {
@@ -72,6 +79,9 @@ export class ReferenceDataService {
     if (kind === 'work-types') {
       return this.listCoded('workType', { page, pageSize, status, search });
     }
+    if (kind === 'construction-work-organizations') {
+      return this.listConstructionWorkProfiles({ page, pageSize, status, search });
+    }
     return this.listCoded('defectType', { page, pageSize, status, search });
   }
 
@@ -81,6 +91,9 @@ export class ReferenceDataService {
     body: unknown,
     request: FastifyRequest,
   ) {
+    if (kind === 'construction-work-organizations') {
+      throw new ForbiddenException('Недостаточно прав');
+    }
     if (!canManageReferenceData(actor.role) && kind !== 'organizations') {
       throw new ForbiddenException('Недостаточно прав');
     }
@@ -105,6 +118,15 @@ export class ReferenceDataService {
     body: unknown,
     request: FastifyRequest,
   ) {
+    if (kind === 'construction-work-organizations') {
+      if (!canManageConstructionWorkDirectory(actor.role)) {
+        throw new ForbiddenException('Недостаточно прав');
+      }
+      return this.updateConstructionWorkProfile(id, actor, body, request);
+    }
+    if (!canManageReferenceData(actor.role)) {
+      throw new ForbiddenException('Недостаточно прав');
+    }
     if (kind === 'property-objects') {
       return this.updatePropertyObject(id, actor, body, request);
     }
@@ -138,6 +160,165 @@ export class ReferenceDataService {
     request: FastifyRequest,
   ) {
     return this.setArchived(kind, id, actor, body, request, false);
+  }
+
+  async remove(
+    kind: ReferenceKind,
+    id: string,
+    actor: AuthenticatedUser,
+    body: unknown,
+    request: FastifyRequest,
+  ) {
+    if (kind === 'construction-work-organizations') {
+      if (!canManageConstructionWorkDirectory(actor.role)) {
+        throw new ForbiddenException('Недостаточно прав');
+      }
+    } else if (!canManageReferenceData(actor.role)) {
+      throw new ForbiddenException('Недостаточно прав');
+    }
+    const input = parseCommandBody(versionedReasonSchema, body);
+    const ctx = actorContext(actor, request);
+    try {
+      await this.prisma.client.$transaction(async (tx) => {
+        if (kind === 'construction-work-organizations') {
+          const current = await tx.constructionWorkProfile.findUnique({
+            where: { id },
+            include: { organization: { select: { officialName: true } } },
+          });
+          if (!current) {
+            throw new NotFoundException('Запись не найдена');
+          }
+          if (current.version !== input.expectedVersion) {
+            throw new StaleWriteError();
+          }
+          await writeAuditLog(tx, {
+            ...ctx,
+            action: 'REFERENCE_DELETED',
+            entityType: 'CONSTRUCTION_WORK_PROFILE',
+            entityId: id,
+            oldValue: toJsonValue({
+              officialName: current.organization.officialName,
+              workSupplierOnObject: current.workSupplierOnObject,
+              workExecution: current.workExecution,
+            }),
+            reason: input.reason ?? null,
+          });
+          const deleted = await tx.constructionWorkProfile.deleteMany({
+            where: { id, version: input.expectedVersion },
+          });
+          if (deleted.count !== 1) {
+            throw new StaleWriteError();
+          }
+          return;
+        }
+        if (kind === 'property-objects') {
+          const current = await tx.propertyObject.findUnique({ where: { id } });
+          if (!current) {
+            throw new NotFoundException('Запись не найдена');
+          }
+          if (current.version !== input.expectedVersion) {
+            throw new StaleWriteError();
+          }
+          await tx.propertyObjectEngineer.deleteMany({ where: { propertyObjectId: id } });
+          await writeAuditLog(tx, {
+            ...ctx,
+            action: 'REFERENCE_DELETED',
+            entityType: 'PROPERTY_OBJECT',
+            entityId: id,
+            oldValue: toJsonValue({ name: current.name, address: current.address }),
+            reason: input.reason ?? null,
+          });
+          const deleted = await tx.propertyObject.deleteMany({
+            where: { id, version: input.expectedVersion },
+          });
+          if (deleted.count !== 1) {
+            throw new StaleWriteError();
+          }
+          return;
+        }
+        if (kind === 'organizations') {
+          const current = await tx.organization.findUnique({ where: { id } });
+          if (!current) {
+            throw new NotFoundException('Запись не найдена');
+          }
+          if (current.version !== input.expectedVersion) {
+            throw new StaleWriteError();
+          }
+          await tx.organizationRoleAssignment.deleteMany({ where: { organizationId: id } });
+          await tx.organizationWorkType.deleteMany({ where: { organizationId: id } });
+          await writeAuditLog(tx, {
+            ...ctx,
+            action: 'REFERENCE_DELETED',
+            entityType: 'ORGANIZATION',
+            entityId: id,
+            oldValue: toJsonValue({ officialName: current.officialName }),
+            reason: input.reason ?? null,
+          });
+          const deleted = await tx.organization.deleteMany({
+            where: { id, version: input.expectedVersion },
+          });
+          if (deleted.count !== 1) {
+            throw new StaleWriteError();
+          }
+          return;
+        }
+        if (kind === 'work-types') {
+          const current = await tx.workType.findUnique({ where: { id } });
+          if (!current) {
+            throw new NotFoundException('Запись не найдена');
+          }
+          if (current.version !== input.expectedVersion) {
+            throw new StaleWriteError();
+          }
+          await tx.organizationWorkType.deleteMany({ where: { workTypeId: id } });
+          await writeAuditLog(tx, {
+            ...ctx,
+            action: 'REFERENCE_DELETED',
+            entityType: 'WORK_TYPE',
+            entityId: id,
+            oldValue: toJsonValue({ code: current.code, name: current.name }),
+            reason: input.reason ?? null,
+          });
+          const deleted = await tx.workType.deleteMany({
+            where: { id, version: input.expectedVersion },
+          });
+          if (deleted.count !== 1) {
+            throw new StaleWriteError();
+          }
+          return;
+        }
+        const current = await tx.defectType.findUnique({ where: { id } });
+        if (!current) {
+          throw new NotFoundException('Запись не найдена');
+        }
+        if (current.version !== input.expectedVersion) {
+          throw new StaleWriteError();
+        }
+        await writeAuditLog(tx, {
+          ...ctx,
+          action: 'REFERENCE_DELETED',
+          entityType: 'DEFECT_TYPE',
+          entityId: id,
+          oldValue: toJsonValue({ code: current.code, name: current.name }),
+          reason: input.reason ?? null,
+        });
+        const deleted = await tx.defectType.deleteMany({
+          where: { id, version: input.expectedVersion },
+        });
+        if (deleted.count !== 1) {
+          throw new StaleWriteError();
+        }
+      });
+    } catch (error) {
+      if (isReferenceInUse(error)) {
+        throw new ValidationError(
+          'id',
+          'Запись используется в актах или других данных и не может быть удалена.',
+        );
+      }
+      throw error;
+    }
+    return { id };
   }
 
   async history(kind: ReferenceKind, id: string, rawQuery: Record<string, unknown>) {
@@ -277,6 +458,90 @@ export class ReferenceDataService {
       })),
       ...pageMeta(input, totalCount),
     };
+  }
+
+  private async listConstructionWorkProfiles(input: ListInput) {
+    const where: Prisma.ConstructionWorkProfileWhereInput = {
+      organization: {
+        ...activeWhere(input.status),
+        ...(input.search.length >= 2
+          ? { officialName: { contains: input.search, mode: 'insensitive' } }
+          : {}),
+      },
+    };
+    const totalCount = await this.prisma.client.constructionWorkProfile.count({ where });
+    const items = await this.prisma.client.constructionWorkProfile.findMany({
+      where,
+      include: {
+        organization: { select: { officialName: true, active: true, archivedAt: true } },
+      },
+      orderBy: [{ organization: { officialName: 'asc' } }, { id: 'asc' }],
+      skip: (input.page - 1) * input.pageSize,
+      take: input.pageSize,
+    });
+    return {
+      items: items.map((item) => ({
+        id: item.id,
+        officialName: item.organization.officialName,
+        workSupplierOnObject: item.workSupplierOnObject,
+        workExecution: item.workExecution,
+        active: item.organization.active,
+        version: item.version,
+        archivedAt: item.organization.archivedAt?.toISOString() ?? null,
+      })),
+      ...pageMeta(input, totalCount),
+    };
+  }
+
+  private async updateConstructionWorkProfile(
+    id: string,
+    actor: AuthenticatedUser,
+    body: unknown,
+    request: FastifyRequest,
+  ) {
+    const input = parseCommandBody(constructionWorkProfileWriteSchema, body);
+    const workSupplierOnObject = normalizeOptionalText(
+      input.workSupplierOnObject,
+      'workSupplierOnObject',
+      1000,
+    );
+    const workExecution = normalizeOptionalText(input.workExecution, 'workExecution', 1000);
+    const ctx = actorContext(actor, request);
+    return this.prisma.client.$transaction(async (tx) => {
+      const current = await tx.constructionWorkProfile.findUnique({ where: { id } });
+      if (!current) {
+        throw new NotFoundException('Запись не найдена');
+      }
+      if (current.version !== input.expectedVersion) {
+        throw new StaleWriteError();
+      }
+      const updated = await tx.constructionWorkProfile.updateMany({
+        where: { id, version: input.expectedVersion },
+        data: {
+          workSupplierOnObject,
+          workExecution,
+          version: { increment: 1 },
+        },
+      });
+      if (updated.count !== 1) {
+        throw new StaleWriteError();
+      }
+      await writeAuditLog(tx, {
+        ...ctx,
+        action: 'REFERENCE_UPDATED',
+        entityType: 'CONSTRUCTION_WORK_PROFILE',
+        entityId: id,
+        oldValue: toJsonValue({
+          workSupplierOnObject: current.workSupplierOnObject,
+          workExecution: current.workExecution,
+        }),
+        newValue: toJsonValue({ workSupplierOnObject, workExecution }),
+      });
+      return tx.constructionWorkProfile.findUniqueOrThrow({
+        where: { id },
+        include: { organization: { select: { officialName: true, active: true } } },
+      });
+    });
   }
 
   private async listCoded(model: 'workType' | 'defectType', input: ListInput) {
@@ -704,6 +969,9 @@ export class ReferenceDataService {
     request: FastifyRequest,
     archive: boolean,
   ) {
+    if (kind === 'construction-work-organizations') {
+      throw new ForbiddenException('Недостаточно прав');
+    }
     const input = parseCommandBody(versionedReasonSchema, body);
     const ctx = actorContext(actor, request);
     if (kind === 'property-objects') {
@@ -762,6 +1030,13 @@ export class ReferenceDataService {
   }
 
   private async exists(kind: ReferenceKind, id: string): Promise<boolean> {
+    if (kind === 'construction-work-organizations') {
+      const row = await this.prisma.client.constructionWorkProfile.findUnique({
+        where: { id },
+        select: { id: true },
+      });
+      return Boolean(row);
+    }
     const row = await catalogDelegate(this.prisma.client, kind).findUnique({
       where: { id },
       select: { id: true },
@@ -811,6 +1086,8 @@ function entityTypeOf(kind: ReferenceKind): string {
       return 'WORK_TYPE';
     case 'defect-types':
       return 'DEFECT_TYPE';
+    case 'construction-work-organizations':
+      return 'CONSTRUCTION_WORK_PROFILE';
   }
 }
 
@@ -873,7 +1150,18 @@ function catalogDelegate(
       return client.workType as CatalogDelegate;
     case 'defect-types':
       return client.defectType as CatalogDelegate;
+    case 'construction-work-organizations':
+      throw new ForbiddenException('Недостаточно прав');
   }
+}
+
+function isReferenceInUse(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) {
+    return false;
+  }
+  const code = 'code' in error ? String(error.code) : '';
+  const message = error instanceof Error ? error.message : '';
+  return code === 'P2003' || code === '23503' || /23503|foreign key/i.test(message);
 }
 
 function mapPropertyObjectWriteError(error: unknown): never {

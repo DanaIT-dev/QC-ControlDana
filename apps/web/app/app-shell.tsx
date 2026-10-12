@@ -2,7 +2,7 @@
 
 import type { ReactNode } from 'react';
 import type { SafeUserProfile } from '@sgr-registry/contracts';
-import { isOversightRole, postLoginPath, satisfiesCapability } from '@sgr-registry/domain';
+import { isReadOnlyRole, postLoginPath, satisfiesCapability } from '@sgr-registry/domain';
 import { MenuIcon } from 'lucide-react';
 import { useState } from 'react';
 import { AppNav } from './app-nav';
@@ -22,7 +22,7 @@ export function AppShell({ user, children }: { user: SafeUserProfile; children: 
     Boolean(user.mustCompleteProfile),
   );
   const showNotifications = satisfiesCapability(user.role, 'VIEW_NOTIFICATIONS');
-  const readOnly = isOversightRole(user.role);
+  const readOnly = isReadOnlyRole(user.role);
   return (
     <div className="flex min-h-dvh flex-col bg-background">
       <header className="sticky top-0 z-40 overflow-visible border-b bg-white">

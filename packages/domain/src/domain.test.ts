@@ -26,6 +26,8 @@ import {
   canViewHistory,
   canViewSystemSettings,
   canManageSystemSettings,
+  CAPABILITIES,
+  isReadOnlyRole,
   cancelAct,
   acceptDefectRepair,
   assertDirectCompletionAllowed,
@@ -428,6 +430,7 @@ describe('capabilities', () => {
       'MANAGE_USERS',
       'MANAGE_REFERENCE_DATA',
       'VIEW_REFERENCE_DATA',
+      'MANAGE_CONSTRUCTION_WORK_DIRECTORY',
       'CREATE_PROPERTY_OBJECT',
       'VIEW_SYSTEM_STATUS',
       'VIEW_ALL_ACTS',
@@ -475,6 +478,7 @@ describe('capabilities', () => {
     expect(capabilitiesForRole('SGR_MANAGER')).not.toContain('MANAGE_USERS');
     expect(capabilitiesForRole('RESPONSIBLE_ENGINEER')).toEqual([
       'VIEW_REFERENCE_DATA',
+      'MANAGE_CONSTRUCTION_WORK_DIRECTORY',
       'VIEW_ASSIGNED_DEFECTS',
       'CREATE_ACT',
       'START_ACT',
@@ -510,8 +514,8 @@ describe('capabilities', () => {
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('VIEW_FINANCIAL_ANALYTICS');
     expect(satisfiesCapability('SUPER_ADMIN', 'VIEW_QUALITY_ANALYTICS')).toBe(true);
     expect(satisfiesCapability('SUPER_ADMIN', 'VIEW_FINANCIAL_ANALYTICS')).toBe(true);
-    expect(hasCapability('SUPER_ADMIN', 'MANAGE_DEFECT_FINANCIALS')).toBe(false);
-    expect(hasCapability('SUPER_ADMIN', 'REVIEW_ANALYTICS_INSIGHTS')).toBe(false);
+    expect(hasCapability('SUPER_ADMIN', 'MANAGE_DEFECT_FINANCIALS')).toBe(true);
+    expect(hasCapability('SUPER_ADMIN', 'REVIEW_ANALYTICS_INSIGHTS')).toBe(true);
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).toContain('SUBMIT_DEFECT_FOR_INSPECTION');
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('VIEW_ALL_ACTS');
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('COMPLETE_DEFECT');
@@ -526,7 +530,7 @@ describe('capabilities', () => {
     expect(hasCapability('RESPONSIBLE_ENGINEER', 'CREATE_ACT')).toBe(true);
     expect(hasCapability('RESPONSIBLE_ENGINEER', 'START_ACT')).toBe(true);
     expect(hasCapability('CONTRACTOR_ENGINEER', 'START_ACT')).toBe(false);
-    expect(hasCapability('SUPER_ADMIN', 'START_ACT')).toBe(false);
+    expect(hasCapability('SUPER_ADMIN', 'START_ACT')).toBe(true);
     expect(hasCapability('RESPONSIBLE_ENGINEER', 'MANAGE_PROPOSALS')).toBe(false);
     expect(hasCapability('RESPONSIBLE_ENGINEER', 'MANAGE_REFERENCE_DATA')).toBe(false);
     expect(hasCapability('RESPONSIBLE_ENGINEER', 'VIEW_ALL_ACTS')).toBe(false);
@@ -541,24 +545,17 @@ describe('capabilities', () => {
     expect(canViewActChat('RESPONSIBLE_ENGINEER')).toBe(true);
     expect(canViewActChat('CONTRACTOR_ENGINEER')).toBe(false);
     expect(canViewActChat('SUPER_ADMIN')).toBe(true);
-    expect(hasCapability('SUPER_ADMIN', 'VIEW_ACT_CHAT')).toBe(false);
+    expect(hasCapability('SUPER_ADMIN', 'VIEW_ACT_CHAT')).toBe(true);
     expect(satisfiesCapability('SUPER_ADMIN', 'VIEW_ACT_CHAT')).toBe(true);
     expect(satisfiesCapability('SUPER_ADMIN', 'VIEW_SYSTEM_SETTINGS')).toBe(true);
     expect(canViewSystemSettings('SUPER_ADMIN')).toBe(true);
-    expect(canManageSystemSettings('SUPER_ADMIN')).toBe(false);
+    expect(canManageSystemSettings('SUPER_ADMIN')).toBe(true);
     expect(canViewSystemSettings('ADMIN')).toBe(true);
     expect(canManageSystemSettings('ADMIN')).toBe(true);
     expect(canViewSystemSettings('SGR_MANAGER')).toBe(false);
     expect(canManageSystemSettings('SGR_MANAGER')).toBe(false);
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('VIEW_ACT_CHAT');
-    expect(capabilitiesForRole('SUPER_ADMIN')).toEqual([
-      'VIEW_ALL_BUSINESS_DATA',
-      'VIEW_SYSTEM_STATUS',
-      'CREATE_UNASSIGNED_USER',
-      'MANAGE_ADMIN_GRANTS',
-      'CHANGE_OWN_PASSWORD',
-      'VIEW_OWN_PROFILE',
-    ]);
+    expect(capabilitiesForRole('SUPER_ADMIN')).toEqual([...CAPABILITIES]);
     expect(capabilitiesForRole('MANAGER')).toEqual(capabilitiesForRole('ADMIN'));
     expect(capabilitiesForRole('MANAGER')).not.toContain('MANAGE_ADMIN_GRANTS');
     expect(roleLabel('MANAGER')).toBe('Руководитель');
@@ -568,20 +565,21 @@ describe('capabilities', () => {
     expect(canViewProposalASum('MANAGER')).toBe(true);
     expect(visibleProposalSlots('MANAGER')).toEqual(['A', 'B', 'C']);
     expect(canCreatePropertyObject('SGR_MANAGER')).toBe(true);
-    expect(canCreatePropertyObject('SUPER_ADMIN')).toBe(false);
+    expect(canCreatePropertyObject('SUPER_ADMIN')).toBe(true);
     expect(canCreatePropertyObject('RESPONSIBLE_ENGINEER')).toBe(false);
     expect(canCreatePropertyObject('CONTRACTOR_ENGINEER')).toBe(false);
-    expect(capabilitiesForRole('SUPER_ADMIN')).not.toContain('CREATE_PROPERTY_OBJECT');
-    expect(capabilitiesForRole('SUPER_ADMIN')).not.toContain('MANAGE_USERS');
-    expect(capabilitiesForRole('SUPER_ADMIN')).not.toContain('VIEW_ALL_ACTS');
-    expect(capabilitiesForRole('SUPER_ADMIN')).not.toContain('CREATE_ACT');
+    expect(capabilitiesForRole('SUPER_ADMIN')).toContain('CREATE_PROPERTY_OBJECT');
+    expect(capabilitiesForRole('SUPER_ADMIN')).toContain('MANAGE_USERS');
+    expect(capabilitiesForRole('SUPER_ADMIN')).toContain('VIEW_ALL_ACTS');
+    expect(capabilitiesForRole('SUPER_ADMIN')).toContain('CREATE_ACT');
     expect(capabilitiesForRole('PENDING_ROLE')).toEqual([
       'CHANGE_OWN_PASSWORD',
       'VIEW_OWN_PROFILE',
     ]);
     expect(isOversightRole('SUPER_ADMIN')).toBe(true);
+    expect(isReadOnlyRole('SUPER_ADMIN')).toBe(false);
     expect(isPendingRole('PENDING_ROLE')).toBe(true);
-    expect(satisfiesCapability('SUPER_ADMIN', 'CREATE_ACT')).toBe(false);
+    expect(satisfiesCapability('SUPER_ADMIN', 'CREATE_ACT')).toBe(true);
     expect(satisfiesCapability('SUPER_ADMIN', 'VIEW_HISTORY')).toBe(true);
     expect(capabilitiesForRole('ADMIN')).not.toContain('MANAGE_ADMIN_GRANTS');
     expect(hasCapability('SUPER_ADMIN', 'MANAGE_ADMIN_GRANTS')).toBe(true);
@@ -605,7 +603,7 @@ describe('capabilities', () => {
     expect(canEditEmployment('ADMIN')).toBe(true);
     expect(canEditEmployment('MANAGER')).toBe(true);
     expect(canEditEmployment('SGR_MANAGER')).toBe(true);
-    expect(canEditEmployment('SUPER_ADMIN')).toBe(false);
+    expect(canEditEmployment('SUPER_ADMIN')).toBe(true);
     expect(canEditEmployment('RESPONSIBLE_ENGINEER')).toBe(false);
   });
 });
@@ -864,6 +862,15 @@ describe('property object linked selection', () => {
     expect(canAccessReferenceKind('RESPONSIBLE_ENGINEER', 'work-types')).toBe(false);
     expect(canAccessReferenceKind('RESPONSIBLE_ENGINEER', 'defect-types')).toBe(false);
     expect(canAccessReferenceKind('CONTRACTOR_ENGINEER', 'property-objects')).toBe(false);
+    expect(
+      canAccessReferenceKind('CONTRACTOR_ENGINEER', 'construction-work-organizations'),
+    ).toBe(true);
+    expect(
+      canAccessReferenceKind('RESPONSIBLE_ENGINEER', 'construction-work-organizations'),
+    ).toBe(true);
+    expect(canAccessReferenceKind('ADMIN', 'construction-work-organizations')).toBe(true);
+    expect(canAccessReferenceKind('SUPER_ADMIN', 'construction-work-organizations')).toBe(true);
+    expect(canAccessReferenceKind('PENDING_ROLE', 'construction-work-organizations')).toBe(false);
     expect(canViewObjectsDirectory('ADMIN')).toBe(true);
     expect(canViewObjectsDirectory('MANAGER')).toBe(true);
     expect(canViewObjectsDirectory('SGR_MANAGER')).toBe(true);

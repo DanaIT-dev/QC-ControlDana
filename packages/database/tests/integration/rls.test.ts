@@ -851,9 +851,15 @@ describe('PostgreSQL RLS', () => {
           prisma: appPrisma,
           secret,
           user: { id: superAdmin.id, sessionVersion: 1 },
-          callback: (tx) => tx.act.update({ where: { id: actId }, data: { status: 'CANCELLED' } }),
+          callback: async (tx) => {
+            await tx.act.update({
+              where: { id: actId },
+              data: { signedDocumentRef: 'sa-write-probe' },
+            });
+            throw new Error('sa-write-rollback');
+          },
         }),
-      ).rejects.toThrow();
+      ).rejects.toThrow('sa-write-rollback');
 
       const directory = await withAuthenticatedDbContext({
         prisma: appPrisma,
@@ -1143,12 +1149,12 @@ describe('PostgreSQL RLS', () => {
           callback: (tx) => tx.slaClock.findMany({ where: { id: clockA.id } }),
         });
         expect(saSelect).toHaveLength(1);
-        const saWrite = await withAuthenticatedDbContext({
-          prisma: appPrisma,
-          secret,
-          user: { id: superAdmin.id, sessionVersion: 1 },
-          callback: async (tx) => {
-            try {
+        await expect(
+          withAuthenticatedDbContext({
+            prisma: appPrisma,
+            secret,
+            user: { id: superAdmin.id, sessionVersion: 1 },
+            callback: async (tx) => {
               await tx.$executeRaw`
                 SELECT public.sgr_upsert_sla_clock(
                   ${clockA.id}::uuid,
@@ -1161,13 +1167,10 @@ describe('PostgreSQL RLS', () => {
                   9
                 )
               `;
-              return 'updated';
-            } catch {
-              return 'denied';
-            }
-          },
-        });
-        expect(saWrite).toBe('denied');
+              throw new Error('sa-sla-rollback');
+            },
+          }),
+        ).rejects.toThrow('sa-sla-rollback');
       } finally {
         await owner.user.delete({ where: { id: superAdmin.id } });
       }
@@ -1323,10 +1326,15 @@ describe('PostgreSQL RLS', () => {
           prisma: appPrisma,
           secret,
           user: { id: superAdmin.id, sessionVersion: superAdmin.sessionVersion },
-          callback: (tx) =>
-            tx.$queryRaw`SELECT * FROM public.sgr_start_act(${newAct.id}::uuid, 'rls-super')`,
+          callback: async (tx) => {
+            const rows = await tx.$queryRaw<Array<{ status: string }>>`
+              SELECT status FROM public.sgr_start_act(${newAct.id}::uuid, 'rls-super')
+            `;
+            expect(rows[0]?.status).toBe('IN_PROGRESS');
+            throw new Error('sa-start-rollback');
+          },
         }),
-      ).rejects.toThrow();
+      ).rejects.toThrow('sa-start-rollback');
     }
 
     await expect(

@@ -32,14 +32,9 @@ test.describe('system settings oversight', () => {
     await expect(page).toHaveURL(/\/registry/);
     await clickAdminNavItem(page, 'Состояние системы');
     await expect(page.getByText('Настройки уведомлений')).toBeVisible();
-    const readonly = page.locator('[data-slot="notification-settings-readonly"]');
-    await expect(readonly).toBeVisible();
-    await expect(readonly.getByText('Дней до предупреждения')).toBeVisible();
-    await expect(readonly.getByText('Пороги эскалации (дни)')).toBeVisible();
-    await expect(readonly.getByText('Ежедневная проверка (Europe/Minsk)')).toBeVisible();
-    await expect(readonly.getByText(/Email-уведомления/)).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Сохранить настройки' })).toHaveCount(0);
-    await expect(page.locator('#warning-days')).toHaveCount(0);
+    await expect(page.locator('[data-slot="notification-settings-readonly"]')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Сохранить настройки' })).toBeVisible();
+    await expect(page.locator('#warning-days')).toBeVisible();
   });
 
   test('ADMIN keeps editable notification settings', async ({ page }) => {

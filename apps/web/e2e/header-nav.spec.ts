@@ -164,13 +164,13 @@ test.describe('responsive header navigation', () => {
     });
     await page.setViewportSize({ width: 1440, height: 900 });
     await login(page, ACCOUNTS.superAdmin);
-    await expect(page.getByText('Режим просмотра').first()).toBeVisible();
+    await expect(page.getByText('Режим просмотра')).toHaveCount(0);
     await expectPrimaryNavItem(page, 'Реестр', true);
     await expectPrimaryNavItem(page, 'Объекты', true);
     await expectPrimaryNavItem(page, 'Контроль сроков', true);
     await expectPrimaryNavItem(page, 'Уведомления', true);
     await expectPrimaryNavItem(page, 'Справочники', true);
-    await expectPrimaryNavItem(page, 'Создать акт', false);
+    await expectPrimaryNavItem(page, 'Создать акт', true);
     await expectAdminNavItem(page, 'Пользователи', true);
     await expectAdminNavItem(page, 'Администраторы', true);
     await expectAdminNavItem(page, 'Журнал аудита', true);
@@ -183,7 +183,7 @@ test.describe('responsive header navigation', () => {
     );
     await clickAdminNavItem(page, 'Состояние системы');
     await expect(page).toHaveURL(/\/system-status/);
-    await expect(page.getByRole('button', { name: 'Создать акт' })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Создать акт' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Перезапустить' })).toHaveCount(0);
 
     await page.getByRole('button', { name: 'Меню пользователя' }).click();
@@ -219,7 +219,7 @@ test.describe('responsive header navigation', () => {
     await login(page, ACCOUNTS.contractor);
     await expectNoAdminMenu(page);
     await expectPrimaryNavItem(page, 'Реестр', true);
-    await expectPrimaryNavItem(page, 'Справочники', false);
+    await expectPrimaryNavItem(page, 'Справочники', true);
     await expectAppFooter(page);
     expect(errors.filter((message) => !message.includes('favicon'))).toEqual([]);
   });

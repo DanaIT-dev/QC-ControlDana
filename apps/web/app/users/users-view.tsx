@@ -362,12 +362,12 @@ export function UsersView({
       ) : null}
       {createOpen ? (
         <CreateUserDialog
-          unassigned={canCreateUnassigned && !canManage}
+          unassigned={canCreateUnassigned}
           assignableRoles={assignableRoles}
           onClose={() => setCreateOpen(false)}
           onCreate={async (body) => {
             await mutate(
-              canCreateUnassigned && !canManage ? '/api/super-admin/users' : '/api/users',
+              canCreateUnassigned ? '/api/super-admin/users' : '/api/users',
               'POST',
               body,
             );

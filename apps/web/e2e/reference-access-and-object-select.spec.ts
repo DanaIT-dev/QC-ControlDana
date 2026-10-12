@@ -94,11 +94,18 @@ test.describe('reference access and linked object selection', () => {
     expect(applicationErrors(errors)).toEqual([]);
   });
 
-  test('CONTRACTOR_ENGINEER does not get reference navigation or API access', async ({ page }) => {
+  test('CONTRACTOR_ENGINEER edits only the construction work directory', async ({ page }) => {
     await login(page, ACCOUNTS.contractor);
-    await expect(page.getByRole('link', { name: 'Справочники' })).toHaveCount(0);
-    await page.goto('/reference-data');
-    await expect(page.getByText('Недостаточно прав для просмотра справочников.')).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Справочники' })).toBeVisible();
+    await page.getByRole('link', { name: 'Справочники' }).click();
+    await expect(page).toHaveURL(/\/reference-data/);
+    await expect(
+      page.getByRole('tab', { name: 'Организации по выполнению строительных работ' }),
+    ).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Объекты' })).toHaveCount(0);
+    await expect(page.getByRole('tab', { name: 'Организации' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Создать' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Редактировать' }).first()).toBeVisible();
   });
 
   test('ADMIN and SGR_MANAGER keep catalog management', async ({ page }) => {

@@ -72,7 +72,10 @@ export function navSectionsForRole(role: UserRole): AppNavSections {
       match: (pathname) => pathname.startsWith('/notifications'),
     });
   }
-  if (satisfiesCapability(role, 'VIEW_REFERENCE_DATA')) {
+  if (
+    satisfiesCapability(role, 'VIEW_REFERENCE_DATA') ||
+    hasCapability(role, 'MANAGE_CONSTRUCTION_WORK_DIRECTORY')
+  ) {
     primary.push({
       href: '/reference-data',
       label: 'Справочники',

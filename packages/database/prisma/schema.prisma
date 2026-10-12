@@ -274,6 +274,7 @@ model Organization {
 
   roles        OrganizationRoleAssignment[]
   workTypes    OrganizationWorkType[]
+  constructionWorkProfile ConstructionWorkProfile?
   customerActs Act[]                          @relation("ActCustomer")
   liableItems  DefectItemLiableOrganization[]
   memberships  UserOrganizationMembership[]
@@ -284,6 +285,20 @@ model Organization {
   @@unique([unp])
   @@index([active, officialName])
   @@map("organizations")
+}
+
+model ConstructionWorkProfile {
+  id                   String   @id @default(uuid()) @db.Uuid
+  organizationId       String   @unique @db.Uuid
+  workSupplierOnObject String?
+  workExecution        String?
+  version              Int      @default(1)
+  createdAt            DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime @updatedAt @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("construction_work_profiles")
 }
 
 model UserOrganizationMembership {

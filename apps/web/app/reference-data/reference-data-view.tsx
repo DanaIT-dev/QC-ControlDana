@@ -39,6 +39,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -55,6 +56,10 @@ const TABS = [
   { id: 'organizations', label: 'Организации' },
   { id: 'work-types', label: 'Виды работ' },
   { id: 'defect-types', label: 'Виды дефектов' },
+  {
+    id: 'construction-work-organizations',
+    label: 'Организации по выполнению строительных работ',
+  },
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
@@ -62,10 +67,12 @@ type TabId = (typeof TABS)[number]['id'];
 export function ReferenceDataView({
   csrfToken,
   canMutate,
+  canEditConstruction,
   role,
 }: {
   csrfToken: string;
   canMutate: boolean;
+  canEditConstruction: boolean;
   role: UserRole;
 }) {
   const queryClient = useQueryClient();
@@ -76,7 +83,7 @@ export function ReferenceDataView({
   const [tab, setTab] = useState<TabId>(() =>
     visibleTabs.some((item) => item.id === requestedTab)
       ? (requestedTab as TabId)
-      : 'property-objects',
+      : (visibleTabs[0]?.id ?? 'property-objects'),
   );
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('ALL');
@@ -86,6 +93,12 @@ export function ReferenceDataView({
     id: string;
     version: number;
     title: string;
+  } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    id: string;
+    version: number;
+    title: string;
+    kind: TabId;
   } | null>(null);
   const [editTarget, setEditTarget] = useState<{
     id: string;
@@ -105,6 +118,13 @@ export function ReferenceDataView({
     contactPerson: string;
     roles: OrganizationRole[];
   } | null>(null);
+  const [constructionEditTarget, setConstructionEditTarget] = useState<{
+    id: string;
+    version: number;
+    officialName: string;
+    workSupplierOnObject: string;
+    workExecution: string;
+  } | null>(null);
   const listQuery = useQuery({
     queryKey: ['reference', tab, search, status],
     queryFn: async () => {
@@ -112,13 +132,41 @@ export function ReferenceDataView({
       if (search.trim().length >= 2) {
         params.set('search', search.trim());
       }
+      if (tab === 'construction-work-organizations') {
+        params.set('pageSize', '100');
+      }
       const response = await fetch(`/api/reference-data/${tab}?${params.toString()}`, {
         credentials: 'include',
       });
       if (!response.ok) {
         throw new Error('list');
       }
-      return (await response.json()) as { items: Array<Record<string, unknown>> };
+      const data = (await response.json()) as {
+        items: Array<Record<string, unknown>>;
+        totalPages?: number;
+      };
+      const totalPages = data.totalPages ?? 1;
+      if (tab !== 'construction-work-organizations' || totalPages <= 1) {
+        return data;
+      }
+      const rest = await Promise.all(
+        Array.from({ length: totalPages - 1 }, async (_, index) => {
+          const pageParams = new URLSearchParams(params);
+          pageParams.set('page', String(index + 2));
+          const pageResponse = await fetch(
+            `/api/reference-data/${tab}?${pageParams.toString()}`,
+            { credentials: 'include' },
+          );
+          if (!pageResponse.ok) {
+            throw new Error('list');
+          }
+          return (await pageResponse.json()) as { items: Array<Record<string, unknown>> };
+        }),
+      );
+      return {
+        ...data,
+        items: data.items.concat(...rest.map((page) => page.items)),
+      };
     },
   });
 
@@ -154,6 +202,8 @@ export function ReferenceDataView({
     personOption(engineer),
   );
   const items = listQuery.data?.items ?? [];
+  const isConstruction = tab === 'construction-work-organizations';
+  const canEditRows = isConstruction ? canEditConstruction : canMutate;
   const showAddress = tab === 'property-objects' || tab === 'organizations';
   const openedFromQuery = useRef<string | null>(null);
 
@@ -192,11 +242,13 @@ export function ReferenceDataView({
       <PageHeader
         title="Справочники"
         description={
-          canMutate
-            ? 'Объекты, организации, виды работ и дефектов.'
-            : visibleTabs.length > 2
-              ? 'Просмотр объектов, организаций, видов работ и дефектов.'
-              : 'Просмотр объектов и организаций.'
+          isConstruction
+            ? 'Название берётся из справочника организаций. Здесь записывают, кто поставил работы на объекте и какие работы выполнены.'
+            : canMutate
+              ? 'Объекты, организации, виды работ и дефектов.'
+              : visibleTabs.length > 2
+                ? 'Просмотр объектов, организаций, видов работ и дефектов.'
+                : 'Просмотр объектов и организаций.'
         }
       />
       <Tabs value={tab} onValueChange={(value) => setTab(value as TabId)}>
@@ -228,7 +280,7 @@ export function ReferenceDataView({
         </Select>
         {canMutate ? (
           <Button type="button" onClick={() => setCreateOpen(true)}>
-            Создать
+            {isConstruction ? 'Добавить организацию' : 'Создать'}
           </Button>
         ) : null}
       </div>
@@ -253,13 +305,19 @@ export function ReferenceDataView({
           <thead>
             <tr className="border-b bg-background text-left text-[12px] font-medium text-muted-foreground">
               <th className="px-3 py-3">Название</th>
+              {isConstruction ? (
+                <>
+                  <th className="px-3 py-3">Поставщик работ на объекте</th>
+                  <th className="px-3 py-3">Выполнение работ</th>
+                </>
+              ) : null}
               {showAddress ? <th className="px-3 py-3">Адрес</th> : null}
               {tab === 'organizations' ? <th className="px-3 py-3">Роли</th> : null}
               {tab === 'property-objects' ? (
                 <th className="px-3 py-3">Ответственные инженеры</th>
               ) : null}
               <th className="px-3 py-3">Статус</th>
-              {canMutate ? <th className="px-3 py-3">Действия</th> : null}
+              {canEditRows ? <th className="px-3 py-3">Действия</th> : null}
             </tr>
           </thead>
           <tbody>
@@ -272,6 +330,16 @@ export function ReferenceDataView({
               return (
                 <tr key={id} className="border-b">
                   <td className="px-3 py-3 font-medium">{title}</td>
+                  {isConstruction ? (
+                    <>
+                      <td className="max-w-[20rem] truncate px-3 py-3 text-muted-foreground">
+                        {textOrDash(item.workSupplierOnObject)}
+                      </td>
+                      <td className="max-w-[20rem] truncate px-3 py-3 text-muted-foreground">
+                        {textOrDash(item.workExecution)}
+                      </td>
+                    </>
+                  ) : null}
                   {showAddress ? (
                     <td className="max-w-[28rem] truncate px-3 py-3 text-muted-foreground">
                       {address || '—'}
@@ -292,9 +360,27 @@ export function ReferenceDataView({
                       {active ? 'Активно' : 'Архив'}
                     </Badge>
                   </td>
-                  {canMutate ? (
+                  {canEditRows ? (
                     <td className="px-3 py-3">
                       <div className="flex flex-wrap gap-2">
+                        {isConstruction ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              setConstructionEditTarget({
+                                id,
+                                version,
+                                officialName: title,
+                                workSupplierOnObject: String(item.workSupplierOnObject ?? ''),
+                                workExecution: String(item.workExecution ?? ''),
+                              })
+                            }
+                          >
+                            Редактировать
+                          </Button>
+                        ) : null}
                         {tab === 'property-objects' ? (
                           <Button
                             type="button"
@@ -325,7 +411,7 @@ export function ReferenceDataView({
                             Редактировать
                           </Button>
                         ) : null}
-                        {active ? (
+                        {!isConstruction && active ? (
                           <Button
                             type="button"
                             variant="outline"
@@ -334,7 +420,8 @@ export function ReferenceDataView({
                           >
                             Архивировать
                           </Button>
-                        ) : (
+                        ) : null}
+                        {!isConstruction && !active ? (
                           <Button
                             type="button"
                             variant="outline"
@@ -347,7 +434,15 @@ export function ReferenceDataView({
                           >
                             Восстановить
                           </Button>
-                        )}
+                        ) : null}
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setDeleteTarget({ id, version, title, kind: tab })}
+                        >
+                          Удалить
+                        </Button>
                       </div>
                     </td>
                   ) : null}
@@ -370,6 +465,16 @@ export function ReferenceDataView({
             <Card key={id} className="shadow-none">
               <CardContent className="grid gap-2 p-4">
                 <strong className="break-words">{title}</strong>
+                {isConstruction ? (
+                  <>
+                    <p className="text-sm break-words text-muted-foreground">
+                      Поставщик работ на объекте: {textOrDash(item.workSupplierOnObject)}
+                    </p>
+                    <p className="text-sm break-words text-muted-foreground">
+                      Выполнение работ: {textOrDash(item.workExecution)}
+                    </p>
+                  </>
+                ) : null}
                 {showAddress && address ? (
                   <p className="text-sm break-words text-muted-foreground">{address}</p>
                 ) : null}
@@ -386,8 +491,25 @@ export function ReferenceDataView({
                 <Badge variant={active ? 'success' : 'outline'} className="w-fit">
                   {active ? 'Активно' : 'Архив'}
                 </Badge>
-                {canMutate ? (
+                {canEditRows ? (
                   <>
+                    {isConstruction ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() =>
+                          setConstructionEditTarget({
+                            id,
+                            version,
+                            officialName: title,
+                            workSupplierOnObject: String(item.workSupplierOnObject ?? ''),
+                            workExecution: String(item.workExecution ?? ''),
+                          })
+                        }
+                      >
+                        Редактировать
+                      </Button>
+                    ) : null}
                     {tab === 'property-objects' ? (
                       <Button
                         type="button"
@@ -416,7 +538,7 @@ export function ReferenceDataView({
                         Редактировать
                       </Button>
                     ) : null}
-                    {active ? (
+                    {!isConstruction && active ? (
                       <Button
                         type="button"
                         variant="outline"
@@ -424,7 +546,8 @@ export function ReferenceDataView({
                       >
                         Архивировать
                       </Button>
-                    ) : (
+                    ) : null}
+                    {!isConstruction && !active ? (
                       <Button
                         type="button"
                         variant="outline"
@@ -436,7 +559,14 @@ export function ReferenceDataView({
                       >
                         Восстановить
                       </Button>
-                    )}
+                    ) : null}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setDeleteTarget({ id, version, title, kind: tab })}
+                    >
+                      Удалить
+                    </Button>
                   </>
                 ) : null}
               </CardContent>
@@ -450,7 +580,10 @@ export function ReferenceDataView({
           engineerOptions={engineerOptions}
           onClose={() => setCreateOpen(false)}
           onCreate={(body) => {
-            void mutate(`/api/reference-data/${tab}`, 'POST', body);
+            const path = isConstruction
+              ? '/api/reference-data/organizations'
+              : `/api/reference-data/${tab}`;
+            void mutate(path, 'POST', body);
             setCreateOpen(false);
           }}
         />
@@ -462,6 +595,17 @@ export function ReferenceDataView({
           onClose={() => setEditTarget(null)}
           onSaved={async () => {
             setEditTarget(null);
+            await queryClient.invalidateQueries({ queryKey: ['reference'] });
+          }}
+        />
+      ) : null}
+      {constructionEditTarget ? (
+        <EditConstructionWorkDialog
+          csrfToken={csrfToken}
+          target={constructionEditTarget}
+          onClose={() => setConstructionEditTarget(null)}
+          onSaved={async () => {
+            setConstructionEditTarget(null);
             await queryClient.invalidateQueries({ queryKey: ['reference'] });
           }}
         />
@@ -507,6 +651,38 @@ export function ReferenceDataView({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <AlertDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Удалить запись?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget?.kind === 'construction-work-organizations'
+                ? `${deleteTarget.title} будет удалена из этого справочника. Карточка в справочнике «Организации» сохранится.`
+                : `${deleteTarget?.title ?? 'Запись'} будет удалена без возможности восстановления. Если запись используется в актах, удаление будет отклонено.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!deleteTarget) {
+                  return;
+                }
+                void mutate(
+                  `/api/reference-data/${deleteTarget.kind}/${deleteTarget.id}/delete`,
+                  'POST',
+                  { expectedVersion: deleteTarget.version },
+                );
+              }}
+            >
+              Удалить
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <ConflictDialog
         open={conflict}
         onRefresh={() => {
@@ -534,7 +710,7 @@ function CreateReferenceDialog({
   const [roles, setRoles] = useState<OrganizationRole[]>(['LIABLE_CONTRACTOR']);
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent>
+      <DialogContent className="max-h-[min(100dvh,40rem)] overflow-y-auto">
         <form
           className="grid gap-3"
           onSubmit={(event) => {
@@ -546,7 +722,7 @@ function CreateReferenceDialog({
                 address: form.get('address'),
                 responsibleEngineerIds: engineerIds,
               });
-            } else if (tab === 'organizations') {
+            } else if (tab === 'organizations' || tab === 'construction-work-organizations') {
               onCreate({
                 officialName: form.get('officialName'),
                 unp: String(form.get('unp') ?? '').trim() || null,
@@ -566,7 +742,9 @@ function CreateReferenceDialog({
           }}
         >
           <DialogHeader>
-            <DialogTitle>Новая запись</DialogTitle>
+            <DialogTitle>
+              {tab === 'construction-work-organizations' ? 'Добавить организацию' : 'Новая запись'}
+            </DialogTitle>
           </DialogHeader>
           {tab === 'property-objects' ? (
             <>
@@ -587,7 +765,7 @@ function CreateReferenceDialog({
               />
             </>
           ) : null}
-          {tab === 'organizations' ? (
+          {tab === 'organizations' || tab === 'construction-work-organizations' ? (
             <>
               <div className="grid gap-1.5">
                 <Label htmlFor="org-name">Название организации</Label>
@@ -632,8 +810,14 @@ function CreateReferenceDialog({
             <Button type="button" variant="outline" onClick={onClose}>
               Отмена
             </Button>
-            <Button type="submit" disabled={tab === 'organizations' && roles.length === 0}>
-              Создать
+            <Button
+              type="submit"
+              disabled={
+                (tab === 'organizations' || tab === 'construction-work-organizations') &&
+                roles.length === 0
+              }
+            >
+              {tab === 'construction-work-organizations' ? 'Добавить' : 'Создать'}
             </Button>
           </DialogFooter>
         </form>
@@ -782,6 +966,103 @@ function EditOrganizationDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+function EditConstructionWorkDialog({
+  csrfToken,
+  target,
+  onClose,
+  onSaved,
+}: {
+  csrfToken: string;
+  target: {
+    id: string;
+    version: number;
+    officialName: string;
+    workSupplierOnObject: string;
+    workExecution: string;
+  };
+  onClose: () => void;
+  onSaved: () => Promise<void> | void;
+}) {
+  const [workSupplierOnObject, setWorkSupplierOnObject] = useState(target.workSupplierOnObject);
+  const [workExecution, setWorkExecution] = useState(target.workExecution);
+  const [pending, setPending] = useState(false);
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && !pending && onClose()}>
+      <DialogContent className="max-h-[min(100dvh,40rem)] overflow-y-auto">
+        <form
+          className="grid gap-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (pending) {
+              return;
+            }
+            setPending(true);
+            void (async () => {
+              try {
+                await commandFetch(
+                  `/api/reference-data/construction-work-organizations/${target.id}`,
+                  {
+                    method: 'PATCH',
+                    csrfToken,
+                    body: {
+                      expectedVersion: target.version,
+                      workSupplierOnObject: workSupplierOnObject.trim() || null,
+                      workExecution: workExecution.trim() || null,
+                    },
+                  },
+                );
+                toast.success('Справочник обновлён');
+                await onSaved();
+              } catch (error) {
+                toast.error(error instanceof ApiError ? error.message : 'Ошибка');
+                setPending(false);
+              }
+            })();
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Данные по организации</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-1.5">
+            <Label htmlFor="construction-name">Название</Label>
+            <Input id="construction-name" value={target.officialName} readOnly />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="construction-supplier">Поставщик работ на объекте</Label>
+            <Textarea
+              id="construction-supplier"
+              value={workSupplierOnObject}
+              onChange={(event) => setWorkSupplierOnObject(event.target.value)}
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="construction-execution">Выполнение работ</Label>
+            <Textarea
+              id="construction-execution"
+              value={workExecution}
+              onChange={(event) => setWorkExecution(event.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose} disabled={pending}>
+              Отмена
+            </Button>
+            <Button type="submit" disabled={pending}>
+              {pending ? 'Сохранение…' : 'Сохранить'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function textOrDash(value: unknown): string {
+  const text = typeof value === 'string' ? value.trim() : '';
+  return text.length > 0 ? text : '—';
 }
 
 function organizationRoles(item: Record<string, unknown>): OrganizationRole[] {

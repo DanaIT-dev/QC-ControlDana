@@ -693,7 +693,7 @@ describe('objects directory API', () => {
     expect(saBody.items.some((item) => item.id === inactive.id && item.active === false)).toBe(
       true,
     );
-    expect((saList.json() as { canEdit: boolean }).canEdit).toBe(false);
+    expect((saList.json() as { canEdit: boolean }).canEdit).toBe(true);
     expect(JSON.stringify(saBody)).not.toMatch(/passwordHash|sourceImportKey|sourceSystem/);
     const adminList = await inject({
       method: 'GET',

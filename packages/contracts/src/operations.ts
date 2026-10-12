@@ -110,6 +110,14 @@ export const organizationWriteSchema = z
   })
   .strict();
 
+export const constructionWorkProfileWriteSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    workSupplierOnObject: z.union([z.string(), z.null()]),
+    workExecution: z.union([z.string(), z.null()]),
+  })
+  .strict();
+
 export const codedReferenceWriteSchema = z
   .object({
     expectedVersion: expectedVersionSchema.optional(),

@@ -169,10 +169,10 @@ async function assertPageContent(page: Page, spec: (typeof PAGE_SPECS)[number]) 
   }
   await expect(page.getByRole('heading', { name: spec.heading! })).toBeVisible();
   if (spec.slug === 'system-status-super-admin') {
-    await expect(page.locator('[data-slot="notification-settings-readonly"]')).toBeVisible({
+    await expect(page.getByRole('button', { name: 'Сохранить настройки' })).toBeVisible({
       timeout: 20_000,
     });
-    await expect(page.getByRole('button', { name: 'Сохранить настройки' })).toHaveCount(0);
+    await expect(page.locator('[data-slot="notification-settings-readonly"]')).toHaveCount(0);
     return;
   }
   if (spec.slug === 'system-status-admin') {

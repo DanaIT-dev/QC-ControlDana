@@ -32,7 +32,12 @@ export class ReferenceDataController {
   ) {}
 
   @Get(':kind')
-  @RequireCapability('VIEW_REFERENCE_DATA', 'MANAGE_REFERENCE_DATA')
+  @RequireCapability(
+    'VIEW_REFERENCE_DATA',
+    'MANAGE_REFERENCE_DATA',
+    'MANAGE_CONSTRUCTION_WORK_DIRECTORY',
+    'VIEW_CONSTRUCTION_WORK_DIRECTORY',
+  )
   list(
     @CurrentUser() user: AuthenticatedUser,
     @Param('kind') kind: ReferenceKind,
@@ -56,7 +61,7 @@ export class ReferenceDataController {
 
   @Patch(':kind/:id')
   @UseGuards(BrowserOriginGuard, CsrfGuard, DirectoryMutateRateLimitGuard)
-  @RequireCapability('MANAGE_REFERENCE_DATA')
+  @RequireCapability('MANAGE_REFERENCE_DATA', 'MANAGE_CONSTRUCTION_WORK_DIRECTORY')
   update(
     @CurrentUser() user: AuthenticatedUser,
     @Param('kind') kind: ReferenceKind,
@@ -79,6 +84,20 @@ export class ReferenceDataController {
     @Req() request: FastifyRequest,
   ) {
     return this.referenceDataService.archive(assertKind(kind), id, user, body, request);
+  }
+
+  @Post(':kind/:id/delete')
+  @HttpCode(200)
+  @UseGuards(BrowserOriginGuard, CsrfGuard, DirectoryMutateRateLimitGuard)
+  @RequireCapability('MANAGE_REFERENCE_DATA', 'MANAGE_CONSTRUCTION_WORK_DIRECTORY')
+  remove(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('kind') kind: ReferenceKind,
+    @Param('id') id: string,
+    @Body() body: unknown,
+    @Req() request: FastifyRequest,
+  ) {
+    return this.referenceDataService.remove(assertKind(kind), id, user, body, request);
   }
 
   @Post(':kind/:id/restore')
@@ -112,7 +131,8 @@ function assertKind(kind: string): ReferenceKind {
     kind === 'property-objects' ||
     kind === 'organizations' ||
     kind === 'work-types' ||
-    kind === 'defect-types'
+    kind === 'defect-types' ||
+    kind === 'construction-work-organizations'
   ) {
     return kind;
   }

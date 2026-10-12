@@ -7,6 +7,8 @@ export const CAPABILITIES = [
   'VIEW_ALL_BUSINESS_DATA',
   'MANAGE_REFERENCE_DATA',
   'VIEW_REFERENCE_DATA',
+  'MANAGE_CONSTRUCTION_WORK_DIRECTORY',
+  'VIEW_CONSTRUCTION_WORK_DIRECTORY',
   'CREATE_PROPERTY_OBJECT',
   'VIEW_SYSTEM_STATUS',
   'VIEW_ALL_ACTS',
@@ -56,6 +58,7 @@ const ADMIN_CAPABILITIES = [
   'MANAGE_USERS',
   'MANAGE_REFERENCE_DATA',
   'VIEW_REFERENCE_DATA',
+  'MANAGE_CONSTRUCTION_WORK_DIRECTORY',
   'CREATE_PROPERTY_OBJECT',
   'VIEW_SYSTEM_STATUS',
   'VIEW_ALL_ACTS',
@@ -95,14 +98,7 @@ const ADMIN_CAPABILITIES = [
 ] as const satisfies readonly Capability[];
 
 const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
-  SUPER_ADMIN: [
-    'VIEW_ALL_BUSINESS_DATA',
-    'VIEW_SYSTEM_STATUS',
-    'CREATE_UNASSIGNED_USER',
-    'MANAGE_ADMIN_GRANTS',
-    'CHANGE_OWN_PASSWORD',
-    'VIEW_OWN_PROFILE',
-  ],
+  SUPER_ADMIN: CAPABILITIES,
   PENDING_ROLE: ['CHANGE_OWN_PASSWORD', 'VIEW_OWN_PROFILE'],
   UNASSIGNED: [],
   ADMIN: ADMIN_CAPABILITIES,
@@ -110,6 +106,7 @@ const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
   SGR_MANAGER: [
     'MANAGE_REFERENCE_DATA',
     'VIEW_REFERENCE_DATA',
+    'MANAGE_CONSTRUCTION_WORK_DIRECTORY',
     'CREATE_PROPERTY_OBJECT',
     'VIEW_ALL_ACTS',
     'CREATE_ACT',
@@ -146,6 +143,7 @@ const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
     'VIEW_OWN_PROFILE',
   ],
   CONTRACTOR_ENGINEER: [
+    'MANAGE_CONSTRUCTION_WORK_DIRECTORY',
     'VIEW_ORGANIZATION_ACTS',
     'SUBMIT_DEFECT_FOR_INSPECTION',
     'EDIT_THIRD_PARTY_DEADLINE',
@@ -163,6 +161,7 @@ const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
   ],
   RESPONSIBLE_ENGINEER: [
     'VIEW_REFERENCE_DATA',
+    'MANAGE_CONSTRUCTION_WORK_DIRECTORY',
     'VIEW_ASSIGNED_DEFECTS',
     'CREATE_ACT',
     'START_ACT',
@@ -193,6 +192,7 @@ const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
 
 export const OVERSIGHT_READ_CAPABILITIES: readonly Capability[] = [
   'VIEW_REFERENCE_DATA',
+  'VIEW_CONSTRUCTION_WORK_DIRECTORY',
   'VIEW_SYSTEM_STATUS',
   'VIEW_ALL_ACTS',
   'VIEW_ORGANIZATION_ACTS',
@@ -220,6 +220,8 @@ export const CAPABILITY_LABELS: Record<Capability, string> = {
   VIEW_ALL_BUSINESS_DATA: 'Полный просмотр бизнес-данных',
   MANAGE_REFERENCE_DATA: 'Управление справочниками',
   VIEW_REFERENCE_DATA: 'Просмотр справочников',
+  MANAGE_CONSTRUCTION_WORK_DIRECTORY: 'Ведение справочника строительных организаций',
+  VIEW_CONSTRUCTION_WORK_DIRECTORY: 'Просмотр справочника строительных организаций',
   CREATE_PROPERTY_OBJECT: 'Создание объектов',
   VIEW_SYSTEM_STATUS: 'Состояние системы',
   VIEW_ALL_ACTS: 'Просмотр всех актов',
@@ -289,6 +291,10 @@ export function isOversightRole(role: UserRole): boolean {
   return hasCapability(role, 'VIEW_ALL_BUSINESS_DATA');
 }
 
+export function isReadOnlyRole(role: UserRole): boolean {
+  return isOversightRole(role) && !hasCapability(role, 'CREATE_ACT');
+}
+
 export function isPendingRole(role: UserRole): boolean {
   return role === 'PENDING_ROLE';
 }
@@ -299,6 +305,18 @@ export function canManageUsers(role: UserRole): boolean {
 
 export function canManageReferenceData(role: UserRole): boolean {
   return hasCapability(role, 'MANAGE_REFERENCE_DATA');
+}
+
+export function canManageConstructionWorkDirectory(role: UserRole): boolean {
+  return hasCapability(role, 'MANAGE_CONSTRUCTION_WORK_DIRECTORY');
+}
+
+export function canOpenReferenceData(role: UserRole): boolean {
+  return (
+    canViewReferenceData(role) ||
+    canManageConstructionWorkDirectory(role) ||
+    satisfiesCapability(role, 'VIEW_CONSTRUCTION_WORK_DIRECTORY')
+  );
 }
 
 export function canCreateWorkSupplier(role: UserRole): boolean {
@@ -313,6 +331,8 @@ export function canViewObjectsDirectory(role: UserRole): boolean {
   return satisfiesCapability(role, 'VIEW_REFERENCE_DATA');
 }
 
+export const CONSTRUCTION_WORK_REFERENCE_KIND = 'construction-work-organizations';
+
 export const MANAGED_REFERENCE_KINDS = [
   'property-objects',
   'organizations',
@@ -325,6 +345,12 @@ export const VIEW_ONLY_REFERENCE_KINDS = ['property-objects', 'organizations'] a
 export type ReferenceCatalogKind = (typeof MANAGED_REFERENCE_KINDS)[number];
 
 export function canAccessReferenceKind(role: UserRole, kind: string): boolean {
+  if (kind === CONSTRUCTION_WORK_REFERENCE_KIND) {
+    return (
+      canManageConstructionWorkDirectory(role) ||
+      satisfiesCapability(role, 'VIEW_CONSTRUCTION_WORK_DIRECTORY')
+    );
+  }
   if (
     hasCapability(role, 'MANAGE_REFERENCE_DATA') ||
     hasCapability(role, 'VIEW_ALL_BUSINESS_DATA')
@@ -381,7 +407,7 @@ export function canManageSystemSettings(role: UserRole): boolean {
 }
 
 export function canResolveImportedEngineer(role: UserRole): boolean {
-  return role === 'ADMIN' || role === 'MANAGER' || role === 'SGR_MANAGER';
+  return role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'MANAGER' || role === 'SGR_MANAGER';
 }
 
 export function canViewEmployees(role: UserRole): boolean {
@@ -389,7 +415,7 @@ export function canViewEmployees(role: UserRole): boolean {
 }
 
 export function canEditEmployment(role: UserRole): boolean {
-  return role === 'ADMIN' || role === 'MANAGER' || role === 'SGR_MANAGER';
+  return role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'MANAGER' || role === 'SGR_MANAGER';
 }
 
 export function postLoginPath(

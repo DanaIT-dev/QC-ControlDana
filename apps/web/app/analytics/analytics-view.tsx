@@ -1158,7 +1158,7 @@ function BarValueLabel(props: {
   );
 }
 
-export function BarChart({
+function BarChart({
   title,
   rows,
   description,

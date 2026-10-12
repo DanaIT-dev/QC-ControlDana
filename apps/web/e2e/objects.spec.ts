@@ -148,10 +148,9 @@ test.describe('objects directory', () => {
     await login(page, ACCOUNTS.superAdmin);
     await page.goto('/objects');
     await expect(page.getByRole('heading', { name: 'Объекты' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Создать' })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Добавить объект' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Добавить объект' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Импорт' })).toHaveCount(0);
-    await expect(page.getByText('Режим просмотра')).toBeVisible();
+    await expect(page.getByText('Режим просмотра')).toHaveCount(0);
 
     const responsiblePage = await browser.newPage();
     const responsibleErrors = attachConsole(responsiblePage);
