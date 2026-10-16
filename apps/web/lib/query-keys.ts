@@ -41,7 +41,6 @@ export const queryKeys = {
     support: (insightId: string, query: string) =>
       ['analytics', 'support', insightId, query] as const,
     filters: (query: string) => ['analytics', 'filters', query] as const,
-    financials: (defectItemId: string) => ['analytics', 'financials', defectItemId] as const,
   },
   registry: {
     all: ['registry'] as const,

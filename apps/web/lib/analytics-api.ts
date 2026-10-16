@@ -8,7 +8,6 @@ import type {
   AnalyticsPatterns,
   AnalyticsProcess,
   AnalyticsSupportDrilldown,
-  FinancialImpactList,
 } from '@sgr-registry/contracts';
 import { commandFetch } from './command-api';
 
@@ -65,22 +64,6 @@ export function fetchAnalyticsSupport(insightId: string, search: string) {
 
 export function fetchAnalyticsFilters(search: string) {
   return getJson<AnalyticsFilterOptions>(`/api/analytics/filters${search}`);
-}
-
-export function fetchFinancialImpacts(defectItemId: string) {
-  return getJson<FinancialImpactList>(`/api/defects/${defectItemId}/financials`);
-}
-
-export function createFinancialImpact(
-  defectItemId: string,
-  csrfToken: string,
-  body: Record<string, unknown>,
-) {
-  return commandFetch(`/api/defects/${defectItemId}/financials`, {
-    method: 'POST',
-    csrfToken,
-    body,
-  });
 }
 
 export function reviewInsight(
