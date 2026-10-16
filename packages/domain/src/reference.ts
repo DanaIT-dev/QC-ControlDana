@@ -41,6 +41,15 @@ export function parseOptionalCalendarDate(value: unknown, field: string): string
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     throw new ValidationError(field, 'Ожидается дата в формате ГГГГ-ММ-ДД');
   }
+  const [year, month, day] = value.split('-').map((part) => Number.parseInt(part, 10));
+  const utc = new Date(Date.UTC(year ?? 0, (month ?? 1) - 1, day ?? 1));
+  if (
+    utc.getUTCFullYear() !== year ||
+    utc.getUTCMonth() !== (month ?? 1) - 1 ||
+    utc.getUTCDate() !== day
+  ) {
+    throw new ValidationError(field, 'Некорректная дата');
+  }
   return value;
 }
 

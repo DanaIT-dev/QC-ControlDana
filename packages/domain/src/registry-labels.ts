@@ -59,7 +59,10 @@ export const DEADLINE_STATE_LABELS: Record<DeadlineState, string> = {
   COMPLETED: 'Исполнено',
 };
 
-export function formLabel(formCode: ActFormCode): string {
+export function formLabel(formCode: ActFormCode | null | undefined): string {
+  if (!formCode) {
+    return 'Черновик';
+  }
   return ACT_FORM_DISPLAY[formCode].officialLabel;
 }
 

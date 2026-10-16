@@ -635,7 +635,7 @@ export function overviewBundleSql(input: {
              fd."submittedForInspectionAt", fd."acceptedAt", fd."rejectedAt",
              dt.name AS type_name
       FROM analytics_scope_defects fd
-      JOIN public.defect_types dt ON dt.id = fd."defectTypeId"
+      LEFT JOIN public.defect_types dt ON dt.id = fd."defectTypeId"
     ),
     attempt_flags AS (
       SELECT attempt."defectItemId" AS id,

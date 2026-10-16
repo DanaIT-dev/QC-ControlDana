@@ -424,16 +424,13 @@ describe('directory quick create', () => {
     expect(conflicts).toHaveLength(1);
     createdWorkTypeIds.push((created[0]?.json() as { id: string }).id);
 
-    for (const session of [engineerSession, contractorSession, superSession]) {
-      expect(
-        (
-          await mutate(session, {
-            method: 'POST',
-            url: '/api/reference-data/organizations',
-            payload: { officialName: `Denied ${stamp}` },
-          })
-        ).statusCode,
-      ).toBe(403);
+    for (const session of [engineerSession, contractorSession]) {
+      const deniedOrg = await mutate(session, {
+        method: 'POST',
+        url: '/api/reference-data/organizations',
+        payload: { officialName: `Denied ${stamp}` },
+      });
+      expect(deniedOrg.statusCode).toBe(403);
       expect(
         (
           await mutate(session, {
@@ -491,10 +488,10 @@ describe('directory quick create', () => {
     });
     expect((superLookups.json() as { canCreate: Record<string, boolean> }).canCreate).toMatchObject(
       {
-        propertyObject: false,
-        organization: false,
-        workType: false,
-        defectType: false,
+        propertyObject: true,
+        organization: true,
+        workType: true,
+        defectType: true,
       },
     );
   });

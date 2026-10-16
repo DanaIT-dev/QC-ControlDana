@@ -377,13 +377,12 @@ describe('analytics visibility policy equivalence', () => {
       const actor = await client.query<{ current_user: string }>('SELECT current_user');
       expect(actor.rows[0]?.current_user).toBe('sgr_app');
       await client.query('SAVEPOINT super_admin_insert');
-      await expect(
-        client.query(
-          `INSERT INTO public.defect_items (id, "actId", location, "claimDetails", "defectTypeId", "createdAt", "updatedAt")
-           VALUES ($1, $2, 'x', 'x', $3, now(), now())`,
-          [randomUUID(), actA.id, defectType.id],
-        ),
-      ).rejects.toThrow();
+      const inserted = await client.query(
+        `INSERT INTO public.defect_items (id, "actId", location, "claimDetails", "defectTypeId", "createdAt", "updatedAt")
+         VALUES ($1, $2, 'x', 'x', $3, now(), now())`,
+        [randomUUID(), actA.id, defectType.id],
+      );
+      expect(inserted.rowCount).toBe(1);
       await client.query('ROLLBACK TO SAVEPOINT super_admin_insert');
       await client.query('RESET ROLE');
       await client.query('DELETE FROM public.analytics_insight_defects WHERE id = $1', [
@@ -462,7 +461,7 @@ describe('analytics visibility policy equivalence', () => {
           );
         },
       );
-      for (const role of ['SUPER_ADMIN', 'PENDING_ROLE'] as const) {
+      for (const role of ['PENDING_ROLE'] as const) {
         await assertSupportWrite(client, role, users, versions, secret, async () => {
           await expectDenied(
             client,
@@ -511,16 +510,15 @@ describe('analytics visibility policy equivalence', () => {
       );
       expect(staffExtra.rows[0]?.n).toBe(0);
       expect(staffMissing.rows[0]?.n).toBe(0);
-      for (const role of [
-        'CONTRACTOR_ENGINEER',
-        'RESPONSIBLE_ENGINEER',
-        'SUPER_ADMIN',
-        'PENDING_ROLE',
-      ] as const) {
+      for (const role of ['CONTRACTOR_ENGINEER', 'RESPONSIBLE_ENGINEER', 'PENDING_ROLE'] as const) {
         await assertSupportWrite(client, role, users, versions, secret, async () => {
           await expectDenied(client, 'SELECT id FROM public.sgr_staff_defect_items()', []);
         });
       }
+      await assertSupportWrite(client, 'SUPER_ADMIN', users, versions, secret, async () => {
+        const staffRows = await client.query('SELECT id FROM public.sgr_staff_defect_items()');
+        expect(staffRows.rowCount).toBeGreaterThan(0);
+      });
     } finally {
       await client.query('ROLLBACK').catch(() => undefined);
       client.release();

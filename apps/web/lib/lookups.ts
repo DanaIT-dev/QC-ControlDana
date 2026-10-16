@@ -52,14 +52,33 @@ export function personOption(person: {
   };
 }
 
-export function engineersForObject(lookups: OperationLookups | undefined, objectId: string) {
-  if (!lookups || !objectId) {
+export function engineersForObject(
+  lookups: OperationLookups | undefined,
+  objectId: string | null | undefined,
+) {
+  if (!lookups) {
     return [];
   }
-  const allowed = new Set(
-    lookups.propertyObjects.find((object) => object.id === objectId)?.responsibleEngineerIds ?? [],
+  const assigned = new Set(
+    objectId
+      ? (lookups.propertyObjects.find((object) => object.id === objectId)?.responsibleEngineerIds ??
+          [])
+      : [],
   );
-  return lookups.responsibleEngineers
-    .filter((engineer) => allowed.has(engineer.id))
-    .map((engineer) => personOption(engineer));
+  return [...lookups.responsibleEngineers]
+    .map((engineer) => {
+      const option = personOption(engineer);
+      const assignedToObject = Boolean(objectId) && assigned.has(engineer.id);
+      return {
+        ...option,
+        secondary: assignedToObject ? 'Закреплён за объектом' : undefined,
+        highlight: assignedToObject,
+        assignedToObject,
+      };
+    })
+    .sort(
+      (left, right) =>
+        Number(right.assignedToObject) - Number(left.assignedToObject) ||
+        left.label.localeCompare(right.label, 'ru'),
+    );
 }

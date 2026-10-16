@@ -139,13 +139,13 @@ Rework Rate = завершённые с хотя бы одной `REJECTED` / з
 
 Обработчики проверяют capabilities, не имена ролей.
 
-| Capability                        | ADMIN, MANAGER, SGR_MANAGER | RESPONSIBLE_ENGINEER | CONTRACTOR_ENGINEER   | SUPER_ADMIN          |
-| --------------------------------- | --------------------------- | -------------------- | --------------------- | -------------------- |
-| VIEW_QUALITY_ANALYTICS            | да                          | нет                  | нет                   | read через oversight |
-| VIEW_FINANCIAL_ANALYTICS          | да                          | нет                  | нет                   | read                 |
-| VIEW_CROSS_ORGANIZATION_ANALYTICS | да                          | нет                  | нет                   | read                 |
-| MANAGE_DEFECT_FINANCIALS          | да                          | нет                  | нет                   | нет                  |
-| REVIEW_ANALYTICS_INSIGHTS         | да                          | нет                  | нет                   | нет                  |
+| Capability                        | ADMIN, MANAGER, SGR_MANAGER | RESPONSIBLE_ENGINEER | CONTRACTOR_ENGINEER | SUPER_ADMIN          |
+| --------------------------------- | --------------------------- | -------------------- | ------------------- | -------------------- |
+| VIEW_QUALITY_ANALYTICS            | да                          | нет                  | нет                 | read через oversight |
+| VIEW_FINANCIAL_ANALYTICS          | да                          | нет                  | нет                 | read                 |
+| VIEW_CROSS_ORGANIZATION_ANALYTICS | да                          | нет                  | нет                 | read                 |
+| MANAGE_DEFECT_FINANCIALS          | да                          | нет                  | нет                 | нет                  |
+| REVIEW_ANALYTICS_INSIGHTS         | да                          | нет                  | нет                 | нет                  |
 
 `PENDING_ROLE`, `CONTRACTOR_ENGINEER` и `RESPONSIBLE_ENGINEER` раздел не получают. Пустой фильтр не расширяет scope. Чужой UUID в фильтре разрешённой роли даёт пустую выборку без сообщения «организация не найдена».
 

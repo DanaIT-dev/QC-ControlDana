@@ -138,7 +138,10 @@ export async function importPropertyObjects(options: {
   const usersCountBefore = await options.prisma.user.count();
   const credentialsCountBefore = await options.prisma.userCredential.count();
   const assignmentCountBefore = await options.prisma.propertyObjectEngineer.count();
-  const actLinks = await options.prisma.act.findMany({ select: { id: true, objectId: true } });
+  const actRows = await options.prisma.act.findMany({ select: { id: true, objectId: true } });
+  const actLinks = actRows.flatMap((row) =>
+    row.objectId ? [{ id: row.id, objectId: row.objectId }] : [],
+  );
   const engineers = await options.prisma.user.findMany({
     where: { role: 'RESPONSIBLE_ENGINEER' },
     select: { fullName: true, role: true, status: true },

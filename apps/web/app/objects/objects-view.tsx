@@ -38,6 +38,7 @@ import {
 } from '@/components/ui/select';
 import { ApiError } from '../../lib/command-api';
 import { formatCalendarDate } from '../../lib/registry-url';
+import { readPageSizePreference, writePageSizePreference } from '../../lib/page-size-preference';
 import { queryKeys } from '../../lib/query-keys';
 import {
   fetchObjectsDirectory,
@@ -131,10 +132,28 @@ export function ObjectsView({
   const [linkTarget, setLinkTarget] = useState<ObjectsDirectoryResponse['items'][number] | null>(
     null,
   );
+  const [directoryTarget, setDirectoryTarget] = useState<
+    ObjectsDirectoryResponse['items'][number] | null
+  >(null);
   const [editTarget, setEditTarget] = useState<ObjectsDirectoryResponse['items'][number] | null>(
     null,
   );
   const [createOpen, setCreateOpen] = useState(false);
+
+  useEffect(() => {
+    if (params.has('pageSize')) {
+      return;
+    }
+    const stored = readPageSizePreference('sgr.objects.pageSize', OBJECTS_DIRECTORY_PAGE_SIZES, 20);
+    if (stored === query.pageSize) {
+      return;
+    }
+    navigate({
+      ...query,
+      page: 1,
+      pageSize: stored as (typeof OBJECTS_DIRECTORY_PAGE_SIZES)[number],
+    });
+  }, [params, query.pageSize]);
 
   function navigate(next: typeof query) {
     const nextParams = new URLSearchParams();
@@ -262,7 +281,8 @@ export function ObjectsView({
               data={data!}
               canManageLinks={canManageLinks}
               canEdit={Boolean(data?.canEdit)}
-              onManage={setLinkTarget}
+              onAssign={setLinkTarget}
+              onDirectoryLink={setDirectoryTarget}
               onEdit={setEditTarget}
             />
           </div>
@@ -271,7 +291,8 @@ export function ObjectsView({
               data={data!}
               canManageLinks={canManageLinks}
               canEdit={Boolean(data?.canEdit)}
-              onManage={setLinkTarget}
+              onAssign={setLinkTarget}
+              onDirectoryLink={setDirectoryTarget}
               onEdit={setEditTarget}
             />
           </div>
@@ -286,9 +307,11 @@ export function ObjectsView({
             Строк на странице
             <Select
               value={String(pageSize)}
-              onValueChange={(value) =>
-                navigate({ ...query, page: 1, pageSize: Number(value) as 20 | 50 })
-              }
+              onValueChange={(value) => {
+                const pageSize = Number(value) as 20 | 50;
+                writePageSizePreference('sgr.objects.pageSize', pageSize);
+                navigate({ ...query, page: 1, pageSize });
+              }}
             >
               <SelectTrigger aria-label="Строк на странице" className="w-22 min-h-11">
                 <SelectValue />
@@ -343,16 +366,32 @@ export function ObjectsView({
       {editTarget && data?.canEdit ? (
         <EditPropertyObjectDialog
           csrfToken={csrfToken}
+          engineers={data.createEngineerOptions}
           target={{
             id: editTarget.id,
             version: editTarget.version,
             name: editTarget.name,
             address: editTarget.address,
             active: editTarget.active,
+            responsibleEngineerIds: editTarget.responsibleEngineers
+              .filter((engineer) => engineer.linked)
+              .map((engineer) => engineer.id),
           }}
           onClose={() => setEditTarget(null)}
           onSaved={async () => {
             setEditTarget(null);
+            await queryClient.invalidateQueries({ queryKey: queryKeys.objects.all });
+          }}
+        />
+      ) : null}
+      {directoryTarget ? (
+        <DirectoryLinkDialog
+          object={directoryTarget}
+          engineers={engineersQuery.data?.items ?? []}
+          csrfToken={csrfToken}
+          onClose={() => setDirectoryTarget(null)}
+          onSaved={async () => {
+            setDirectoryTarget(null);
             await queryClient.invalidateQueries({ queryKey: queryKeys.objects.all });
           }}
         />
@@ -377,17 +416,19 @@ function ObjectsTable({
   data,
   canManageLinks,
   canEdit,
-  onManage,
+  onAssign,
+  onDirectoryLink,
   onEdit,
 }: {
   data: ObjectsDirectoryResponse;
   canManageLinks: boolean;
   canEdit: boolean;
-  onManage: (item: ObjectsDirectoryResponse['items'][number]) => void;
+  onAssign: (item: ObjectsDirectoryResponse['items'][number]) => void;
+  onDirectoryLink: (item: ObjectsDirectoryResponse['items'][number]) => void;
   onEdit: (item: ObjectsDirectoryResponse['items'][number]) => void;
 }) {
   return (
-    <div className="min-w-0 overflow-x-auto rounded-md border bg-card">
+    <div className="min-w-0 max-w-full overflow-x-auto overscroll-x-contain rounded-md border bg-card pb-2">
       <table className="w-full min-w-180 text-sm">
         <thead className="sticky top-0 z-10 border-b bg-card text-left text-[12px] font-medium text-muted-foreground">
           <tr>
@@ -408,7 +449,7 @@ function ObjectsTable({
                   {item.active === false ? <Badge variant="outline">Неактивен</Badge> : null}
                 </span>
               </td>
-              <td className="max-w-[16rem] px-3 py-3 wrap-break-word text-muted-foreground">
+              <td className="min-w-0 px-3 py-3 whitespace-normal wrap-break-word text-muted-foreground [overflow-wrap:anywhere]">
                 {emptyDash(item.address)}
               </td>
               <td className="px-3 py-3 whitespace-nowrap">
@@ -419,9 +460,11 @@ function ObjectsTable({
               </td>
               <td className="px-3 py-3">
                 <ResponsibleCell
-                  engineer={item.responsibleEngineer}
+                  engineers={item.responsibleEngineers}
+                  directoryEngineer={item.responsibleEngineer}
                   canManageLinks={canManageLinks}
-                  onManage={() => onManage(item)}
+                  onAssign={() => onAssign(item)}
+                  onDirectoryLink={() => onDirectoryLink(item)}
                 />
               </td>
               {canEdit ? (
@@ -443,13 +486,15 @@ function ObjectsCards({
   data,
   canManageLinks,
   canEdit,
-  onManage,
+  onAssign,
+  onDirectoryLink,
   onEdit,
 }: {
   data: ObjectsDirectoryResponse;
   canManageLinks: boolean;
   canEdit: boolean;
-  onManage: (item: ObjectsDirectoryResponse['items'][number]) => void;
+  onAssign: (item: ObjectsDirectoryResponse['items'][number]) => void;
+  onDirectoryLink: (item: ObjectsDirectoryResponse['items'][number]) => void;
   onEdit: (item: ObjectsDirectoryResponse['items'][number]) => void;
 }) {
   return (
@@ -466,15 +511,19 @@ function ObjectsCards({
                   </Badge>
                 ) : null}
               </h2>
-              <p className="text-sm wrap-break-word">{emptyDash(item.address)}</p>
+              <p className="text-sm whitespace-normal wrap-break-word [overflow-wrap:anywhere]">
+                {emptyDash(item.address)}
+              </p>
               <p className="text-sm">
                 Принят в эксплуатацию: {formatCalendarDate(item.commissionedAt)}
               </p>
               <p className="text-sm">Гарантия до: {formatCalendarDate(item.warrantyEndsAt)}</p>
               <ResponsibleCell
-                engineer={item.responsibleEngineer}
+                engineers={item.responsibleEngineers}
+                directoryEngineer={item.responsibleEngineer}
                 canManageLinks={canManageLinks}
-                onManage={() => onManage(item)}
+                onAssign={() => onAssign(item)}
+                onDirectoryLink={() => onDirectoryLink(item)}
               />
               {canEdit ? (
                 <Button type="button" variant="outline" onClick={() => onEdit(item)}>
@@ -490,49 +539,84 @@ function ObjectsCards({
 }
 
 function ResponsibleCell({
-  engineer,
+  engineers,
+  directoryEngineer,
   canManageLinks,
-  onManage,
+  onAssign,
+  onDirectoryLink,
 }: {
-  engineer: ObjectsDirectoryResponse['items'][number]['responsibleEngineer'];
+  engineers: ObjectsDirectoryResponse['items'][number]['responsibleEngineers'];
+  directoryEngineer: ObjectsDirectoryResponse['items'][number]['responsibleEngineer'];
   canManageLinks: boolean;
-  onManage: () => void;
+  onAssign: () => void;
+  onDirectoryLink: () => void;
 }) {
-  if (!engineer) {
-    return (
-      <div className="grid min-w-0 gap-0.5">
-        <span>—</span>
-        {canManageLinks ? (
-          <Button type="button" variant="outline" size="sm" className="w-fit" onClick={onManage}>
-            Связать
-          </Button>
-        ) : null}
-      </div>
-    );
-  }
-  const notice = responsibleEngineerNotice(engineer);
+  const [expanded, setExpanded] = useState(false);
+  const linked = engineers.filter((engineer) => engineer.linked);
+  const visible = expanded ? linked : linked.slice(0, 3);
+  const unmatched =
+    linked.length === 0 && directoryEngineer && !directoryEngineer.linked
+      ? directoryEngineer
+      : null;
+  const unmatchedNotice = unmatched ? responsibleEngineerNotice(unmatched) : null;
   return (
-    <div className="grid min-w-0 gap-0.5">
-      <p className="flex min-w-0 items-baseline gap-x-1">
-        <span className="shrink-0">Ответственный:</span>
-        <PersonName
-          lastName={engineer.linked ? engineer.lastName : undefined}
-          firstName={engineer.linked ? engineer.firstName : undefined}
-          middleName={engineer.linked ? engineer.middleName : undefined}
-          fullName={engineer.fullName}
-        />
-      </p>
-      {notice ? <p className="text-[12px] text-muted-foreground">{notice}</p> : null}
+    <div className="grid min-w-0 gap-1">
+      {linked.length > 0 ? (
+        <ul className="flex flex-wrap gap-1">
+          {visible.map((engineer) => (
+            <li key={engineer.id}>
+              <span
+                className="inline-flex max-w-full whitespace-nowrap rounded-full border px-2 py-0.5 text-sm"
+                title={engineer.fullName}
+              >
+                <PersonName
+                  lastName={engineer.lastName}
+                  firstName={engineer.firstName}
+                  middleName={engineer.middleName}
+                  fullName={engineer.fullName}
+                />
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : unmatched ? (
+        <p className="flex min-w-0 items-baseline gap-x-1">
+          <span className="shrink-0">Ответственный:</span>
+          <PersonName fullName={unmatched.fullName} />
+        </p>
+      ) : (
+        <span>Ответственные инженеры не назначены</span>
+      )}
+      {unmatchedNotice ? (
+        <p className="text-[12px] text-muted-foreground">{unmatchedNotice}</p>
+      ) : null}
+      {linked.length > 3 ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="w-fit"
+          onClick={() => setExpanded((value) => !value)}
+        >
+          {expanded ? 'Свернуть' : `Ещё ${linked.length - 3}`}
+        </Button>
+      ) : null}
       {canManageLinks ? (
-        <Button type="button" variant="outline" size="sm" className="mt-1 w-fit" onClick={onManage}>
-          {engineer.linked ? 'Изменить привязку' : 'Связать'}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="w-fit"
+          onClick={unmatched ? onDirectoryLink : onAssign}
+        >
+          {unmatched ? 'Связать' : linked.length > 0 ? 'Изменить привязку' : 'Назначить'}
         </Button>
       ) : null}
     </div>
   );
 }
 
-function LinkEngineerDialog({
+function DirectoryLinkDialog({
   object,
   engineers,
   csrfToken,
@@ -567,25 +651,6 @@ function LinkEngineerDialog({
           emptyText="Нет активных ответственных инженеров"
         />
         <DialogFooter className="flex-col gap-2 sm:flex-row">
-          {object.responsibleEngineer?.linked ? (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                void (async () => {
-                  try {
-                    await linkObjectResponsibleEngineer(object.id, null, csrfToken);
-                    toast.success('Привязка снята');
-                    await onSaved();
-                  } catch (error) {
-                    toast.error(error instanceof ApiError ? error.message : 'Ошибка');
-                  }
-                })();
-              }}
-            >
-              Снять привязку
-            </Button>
-          ) : null}
           <Button type="button" variant="outline" onClick={onClose}>
             Отмена
           </Button>
@@ -596,6 +661,68 @@ function LinkEngineerDialog({
               void (async () => {
                 try {
                   await linkObjectResponsibleEngineer(object.id, userId, csrfToken);
+                  toast.success('Привязка сохранена');
+                  await onSaved();
+                } catch (error) {
+                  toast.error(error instanceof ApiError ? error.message : 'Ошибка');
+                }
+              })();
+            }}
+          >
+            Сохранить
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function LinkEngineerDialog({
+  object,
+  engineers,
+  csrfToken,
+  onClose,
+  onSaved,
+}: {
+  object: ObjectsDirectoryResponse['items'][number];
+  engineers: Array<{
+    id: string;
+    lastName?: string;
+    firstName?: string;
+    middleName?: string | null;
+    fullName: string;
+  }>;
+  csrfToken: string;
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const currentIds = object.responsibleEngineers
+    .filter((engineer) => engineer.linked)
+    .map((engineer) => engineer.id);
+  const [userIds, setUserIds] = useState(currentIds);
+  return (
+    <Dialog open onOpenChange={(open) => (!open ? onClose() : undefined)}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Ответственные инженеры</DialogTitle>
+        </DialogHeader>
+        <DirectoryCombobox
+          label="Ответственные инженеры"
+          options={engineers.map((item) => personOption(item))}
+          values={userIds}
+          onValuesChange={setUserIds}
+          emptyText="Нет активных ответственных инженеров"
+        />
+        <DialogFooter className="flex-col gap-2 sm:flex-row">
+          <Button type="button" variant="outline" onClick={onClose}>
+            Отмена
+          </Button>
+          <Button
+            type="button"
+            onClick={() => {
+              void (async () => {
+                try {
+                  await linkObjectResponsibleEngineer(object.id, userIds, csrfToken);
                   toast.success('Привязка сохранена');
                   await onSaved();
                 } catch (error) {
@@ -635,7 +762,7 @@ function CreateObjectDialog({
   const [address, setAddress] = useState('');
   const [commissionedAt, setCommissionedAt] = useState('');
   const [warrantyEndsAt, setWarrantyEndsAt] = useState('');
-  const [engineerId, setEngineerId] = useState('');
+  const [engineerIds, setEngineerIds] = useState<string[]>([]);
   const [engineerName, setEngineerName] = useState('');
   const [engineerOptions, setEngineerOptions] = useState(engineers);
   const [pending, setPending] = useState(false);
@@ -662,9 +789,9 @@ function CreateObjectDialog({
                     address: address.trim() ? address : null,
                     commissionedAt: commissionedAt || null,
                     warrantyEndsAt: warrantyEndsAt || null,
-                    responsibleEngineerId: engineerId ? engineerId : null,
+                    responsibleEngineerIds: engineerIds,
                     responsibleEngineerName:
-                      !engineerId && engineerName.trim() ? engineerName : null,
+                      engineerIds.length === 0 && engineerName.trim() ? engineerName : null,
                   });
                   toast.success('Объект создан');
                   await onSaved();
@@ -718,11 +845,10 @@ function CreateObjectDialog({
               />
             </div>
             <DirectoryCombobox
-              label="Ответственный инженер"
+              label="Ответственные инженеры"
               options={engineerOptions.map((item) => personOption(item))}
-              value={engineerId || 'none'}
-              onChange={setEngineerId}
-              noneOption={{ id: 'none', label: 'Не выбран' }}
+              values={engineerIds}
+              onValuesChange={setEngineerIds}
               emptyText="Нет активных ответственных инженеров"
               addLabel={
                 canRegisterEngineer ? 'Зарегистрировать ответственного инженера' : undefined
@@ -733,7 +859,7 @@ function CreateObjectDialog({
                   : undefined
               }
             />
-            {!engineerId ? (
+            {engineerIds.length === 0 ? (
               <div className="grid gap-1.5">
                 <Label htmlFor="object-engineer-name">ФИО ответственного</Label>
                 <Input
@@ -769,7 +895,9 @@ function CreateObjectDialog({
               ? current
               : [...current, { id: created.id, fullName: created.label }],
           );
-          setEngineerId(created.id);
+          setEngineerIds((current) =>
+            current.includes(created.id) ? current : [...current, created.id],
+          );
         }}
       />
     </>

@@ -1,8 +1,13 @@
 'use client';
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  CSRF_HEADER_NAME,
+  actDocumentWithinLimit,
+  isAllowedActDocumentName,
+} from '@sgr-registry/domain';
 import { useRouter } from 'next/navigation';
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { DirectoryCombobox } from '@/components/directory-combobox';
 import {
@@ -75,11 +80,14 @@ export function CreateActForm({ csrfToken }: { csrfToken: string }) {
       return (await response.json()) as OperationLookups;
     },
   });
-  const [formCode, setFormCode] = useState<'S1' | 'S23'>('S1');
+  const [formCode, setFormCode] = useState<'' | 'S1' | 'S23'>('');
   const [objectId, setObjectId] = useState('');
   const [customerOrganizationId, setCustomerOrganizationId] = useState('');
-  const [issuedOn, setIssuedOn] = useState(() => new Date().toISOString().slice(0, 10));
-  const [signedDocumentRef, setSignedDocumentRef] = useState('');
+  const [issuedOn, setIssuedOn] = useState('');
+  const [fillingEngineerId, setFillingEngineerId] = useState('');
+  const [documents, setDocuments] = useState<File[]>([]);
+  const [documentError, setDocumentError] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
   const [defects, setDefects] = useState<DraftDefect[]>(() => [
     createDraftDefect(INITIAL_DRAFT_DEFECT_KEY),
   ]);
@@ -88,6 +96,25 @@ export function CreateActForm({ csrfToken }: { csrfToken: string }) {
   const [quickCreate, setQuickCreate] = useState<DirectoryQuickCreateRequest | null>(null);
   const quickCreateTarget = useRef<{ defectIndex?: number; field?: string } | null>(null);
   const idempotencyKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!dirty) {
+        return;
+      }
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [dirty]);
+
+  function touch<T>(setter: (value: T) => void) {
+    return (value: T) => {
+      setDirty(true);
+      setter(value);
+    };
+  }
 
   function readIdempotencyKey() {
     idempotencyKeyRef.current ??= crypto.randomUUID();
@@ -192,18 +219,18 @@ export function CreateActForm({ csrfToken }: { csrfToken: string }) {
         csrfToken,
         idempotencyKey: readIdempotencyKey(),
         body: {
-          formCode,
-          objectId,
-          customerOrganizationId,
-          issuedOn,
-          signedDocumentRef: signedDocumentRef || null,
+          formCode: formCode || null,
+          objectId: objectId || null,
+          customerOrganizationId: customerOrganizationId || null,
+          issuedOn: issuedOn || null,
+          fillingEngineerId: fillingEngineerId || null,
           defectItems: defects.map((item) => ({
             location: item.location,
-            defectTypeId: item.defectTypeId,
-            ...(item.workTypeId ? { workTypeId: item.workTypeId } : {}),
+            defectTypeId: item.defectTypeId || null,
+            workTypeId: item.workTypeId && item.workTypeId !== 'none' ? item.workTypeId : null,
             claimDetails: item.claimDetails,
             notes: item.notes || null,
-            responsibleEngineerIds: item.responsibleEngineerIds,
+            responsibleEngineerId: item.responsibleEngineerIds[0] ?? null,
             liableOrganizationIds: item.liableOrganizationIds,
             plannedDeadline: item.plannedDeadline || null,
             claimDeadline: item.claimDeadline || null,
@@ -211,7 +238,27 @@ export function CreateActForm({ csrfToken }: { csrfToken: string }) {
           })),
         },
       });
-      toast.success('Акт создан');
+      const failedDocuments: string[] = [];
+      for (const file of documents) {
+        const form = new FormData();
+        form.set('category', 'ACT_DOCUMENT');
+        form.set('file', file);
+        const uploaded = await fetch(`/api/acts/${created.id}/attachments`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { [CSRF_HEADER_NAME]: csrfToken },
+          body: form,
+        });
+        if (!uploaded.ok) {
+          failedDocuments.push(file.name);
+        }
+      }
+      setDirty(false);
+      if (failedDocuments.length > 0) {
+        toast.error(`Черновик сохранён. Не удалось прикрепить: ${failedDocuments.join(', ')}`);
+      } else {
+        toast.success('Черновик сохранён');
+      }
       router.replace(`/acts/${created.id}`);
       router.refresh();
     } catch (caught) {
@@ -224,14 +271,39 @@ export function CreateActForm({ csrfToken }: { csrfToken: string }) {
   const data = lookups.data;
 
   function updateDefect(index: number, patch: Partial<DraftDefect>) {
+    setDirty(true);
     setDefects((current) =>
       current.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)),
     );
   }
 
+  function addDocuments(list: FileList | File[]) {
+    const next = [...documents];
+    const problems: string[] = [];
+    for (const file of list) {
+      if (!isAllowedActDocumentName(file.name)) {
+        problems.push(`${file.name}: допустимы PDF, DOC, DOCX, XLS и XLSX`);
+        continue;
+      }
+      if (!actDocumentWithinLimit(file.size)) {
+        problems.push(`${file.name}: размер файла не должен превышать 10 МиБ`);
+        continue;
+      }
+      next.push(file);
+    }
+    setDocuments(next);
+    setDocumentError(problems.length > 0 ? problems.join(' ') : null);
+    if (next.length !== documents.length) {
+      setDirty(true);
+    }
+  }
+
   return (
     <div className="grid gap-4 pb-24">
-      <PageHeader title="Создание акта" description="Укажите данные акта и хотя бы один дефект." />
+      <PageHeader
+        title="Создание акта"
+        description="Можно сохранить пустой или частично заполненный черновик и дополнить его позже."
+      />
       {lookups.isError ? (
         <ErrorState
           description="Не удалось загрузить справочники."
@@ -245,11 +317,17 @@ export function CreateActForm({ csrfToken }: { csrfToken: string }) {
         <CardContent className="grid gap-4 md:grid-cols-2">
           <div className="grid gap-1.5">
             <Label htmlFor="form-code">Форма</Label>
-            <Select value={formCode} onValueChange={(value) => setFormCode(value as 'S1' | 'S23')}>
+            <Select
+              value={formCode || 'none'}
+              onValueChange={(value) =>
+                touch(setFormCode)(value === 'none' ? '' : (value as 'S1' | 'S23'))
+              }
+            >
               <SelectTrigger id="form-code" aria-label="Форма">
-                <SelectValue />
+                <SelectValue placeholder="Не выбрана" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="none">Не выбрана</SelectItem>
                 <SelectItem value="S1">С-1</SelectItem>
                 <SelectItem value="S23">С-23</SelectItem>
               </SelectContent>
@@ -264,19 +342,8 @@ export function CreateActForm({ csrfToken }: { csrfToken: string }) {
               setQuickCreate({ kind: 'property-objects', query, field });
             }}
             onObjectIdChange={(next) => {
+              setDirty(true);
               setObjectId(next);
-              const allowed = new Set(
-                (data?.propertyObjects ?? []).find((object) => object.id === next)
-                  ?.responsibleEngineerIds ?? [],
-              );
-              setDefects((current) =>
-                current.map((item) => ({
-                  ...item,
-                  responsibleEngineerIds: item.responsibleEngineerIds.filter((id) =>
-                    allowed.has(id),
-                  ),
-                })),
-              );
             }}
           />
           <div className="grid gap-1.5">
@@ -293,7 +360,7 @@ export function CreateActForm({ csrfToken }: { csrfToken: string }) {
                   label: item.officialName,
                 }))}
                 value={customerOrganizationId}
-                onChange={setCustomerOrganizationId}
+                onChange={touch(setCustomerOrganizationId)}
                 emptyText="Организации-заказчики не загружены"
                 addLabel={data?.canCreate?.organization ? 'Добавить организацию' : undefined}
                 onAdd={
@@ -313,16 +380,65 @@ export function CreateActForm({ csrfToken }: { csrfToken: string }) {
               id="issued-on"
               type="date"
               value={issuedOn}
-              onChange={(event) => setIssuedOn(event.target.value)}
+              onChange={(event) => touch(setIssuedOn)(event.target.value)}
             />
           </div>
+          <DirectoryCombobox
+            label="Инженер, заполняющий акт"
+            placeholder="Не выбран"
+            options={engineersForObject(data, objectId)}
+            value={fillingEngineerId || 'none'}
+            onChange={(next) => touch(setFillingEngineerId)(next === 'none' ? '' : next)}
+            noneOption={{ id: 'none', label: 'Не выбран' }}
+            emptyText="Нет активных ответственных инженеров"
+          />
           <div className="grid gap-1.5 md:col-span-2">
-            <Label htmlFor="doc-ref">Документ</Label>
+            <Label htmlFor="act-documents">Документы</Label>
             <Input
-              id="doc-ref"
-              value={signedDocumentRef}
-              onChange={(event) => setSignedDocumentRef(event.target.value)}
+              id="act-documents"
+              type="file"
+              multiple
+              accept=".pdf,.doc,.docx,.xls,.xlsx"
+              onChange={(event) => {
+                if (event.target.files) {
+                  addDocuments(event.target.files);
+                }
+                event.target.value = '';
+              }}
             />
+            <p className="text-xs text-muted-foreground">
+              PDF, DOC, DOCX, XLS, XLSX, не больше 10 МиБ на файл. Документы необязательны.
+            </p>
+            {documentError ? (
+              <p className="text-sm text-destructive" role="alert">
+                {documentError}
+              </p>
+            ) : null}
+            {documents.length > 0 ? (
+              <ul className="grid gap-1 text-sm">
+                {documents.map((file, index) => (
+                  <li
+                    key={`${file.name}-${index}`}
+                    className="flex items-center justify-between gap-2"
+                  >
+                    <span className="min-w-0 wrap-break-word">
+                      {file.name} · {(file.size / (1024 * 1024)).toFixed(2)} МиБ
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() =>
+                        setDocuments((current) =>
+                          current.filter((_, itemIndex) => itemIndex !== index),
+                        )
+                      }
+                    >
+                      Удалить
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </div>
         </CardContent>
       </Card>
@@ -363,7 +479,7 @@ export function CreateActForm({ csrfToken }: { csrfToken: string }) {
           Добавить дефект
         </Button>
         <Button type="button" onClick={() => void onCreate()} disabled={pending}>
-          {pending ? 'Создание…' : 'Создать акт'}
+          {pending ? 'Сохранение…' : 'Сохранить черновик'}
         </Button>
       </div>
       <DirectoryCreateDialogs
@@ -427,7 +543,6 @@ function DraftDefectCard({
                 id={locationId}
                 value={item.location}
                 onChange={(event) => onChange({ location: event.target.value })}
-                required
               />
             </div>
             <div className="grid gap-1.5">
@@ -479,15 +594,18 @@ function DraftDefectCard({
                 id={claimId}
                 value={item.claimDetails}
                 onChange={(event) => onChange({ claimDetails: event.target.value })}
-                required
               />
             </div>
             <DirectoryCombobox
-              label="Ответственные инженеры"
+              label="Ответственный инженер"
+              placeholder="Не выбран"
               options={engineersForObject(lookups, objectId)}
-              values={item.responsibleEngineerIds}
-              onValuesChange={(responsibleEngineerIds) => onChange({ responsibleEngineerIds })}
-              emptyText={objectId ? 'Нет инженеров на объекте' : 'Сначала выберите объект'}
+              value={item.responsibleEngineerIds[0] || 'none'}
+              onChange={(next) =>
+                onChange({ responsibleEngineerIds: next && next !== 'none' ? [next] : [] })
+              }
+              noneOption={{ id: 'none', label: 'Не выбран' }}
+              emptyText="Нет активных ответственных инженеров"
             />
             <DirectoryCombobox
               label="Виновные организации"
@@ -506,7 +624,7 @@ function DraftDefectCard({
               }
             />
             <div className="grid gap-1.5">
-              <Label htmlFor={planId}>Плановый срок</Label>
+              <Label htmlFor={planId}>Срок устранения</Label>
               <Input
                 id={planId}
                 type="date"

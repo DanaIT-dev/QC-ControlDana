@@ -15,7 +15,7 @@ export function analyticsDefectWhere(
   query: AnalyticsQuery,
   metric?: AnalyticsMetric,
 ): Prisma.Sql {
-  const parts: Prisma.Sql[] = [Prisma.sql`TRUE`];
+  const parts: Prisma.Sql[] = [Prisma.sql`a.status::text <> 'NEW'`];
   const mode = registryAccessMode(scope.role);
   if (mode !== 'all') {
     parts.push(Prisma.sql`a.status <> 'CANCELLED'`);

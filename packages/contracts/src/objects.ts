@@ -23,6 +23,7 @@ export const createPropertyObjectRequestSchema = z
     commissionedAt: z.union([calendarDate, z.null()]).optional(),
     warrantyEndsAt: z.union([calendarDate, z.null()]).optional(),
     responsibleEngineerId: z.union([uuid, z.null()]).optional(),
+    responsibleEngineerIds: z.array(uuid).optional(),
     responsibleEngineerName: z.union([z.string(), z.null()]).optional(),
   })
   .strict();
@@ -31,7 +32,8 @@ export type CreatePropertyObjectRequest = z.infer<typeof createPropertyObjectReq
 
 export const linkObjectResponsibleEngineerSchema = z
   .object({
-    userId: z.uuid().nullable(),
+    userId: z.uuid().nullable().optional(),
+    userIds: z.array(z.uuid()).optional(),
   })
   .strict();
 
@@ -45,6 +47,7 @@ export const updatePropertyObjectRequestSchema = z
     name: z.string(),
     address: z.union([z.string(), z.null()]).optional(),
     active: z.boolean().optional(),
+    responsibleEngineerIds: z.array(uuid).optional(),
   })
   .strict();
 
@@ -78,6 +81,7 @@ export interface ObjectsDirectoryItem {
   active: boolean;
   version: number;
   responsibleEngineer: ObjectsResponsibleEngineer | null;
+  responsibleEngineers: ObjectsResponsibleEngineer[];
 }
 
 export interface ObjectsDirectoryResponse {

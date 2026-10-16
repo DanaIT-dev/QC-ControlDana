@@ -91,13 +91,15 @@ async function createActFromForm(page: Page, location: string) {
   await page.getByLabel('Помещение').fill(location);
   await page.getByLabel('Описание').fill('Приёмочный дефект');
   await chooseFirst(page, 'Вид дефекта');
-  await page.getByRole('combobox', { name: 'Ответственные инженеры' }).click();
+  await page.getByLabel('Форма').click();
+  await page.getByRole('option', { name: 'С-1' }).click();
+  await page.getByLabel('Дата акта').fill('2026-10-16');
+  await page.getByRole('combobox', { name: 'Ответственный инженер' }).click();
   const engineer = page.getByRole('option', { name: /Орлов Дмитрий/ });
   await expect(engineer).toBeVisible();
   await engineer.click();
-  await page.keyboard.press('Escape');
-  await page.getByLabel('Плановый срок').fill('2026-09-01');
-  await page.getByRole('button', { name: 'Создать акт' }).click();
+  await page.getByLabel('Срок устранения').fill('2026-09-01');
+  await page.getByRole('button', { name: 'Сохранить черновик' }).click();
   await expect(page).toHaveURL(/\/acts\//);
 }
 
@@ -221,8 +223,8 @@ test.describe('UI acceptance defects', () => {
     await expect(first.getByText('Изменён срок')).toBeVisible();
     await expect(first.getByText('Викторов А.')).toBeVisible();
     await expect(first.getByText('Причина: Перенос по заявке заказчика')).toBeVisible();
-    await expect(first.getByText(/plannedDeadline: 2026-09-01/)).toBeVisible();
-    await expect(first.getByText(/plannedDeadline: 2026-09-15/)).toBeVisible();
+    await expect(first.getByText(/Срок устранения: 2026-09-01/)).toBeVisible();
+    await expect(first.getByText(/Срок устранения: 2026-09-15/)).toBeVisible();
     await expect(page.getByText('Изменён срок')).toHaveCount(1);
   });
 

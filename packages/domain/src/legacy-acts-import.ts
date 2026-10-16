@@ -150,10 +150,10 @@ export interface ExistingLegacyActSnapshot {
   id: string;
   sourceSystem: string | null;
   sourceImportKey: string | null;
-  formCode: ActFormCode;
-  issuedOn: string;
-  objectId: string;
-  customerOrganizationId: string;
+  formCode: ActFormCode | null;
+  issuedOn: string | null;
+  objectId: string | null;
+  customerOrganizationId: string | null;
   status: ActStatus;
   officialNumber: string | null;
   sourceActNumberRaw: string | null;
@@ -168,7 +168,7 @@ export interface ExistingLegacyDefectSnapshot {
   sourceSystem: string | null;
   sourceImportKey: string | null;
   location: string | null;
-  defectTypeName: string;
+  defectTypeName: string | null;
   plannedDeadline: string | null;
   sourceDeadlineRaw: string | null;
   liableOrganizationIds: string[];

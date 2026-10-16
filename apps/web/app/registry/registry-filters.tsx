@@ -230,7 +230,7 @@ export function RegistryFilters({
               <section className="grid gap-3">
                 <h3 className="text-sm font-semibold">Сроки</h3>
                 <DateRange
-                  label="Плановый срок"
+                  label="Срок устранения"
                   from={query.plannedDeadlineFrom}
                   to={query.plannedDeadlineTo}
                   onChange={(plannedDeadlineFrom, plannedDeadlineTo) =>

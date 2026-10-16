@@ -12,6 +12,7 @@ import { canViewProposalGroupBC } from './registry-access';
 import { isBusinessStaffRole } from './role-hierarchy';
 
 export const ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024;
+export const ACT_DOCUMENT_MAX_BYTES = 10 * 1024 * 1024;
 export const ATTACHMENT_MAX_PER_OWNER = 50;
 export const ATTACHMENT_MAX_PIXELS = 40_000_000;
 export const ATTACHMENT_SCAN_MAX_ATTEMPTS = 3;
@@ -38,12 +39,28 @@ export const ATTACHMENT_DUPLICATE_STATUSES: readonly AttachmentStatus[] = [
 
 export const ALLOWED_ATTACHMENT_MIME_TYPES = [
   'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'image/jpeg',
   'image/png',
   'image/webp',
 ] as const;
 
-export const ALLOWED_ATTACHMENT_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png', '.webp'] as const;
+export const ALLOWED_ATTACHMENT_EXTENSIONS = [
+  '.pdf',
+  '.doc',
+  '.docx',
+  '.xls',
+  '.xlsx',
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.webp',
+] as const;
+
+const ACT_DOCUMENT_EXTENSIONS = ['.pdf', '.doc', '.docx', '.xls', '.xlsx'] as const;
 
 const CATEGORY_BY_OWNER: Record<AttachmentOwnerType, readonly AttachmentCategory[]> = {
   ACT: ['ACT_DOCUMENT', 'ACT_SCAN', 'OTHER'],
@@ -59,6 +76,10 @@ const CATEGORY_BY_OWNER: Record<AttachmentOwnerType, readonly AttachmentCategory
 
 const MIME_BY_EXTENSION: Record<string, (typeof ALLOWED_ATTACHMENT_MIME_TYPES)[number]> = {
   '.pdf': 'application/pdf',
+  '.doc': 'application/msword',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.xls': 'application/vnd.ms-excel',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
   '.png': 'image/png',
@@ -73,8 +94,8 @@ export class AttachmentPolicyError extends DomainError {
 }
 
 export class AttachmentTooLargeError extends DomainError {
-  constructor() {
-    super('PAYLOAD_TOO_LARGE', 'Размер файла не должен превышать 20 МиБ');
+  constructor(limitMiB = 20) {
+    super('PAYLOAD_TOO_LARGE', `Размер файла не должен превышать ${limitMiB} МиБ`);
     this.name = 'AttachmentTooLargeError';
   }
 }
@@ -303,13 +324,17 @@ export function detectMimeFromMagic(bytes: Uint8Array): string | null {
   ) {
     return 'image/webp';
   }
-  if (
-    looksLikeSvgOrHtml(bytes) ||
-    looksLikeXml(bytes) ||
-    looksLikeZip(bytes) ||
-    looksLikeExecutable(bytes)
-  ) {
+  if (looksLikeExecutable(bytes) || looksLikeSvgOrHtml(bytes) || looksLikeXml(bytes)) {
     return 'application/octet-stream';
+  }
+  if (hasMacroPayload(bytes)) {
+    return 'application/octet-stream';
+  }
+  if (looksLikeZip(bytes)) {
+    return officeZipMime(bytes);
+  }
+  if (looksLikeOle(bytes)) {
+    return 'application/x-cfb';
   }
   return null;
 }
@@ -341,6 +366,37 @@ function looksLikeZip(bytes: Uint8Array): boolean {
   return bytes[0] === 0x50 && bytes[1] === 0x4b;
 }
 
+function looksLikeOle(bytes: Uint8Array): boolean {
+  return (
+    bytes[0] === 0xd0 &&
+    bytes[1] === 0xcf &&
+    bytes[2] === 0x11 &&
+    bytes[3] === 0xe0 &&
+    bytes[4] === 0xa1 &&
+    bytes[5] === 0xb1 &&
+    bytes[6] === 0x1a &&
+    bytes[7] === 0xe1
+  );
+}
+
+function hasMacroPayload(bytes: Uint8Array): boolean {
+  const text = Buffer.from(bytes).toString('latin1');
+  return text.includes('vbaProject.bin') || text.includes('_VBA_PROJECT');
+}
+
+function officeZipMime(bytes: Uint8Array): string | null {
+  const text = Buffer.from(bytes).toString('latin1');
+  const word = text.includes('word/');
+  const sheet = text.includes('xl/');
+  if (word && !sheet) {
+    return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  }
+  if (sheet && !word) {
+    return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  }
+  return 'application/octet-stream';
+}
+
 function looksLikeExecutable(bytes: Uint8Array): boolean {
   return bytes[0] === 0x4d && bytes[1] === 0x5a;
 }
@@ -354,17 +410,24 @@ export function assertAllowedFile(input: {
   if (input.sizeBytes <= 0) {
     throw new AttachmentPolicyError('EMPTY_FILE', 'Пустой файл загружать нельзя');
   }
+  const safeDisplayName = assertSafeFilename(input.filename);
+  const extension = extensionOf(safeDisplayName);
+  const document = (ACT_DOCUMENT_EXTENSIONS as readonly string[]).includes(extension);
+  if (document && input.sizeBytes > ACT_DOCUMENT_MAX_BYTES) {
+    throw new AttachmentTooLargeError(10);
+  }
   if (input.sizeBytes > ATTACHMENT_MAX_BYTES) {
     throw new AttachmentTooLargeError();
   }
-  const safeDisplayName = assertSafeFilename(input.filename);
-  const extension = extensionOf(safeDisplayName);
   if (
     !ALLOWED_ATTACHMENT_EXTENSIONS.includes(
       extension as (typeof ALLOWED_ATTACHMENT_EXTENSIONS)[number],
     )
   ) {
-    throw new AttachmentPolicyError('UNSUPPORTED_TYPE', 'Допустимы только PDF, JPEG, PNG и WebP');
+    throw new AttachmentPolicyError(
+      'UNSUPPORTED_TYPE',
+      'Допустимы PDF, DOC, DOCX, XLS, XLSX, JPEG, PNG и WebP',
+    );
   }
   const expectedMime = MIME_BY_EXTENSION[extension];
   const declared = input.declaredMimeType.toLowerCase().split(';')[0]?.trim() ?? '';
@@ -374,7 +437,15 @@ export function assertAllowedFile(input: {
       'Заявленный тип файла не совпадает с расширением',
     );
   }
-  const detected = detectMimeFromMagic(input.magic);
+  let detected = detectMimeFromMagic(input.magic);
+  if (detected === 'application/x-cfb') {
+    detected =
+      extension === '.doc'
+        ? 'application/msword'
+        : extension === '.xls'
+          ? 'application/vnd.ms-excel'
+          : null;
+  }
   if (
     !detected ||
     !ALLOWED_ATTACHMENT_MIME_TYPES.includes(

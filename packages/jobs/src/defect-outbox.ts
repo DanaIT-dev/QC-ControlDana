@@ -249,13 +249,15 @@ export async function notifyDeadlineChanges(
 export async function notifyActCancelled(
   writer: OutboxWriter,
   tx: OutboxTx,
-  input: { actId: string; objectId: string; actorUserId: string },
+  input: { actId: string; objectId: string | null; actorUserId: string },
 ): Promise<string> {
   const managers = await activeRoleIds(tx, 'SGR_MANAGER');
-  const engineers = await tx.propertyObjectEngineer.findMany({
-    where: { propertyObjectId: input.objectId, unassignedAt: null },
-    select: { userId: true },
-  });
+  const engineers = input.objectId
+    ? await tx.propertyObjectEngineer.findMany({
+        where: { propertyObjectId: input.objectId, unassignedAt: null },
+        select: { userId: true },
+      })
+    : [];
   const liable = await tx.defectItemLiableOrganization.findMany({
     where: { defectItem: { actId: input.actId } },
     select: { organizationId: true },

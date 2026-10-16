@@ -21,6 +21,7 @@ export interface DirectoryOption {
   label: string;
   secondary?: string;
   title?: string;
+  highlight?: boolean;
 }
 
 export function DirectoryCombobox({
@@ -212,6 +213,7 @@ export function DirectoryCombobox({
                             className={cn(
                               'flex min-h-9 flex-row items-start justify-start gap-2 px-2 [&>svg:last-child]:hidden',
                               option.secondary ? 'h-auto py-2' : 'h-9',
+                              option.highlight && 'bg-primary/10',
                             )}
                             onSelect={() => select(option.id)}
                           >

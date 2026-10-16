@@ -31,10 +31,16 @@ import {
   InvalidTransitionError,
   StaleWriteError,
   ValidationError,
-  assertAtLeastOneDefectItem,
   assertAtLeastOneEngineer,
   assertDeadlineFieldAllowed,
   assertUniqueIds,
+  draftStartGaps,
+  isBlankDraftDefect,
+  normalizeDraftClaimDetails,
+  normalizeDraftLocation,
+  normalizeDraftNotes,
+  parseOptionalCalendarDate,
+  singleResponsibleEngineerId,
   actStatusLabel,
   calendarDateInTimeZone,
   calendarDateToUtcNoon,
@@ -61,12 +67,10 @@ import {
   isObjectScopedRole,
   isOversightRole,
   isProposalBcEvent,
-  normalizeClaimDetails,
   normalizeDocumentRef,
   normalizeLocation,
   normalizeNotes,
   normalizeRequiredReason,
-  parseActIssuedOn,
   parseOptionalDeadline,
   parseProposalAmount,
   reopenDefectItem,
@@ -115,7 +119,7 @@ export class OperationsService {
     @Inject(OutboxWriter) private readonly outboxWriter: OutboxWriter,
   ) {}
 
-  async lookups(user: AuthenticatedUser) {
+  async lookups(user: AuthenticatedUser, selectedObjectId?: string | null) {
     const scope = await resolveRegistryAccessScope(this.prisma.client, user);
     const includeInactive = isOversightRole(user.role);
     const objectWhere: Prisma.PropertyObjectWhereInput = {
@@ -146,7 +150,7 @@ export class OperationsService {
               select: { userId: true },
             },
           },
-          orderBy: { name: 'asc' },
+          orderBy: [{ nameSortKey: 'asc' }, { id: 'asc' }],
         }),
         this.prisma.client.organization.findMany({
           where: {
@@ -175,7 +179,7 @@ export class OperationsService {
         this.prisma.client.defectType.findMany({
           where: includeInactive ? {} : { active: true },
           select: { id: true, name: true, code: true },
-          orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+          orderBy: [{ nameSortKey: 'asc' }, { id: 'asc' }],
         }),
         this.prisma.client.workType.findMany({
           where: includeInactive ? {} : { active: true },
@@ -191,9 +195,18 @@ export class OperationsService {
           orderBy: { fullName: 'asc' },
         }),
       ]);
-    const assignedEngineerIds = new Set(
-      objects.flatMap((object) => object.engineers.map((row) => row.userId)),
-    );
+    const selectedObject = selectedObjectId
+      ? objects.find((object) => object.id === selectedObjectId)
+      : undefined;
+    const assignedToSelected = new Set(selectedObject?.engineers.map((row) => row.userId) ?? []);
+    const rankedEngineers = [...engineers].sort((left, right) => {
+      const leftAssigned = assignedToSelected.has(left.id) ? 0 : 1;
+      const rightAssigned = assignedToSelected.has(right.id) ? 0 : 1;
+      if (leftAssigned !== rightAssigned) {
+        return leftAssigned - rightAssigned;
+      }
+      return left.fullName.localeCompare(right.fullName, 'ru');
+    });
     return {
       propertyObjects: objects.map((object) => ({
         id: object.id,
@@ -207,9 +220,14 @@ export class OperationsService {
       alternativeContractors: alternatives,
       defectTypes,
       workTypes,
-      responsibleEngineers: scope.objectScoped
-        ? engineers.filter((engineer) => assignedEngineerIds.has(engineer.id))
-        : engineers,
+      responsibleEngineers: rankedEngineers.map((engineer) => ({
+        id: engineer.id,
+        lastName: engineer.lastName,
+        firstName: engineer.firstName,
+        middleName: engineer.middleName,
+        fullName: engineer.fullName,
+        assignedToSelectedObject: assignedToSelected.has(engineer.id),
+      })),
       canViewLookups: true,
       actorRole: user.role,
       canCreate: {
@@ -245,10 +263,10 @@ export class OperationsService {
       }
       return existing.responseBody;
     }
-    assertAtLeastOneDefectItem(input.defectItems.length);
     const ctx = actorContext(user, request);
-    const issuedOn = parseActIssuedOn(input.issuedOn);
-    const issuedAt = calendarDateToUtcNoon(issuedOn);
+    const issuedOn = input.issuedOn ? parseOptionalCalendarDate(input.issuedOn, 'issuedOn') : null;
+    const issuedAt = issuedOn ? calendarDateToUtcNoon(issuedOn) : null;
+    const defectItems = this.normalizeDraftDefects(input.defectItems ?? []);
     const outboxIds: string[] = [];
     try {
       const created = await this.prisma.client.$transaction(async (tx) => {
@@ -262,28 +280,39 @@ export class OperationsService {
             responseBody: {},
           },
         });
-        await this.assertCreatableObject(tx, user, input.objectId);
-        await this.assertActHeaderRefs(tx, input.objectId, input.customerOrganizationId);
-        const number = await allocateActNumber(tx, input.formCode, issuedAt);
+        await this.assertDraftHeader(tx, user, {
+          objectId: input.objectId ?? null,
+          customerOrganizationId: input.customerOrganizationId ?? null,
+          fillingEngineerId: input.fillingEngineerId ?? null,
+        });
+        const number =
+          input.formCode && issuedAt ? await allocateActNumber(tx, input.formCode, issuedAt) : null;
         const act = await tx.act.create({
           data: {
-            officialNumber: number.officialNumber,
-            formCode: number.formCode,
-            year: number.year,
-            sequence: number.sequence,
-            objectId: input.objectId,
-            customerOrganizationId: input.customerOrganizationId,
+            officialNumber: number?.officialNumber ?? null,
+            formCode: number?.formCode ?? input.formCode ?? null,
+            year: number?.year ?? null,
+            sequence: number?.sequence ?? null,
+            objectId: input.objectId ?? null,
+            customerOrganizationId: input.customerOrganizationId ?? null,
             issuedOn: issuedAt,
+            createdById: user.id,
+            fillingEngineerId: input.fillingEngineerId ?? null,
             signedDocumentRef: normalizeDocumentRef(input.signedDocumentRef),
             status: 'NEW',
           },
         });
         const defectIds: string[] = [];
-        for (const item of input.defectItems) {
-          const defectId = await this.insertDefect(tx, act.id, item, user, outboxIds);
+        for (const item of defectItems) {
+          const defectId = await this.insertDefect(tx, act.id, item, user, outboxIds, true);
           defectIds.push(defectId);
         }
-        const payload = { id: act.id, officialNumber: act.officialNumber, version: act.version };
+        const payload = {
+          id: act.id,
+          officialNumber: act.officialNumber,
+          version: act.version,
+          updatedAt: act.updatedAt.toISOString(),
+        };
         await writeAuditLog(tx, {
           ...ctx,
           action: 'ACT_CREATED',
@@ -295,6 +324,7 @@ export class OperationsService {
             objectId: act.objectId,
             customerOrganizationId: act.customerOrganizationId,
             issuedOn,
+            fillingEngineerId: act.fillingEngineerId,
             defectItemIds: defectIds,
           }),
         });
@@ -351,26 +381,55 @@ export class OperationsService {
       if (current.version !== input.expectedVersion) {
         throw new StaleWriteError();
       }
-      const nextObjectId = input.objectId ?? current.objectId;
-      await this.assertCreatableObject(tx, user, nextObjectId);
-      if (input.objectId) {
-        await this.assertActHeaderRefs(
-          tx,
-          input.objectId,
-          input.customerOrganizationId ?? current.customerOrganizationId,
-        );
-      } else if (input.customerOrganizationId) {
-        await this.assertActHeaderRefs(tx, current.objectId, input.customerOrganizationId);
+      const nextObjectId = input.objectId === undefined ? current.objectId : input.objectId;
+      const nextCustomerId =
+        input.customerOrganizationId === undefined
+          ? current.customerOrganizationId
+          : input.customerOrganizationId;
+      const nextFormCode = input.formCode === undefined ? current.formCode : input.formCode;
+      const parsedIssuedOn =
+        input.issuedOn === undefined || input.issuedOn === null
+          ? null
+          : parseOptionalCalendarDate(input.issuedOn, 'issuedOn');
+      const nextIssuedOn =
+        input.issuedOn === undefined
+          ? current.issuedOn
+          : parsedIssuedOn
+            ? calendarDateToUtcNoon(parsedIssuedOn)
+            : null;
+      const nextFillingEngineerId =
+        input.fillingEngineerId === undefined ? current.fillingEngineerId : input.fillingEngineerId;
+      if (
+        current.status !== 'NEW' &&
+        (!nextObjectId || !nextCustomerId || !nextIssuedOn || !nextFormCode)
+      ) {
+        throw new ValidationError('act', 'После начала работы эти поля нельзя очистить');
       }
-      const issuedOn = input.issuedOn
-        ? calendarDateToUtcNoon(parseActIssuedOn(input.issuedOn))
-        : current.issuedOn;
+      await this.assertDraftHeader(tx, user, {
+        objectId: nextObjectId,
+        customerOrganizationId: nextCustomerId,
+        fillingEngineerId: nextFillingEngineerId,
+      });
+      if (!current.officialNumber && nextFormCode && nextIssuedOn) {
+        const number = await allocateActNumber(tx, nextFormCode, nextIssuedOn);
+        await tx.act.update({
+          where: { id: actId },
+          data: {
+            officialNumber: number.officialNumber,
+            formCode: number.formCode,
+            year: number.year,
+            sequence: number.sequence,
+          },
+        });
+      }
       const updated = await tx.act.updateMany({
         where: { id: actId, version: input.expectedVersion },
         data: {
-          objectId: input.objectId ?? current.objectId,
-          customerOrganizationId: input.customerOrganizationId ?? current.customerOrganizationId,
-          issuedOn,
+          objectId: nextObjectId,
+          customerOrganizationId: nextCustomerId,
+          formCode: current.officialNumber ? current.formCode : nextFormCode,
+          issuedOn: nextIssuedOn,
+          fillingEngineerId: nextFillingEngineerId,
           signedDocumentRef:
             input.signedDocumentRef === undefined
               ? current.signedDocumentRef
@@ -390,13 +449,15 @@ export class OperationsService {
         oldValue: toJsonValue({
           objectId: current.objectId,
           customerOrganizationId: current.customerOrganizationId,
-          issuedOn: calendarDateInTimeZone(current.issuedOn),
+          issuedOn: current.issuedOn ? calendarDateInTimeZone(current.issuedOn) : null,
+          fillingEngineerId: current.fillingEngineerId,
           signedDocumentRef: current.signedDocumentRef,
         }),
         newValue: toJsonValue({
           objectId: fresh.objectId,
           customerOrganizationId: fresh.customerOrganizationId,
-          issuedOn: calendarDateInTimeZone(fresh.issuedOn),
+          issuedOn: fresh.issuedOn ? calendarDateInTimeZone(fresh.issuedOn) : null,
+          fillingEngineerId: fresh.fillingEngineerId,
           signedDocumentRef: fresh.signedDocumentRef,
         }),
       });
@@ -417,7 +478,17 @@ export class OperationsService {
       if (act.version !== input.expectedActVersion) {
         throw new StaleWriteError();
       }
-      const defectId = await this.insertDefect(tx, actId, input, user, outboxIds);
+      if (isBlankDraftDefect(input)) {
+        throw new ValidationError('defectItems', 'Заполните хотя бы одно поле дефекта');
+      }
+      const defectId = await this.insertDefect(
+        tx,
+        actId,
+        input,
+        user,
+        outboxIds,
+        act.status === 'NEW',
+      );
       const items = await tx.defectItem.findMany({ where: { actId } });
       await tx.act.update({
         where: { id: actId },
@@ -454,9 +525,18 @@ export class OperationsService {
     const input = parseCommandBody(replaceAssignmentsRequestSchema, body);
     const ctx = actorContext(user, request);
     const item = await this.requireVisibleDefect(user, defectItemId);
-    const engineerIds = assertUniqueIds(input.responsibleEngineerIds, 'responsibleEngineerIds');
+    const engineerId = singleResponsibleEngineerId(
+      input.responsibleEngineerIds,
+      input.responsibleEngineerId,
+    );
+    const engineerIds = engineerId ? [engineerId] : [];
     const liableIds = assertUniqueIds(input.liableOrganizationIds, 'liableOrganizationIds');
-    if (engineerIds.length === 0 && !input.confirmRemoveLastEngineer) {
+    const parentAct = await this.requireVisibleAct(user, item.actId);
+    if (
+      parentAct.status !== 'NEW' &&
+      engineerIds.length === 0 &&
+      !input.confirmRemoveLastEngineer
+    ) {
       throw new ValidationError(
         'confirmRemoveLastEngineer',
         'Подтвердите снятие последнего ответственного',
@@ -468,7 +548,6 @@ export class OperationsService {
         if (current.version !== input.expectedVersion) {
           throw new StaleWriteError();
         }
-        await this.assertObjectEngineers(tx, current.act.objectId, engineerIds);
         await this.assertEngineers(tx, engineerIds);
         await this.assertOrganizations(tx, liableIds, true);
         const previousEngineers = await tx.defectItemEngineer.findMany({
@@ -504,22 +583,25 @@ export class OperationsService {
         await revokeRecipientsForUsers(tx, defectItemId, removed);
         const previousLiableIds = previousLiable.map((row) => row.organizationId);
         const addedLiable = liableIds.filter((id) => !previousLiableIds.includes(id));
-        const outboxIds = [
-          ...(await notifyResponsibleAssigned(this.outboxWriter, tx, {
-            actId: item.actId,
-            defectItemId,
-            userIds: added,
-            actorUserId: user.id,
-            version: item.version + 1,
-          })),
-          ...(await notifyContractorsAssigned(this.outboxWriter, tx, {
-            actId: item.actId,
-            defectItemId,
-            organizationIds: addedLiable,
-            actorUserId: user.id,
-            version: item.version + 1,
-          })),
-        ];
+        const outboxIds =
+          parentAct.status === 'NEW'
+            ? []
+            : [
+                ...(await notifyResponsibleAssigned(this.outboxWriter, tx, {
+                  actId: item.actId,
+                  defectItemId,
+                  userIds: added,
+                  actorUserId: user.id,
+                  version: item.version + 1,
+                })),
+                ...(await notifyContractorsAssigned(this.outboxWriter, tx, {
+                  actId: item.actId,
+                  defectItemId,
+                  organizationIds: addedLiable,
+                  actorUserId: user.id,
+                  version: item.version + 1,
+                })),
+              ];
         await writeAuditLog(tx, {
           ...ctx,
           action: 'ASSIGNMENTS_REPLACED',
@@ -598,6 +680,7 @@ export class OperationsService {
     }
     const reason =
       needsReason || input.confirmCompletedEdit ? normalizeRequiredReason(input.reason) : null;
+    const deadlineAct = await this.requireVisibleAct(user, item.actId);
     const previousDeadlines = {
       claimDeadline: item.claimDeadline,
       plannedDeadline: item.plannedDeadline,
@@ -619,19 +702,22 @@ export class OperationsService {
         throw new StaleWriteError();
       }
       const fresh = await tx.defectItem.findUniqueOrThrow({ where: { id: defectItemId } });
-      const outboxIds = await notifyDeadlineChanges(this.outboxWriter, tx, {
-        actId: item.actId,
-        defectItemId,
-        actorUserId: user.id,
-        previous: previousDeadlines,
-        next: {
-          id: fresh.id,
-          status: fresh.status,
-          claimDeadline: fresh.claimDeadline,
-          plannedDeadline: fresh.plannedDeadline,
-          thirdPartyDeadline: fresh.thirdPartyDeadline,
-        },
-      });
+      const outboxIds =
+        deadlineAct.status === 'NEW'
+          ? []
+          : await notifyDeadlineChanges(this.outboxWriter, tx, {
+              actId: item.actId,
+              defectItemId,
+              actorUserId: user.id,
+              previous: previousDeadlines,
+              next: {
+                id: fresh.id,
+                status: fresh.status,
+                claimDeadline: fresh.claimDeadline,
+                plannedDeadline: fresh.plannedDeadline,
+                thirdPartyDeadline: fresh.thirdPartyDeadline,
+              },
+            });
       await writeAuditLog(tx, {
         ...ctx,
         action: 'DEADLINE_UPDATED',
@@ -1160,25 +1246,96 @@ export class OperationsService {
   async startAct(user: AuthenticatedUser, actId: string, body: unknown, request: FastifyRequest) {
     parseCommandBody(startActRequestSchema, body);
     const ctx = actorContext(user, request);
-    await this.requireVisibleAct(user, actId);
+    const current = await this.requireVisibleAct(user, actId);
+    const defects = await this.prisma.client.defectItem.findMany({
+      where: { actId },
+      select: {
+        id: true,
+        defectTypeId: true,
+        status: true,
+        claimDeadline: true,
+        plannedDeadline: true,
+        thirdPartyDeadline: true,
+      },
+    });
+    const gaps = draftStartGaps({
+      objectId: current.objectId,
+      customerOrganizationId: current.customerOrganizationId,
+      issuedOn: current.issuedOn,
+      formCode: current.formCode,
+      defects,
+    });
+    if (gaps.length > 0) {
+      throw new ValidationError('act', `Чтобы взять акт в работу, заполните: ${gaps.join(', ')}`);
+    }
     try {
-      return await this.prisma.client.$transaction(async (tx) => {
+      const outcome = await this.prisma.client.$transaction(async (tx) => {
+        if (!current.officialNumber && current.formCode && current.issuedOn) {
+          const number = await allocateActNumber(tx, current.formCode, current.issuedOn);
+          await tx.act.update({
+            where: { id: actId },
+            data: {
+              officialNumber: number.officialNumber,
+              year: number.year,
+              sequence: number.sequence,
+            },
+          });
+        }
         const started = await startActViaDefiner(tx, {
           actId,
           requestId: ctx.requestId,
         });
+        const warningDays = await warningDaysOf(tx);
+        for (const defect of defects) {
+          await syncSlaClocks(tx, defect, warningDays);
+        }
+        const outboxIds: string[] = [];
+        if (!started.alreadyStarted) {
+          const assigned = await tx.defectItem.findMany({
+            where: { actId },
+            select: {
+              id: true,
+              version: true,
+              responsibleEngineers: { select: { userId: true } },
+              liableOrganizations: { select: { organizationId: true } },
+            },
+          });
+          for (const defect of assigned) {
+            outboxIds.push(
+              ...(await notifyResponsibleAssigned(this.outboxWriter, tx, {
+                actId,
+                defectItemId: defect.id,
+                userIds: defect.responsibleEngineers.map((row) => row.userId),
+                actorUserId: user.id,
+                version: defect.version,
+              })),
+              ...(await notifyContractorsAssigned(this.outboxWriter, tx, {
+                actId,
+                defectItemId: defect.id,
+                organizationIds: defect.liableOrganizations.map((row) => row.organizationId),
+                actorUserId: user.id,
+                version: defect.version,
+              })),
+            );
+          }
+        }
         return {
-          id: started.id,
-          status: started.status,
-          statusLabel: actStatusLabel(started.status),
-          version: started.version,
-          startedAt: started.startedAt ? started.startedAt.toISOString() : null,
-          startedBy:
-            started.startedById && started.startedByName
-              ? { id: started.startedById, fullName: started.startedByName }
-              : null,
+          outboxIds,
+          body: {
+            id: started.id,
+            status: started.status,
+            statusLabel: actStatusLabel(started.status),
+            version: started.version,
+            startedAt: started.startedAt ? started.startedAt.toISOString() : null,
+            startedBy:
+              started.startedById && started.startedByName
+                ? { id: started.startedById, fullName: started.startedByName }
+                : null,
+          },
         };
       });
+      await this.outboxWriter.enqueue(outcome.outboxIds);
+      return outcome.body;
     } catch (error) {
       mapStartActError(error);
     }
@@ -1698,36 +1855,92 @@ export class OperationsService {
     };
   }
 
+  private normalizeDraftDefects(
+    items: Array<{
+      location?: string | null;
+      defectTypeId?: string | null;
+      workTypeId?: string | null;
+      claimDetails?: string | null;
+      notes?: string | null;
+      responsibleEngineerId?: string | null;
+      responsibleEngineerIds?: string[];
+      liableOrganizationIds?: string[];
+      plannedDeadline?: string | null;
+      claimDeadline?: string | null;
+      thirdPartyDeadline?: string | null;
+    }>,
+  ) {
+    const normalized = [];
+    for (const item of items) {
+      const engineerId = singleResponsibleEngineerId(
+        item.responsibleEngineerIds,
+        item.responsibleEngineerId,
+      );
+      if (
+        isBlankDraftDefect({
+          ...item,
+          responsibleEngineerIds: engineerId ? [engineerId] : [],
+        })
+      ) {
+        continue;
+      }
+      normalized.push({
+        location: normalizeDraftLocation(item.location),
+        defectTypeId: item.defectTypeId ?? null,
+        workTypeId: item.workTypeId ?? null,
+        claimDetails: normalizeDraftClaimDetails(item.claimDetails),
+        notes: normalizeDraftNotes(item.notes),
+        responsibleEngineerIds: engineerId ? [engineerId] : [],
+        liableOrganizationIds: item.liableOrganizationIds ?? [],
+        plannedDeadline: item.plannedDeadline
+          ? parseOptionalCalendarDate(item.plannedDeadline, 'plannedDeadline')
+          : null,
+        claimDeadline: item.claimDeadline
+          ? parseOptionalCalendarDate(item.claimDeadline, 'claimDeadline')
+          : null,
+        thirdPartyDeadline: item.thirdPartyDeadline
+          ? parseOptionalCalendarDate(item.thirdPartyDeadline, 'thirdPartyDeadline')
+          : null,
+      });
+    }
+    return normalized;
+  }
+
   private async insertDefect(
     tx: Prisma.TransactionClient,
     actId: string,
     input: {
-      location: string;
-      defectTypeId: string;
+      location?: string | null;
+      defectTypeId?: string | null;
       workTypeId?: string | null;
-      claimDetails: string;
+      claimDetails?: string | null;
       notes?: string | null;
-      responsibleEngineerIds: string[];
-      liableOrganizationIds: string[];
+      responsibleEngineerId?: string | null;
+      responsibleEngineerIds?: string[];
+      liableOrganizationIds?: string[];
       plannedDeadline?: string | null;
       claimDeadline?: string | null;
       thirdPartyDeadline?: string | null;
     },
     user: AuthenticatedUser,
     outboxIds: string[],
+    draft = false,
   ): Promise<string> {
-    const engineerIds = assertUniqueIds(input.responsibleEngineerIds, 'responsibleEngineerIds');
-    const liableIds = assertUniqueIds(input.liableOrganizationIds, 'liableOrganizationIds');
-    assertAtLeastOneEngineer(engineerIds.length);
-    await this.assertDefectType(tx, input.defectTypeId);
+    const engineerId = singleResponsibleEngineerId(
+      input.responsibleEngineerIds,
+      input.responsibleEngineerId,
+    );
+    const engineerIds = engineerId ? [engineerId] : [];
+    const liableIds = assertUniqueIds(input.liableOrganizationIds ?? [], 'liableOrganizationIds');
+    if (!draft) {
+      assertAtLeastOneEngineer(engineerIds.length);
+    }
+    if (input.defectTypeId) {
+      await this.assertDefectType(tx, input.defectTypeId);
+    }
     if (input.workTypeId) {
       await this.assertWorkType(tx, input.workTypeId);
     }
-    const act = await tx.act.findUnique({ where: { id: actId }, select: { objectId: true } });
-    if (!act) {
-      throw new NotFoundException('Запись не найдена');
-    }
-    await this.assertObjectEngineers(tx, act.objectId, engineerIds);
     await this.assertEngineers(tx, engineerIds);
     await this.assertOrganizations(tx, liableIds, true);
     const created = createDefectItem({ id: randomUUID(), actId });
@@ -1735,12 +1948,12 @@ export class OperationsService {
       data: {
         id: created.id,
         actId,
-        location: normalizeLocation(input.location),
-        defectTypeId: input.defectTypeId,
+        location: normalizeDraftLocation(input.location),
+        defectTypeId: input.defectTypeId || null,
         workTypeId: input.workTypeId || null,
         status: 'IN_PROGRESS',
-        claimDetails: normalizeClaimDetails(input.claimDetails),
-        notes: normalizeNotes(input.notes),
+        claimDetails: normalizeDraftClaimDetails(input.claimDetails),
+        notes: normalizeDraftNotes(input.notes),
         plannedDeadline: input.plannedDeadline
           ? calendarDateToUtcNoon(input.plannedDeadline)
           : null,
@@ -1756,18 +1969,55 @@ export class OperationsService {
         },
       },
     });
-    const fresh = await tx.defectItem.findUniqueOrThrow({ where: { id: created.id } });
-    await syncSlaClocks(tx, fresh, await warningDaysOf(tx));
-    outboxIds.push(
-      ...(await notifyResponsibleAssigned(this.outboxWriter, tx, {
-        actId,
-        defectItemId: created.id,
-        userIds: engineerIds,
-        actorUserId: user.id,
-        version: 1,
-      })),
-    );
+    if (!draft) {
+      const fresh = await tx.defectItem.findUniqueOrThrow({ where: { id: created.id } });
+      await syncSlaClocks(tx, fresh, await warningDaysOf(tx));
+      outboxIds.push(
+        ...(await notifyResponsibleAssigned(this.outboxWriter, tx, {
+          actId,
+          defectItemId: created.id,
+          userIds: engineerIds,
+          actorUserId: user.id,
+          version: 1,
+        })),
+      );
+    }
     return created.id;
+  }
+
+  private async assertDraftHeader(
+    tx: Prisma.TransactionClient,
+    user: AuthenticatedUser,
+    input: {
+      objectId: string | null;
+      customerOrganizationId: string | null;
+      fillingEngineerId: string | null;
+    },
+  ) {
+    if (input.objectId && input.customerOrganizationId) {
+      await this.assertCreatableObject(tx, user, input.objectId);
+      await this.assertActHeaderRefs(tx, input.objectId, input.customerOrganizationId);
+    } else if (input.objectId) {
+      await this.assertCreatableObject(tx, user, input.objectId);
+      const object = await tx.propertyObject.findUnique({ where: { id: input.objectId } });
+      if (!object?.active) {
+        throw new ValidationError('objectId', 'Можно выбрать только активный объект');
+      }
+    } else if (input.customerOrganizationId) {
+      const customer = await tx.organization.findUnique({
+        where: { id: input.customerOrganizationId },
+        include: { roles: true },
+      });
+      if (!customer?.active || !customer.roles.some((role) => role.role === 'CUSTOMER')) {
+        throw new ValidationError(
+          'customerOrganizationId',
+          'Можно выбрать только активного заказчика',
+        );
+      }
+    }
+    if (input.fillingEngineerId) {
+      await this.assertEngineers(tx, [input.fillingEngineerId]);
+    }
   }
 
   private async assertCreatableObject(
@@ -1928,7 +2178,16 @@ export class OperationsService {
     const scope = await resolveRegistryAccessScope(this.prisma.client, user);
     const act = await this.prisma.client.act.findFirst({
       where: scope.actVisibleWhere(actId),
-      select: { id: true, status: true, startedAt: true },
+      select: {
+        id: true,
+        status: true,
+        startedAt: true,
+        objectId: true,
+        customerOrganizationId: true,
+        issuedOn: true,
+        formCode: true,
+        officialNumber: true,
+      },
     });
     if (!act) {
       throw new NotFoundException('Запись не найдена');

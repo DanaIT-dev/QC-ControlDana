@@ -358,7 +358,7 @@ function AddDefectButton({
         onOpenChange={(next) => {
           setOpen(next);
           if (next) {
-            setEngineerIds(engineerOptions[0] ? [engineerOptions[0].id] : []);
+            setEngineerIds([]);
             setLiableIds([]);
             setDefectTypeId(lookups.data?.defectTypes[0]?.id ?? '');
             setWorkTypeId('');
@@ -427,11 +427,13 @@ function AddDefectButton({
               }
             />
             <DirectoryCombobox
-              label="Ответственные инженеры"
+              label="Ответственный инженер"
+              placeholder="Не выбран"
               options={engineerOptions}
-              values={engineerIds}
-              onValuesChange={setEngineerIds}
-              emptyText="Нет инженеров на объекте"
+              value={engineerIds[0] || 'none'}
+              onChange={(next) => setEngineerIds(next && next !== 'none' ? [next] : [])}
+              noneOption={{ id: 'none', label: 'Не выбран' }}
+              emptyText="Нет активных ответственных инженеров"
             />
             <DirectoryCombobox
               label="Виновные организации"
@@ -550,11 +552,13 @@ function AssignmentEditor({
             }}
           >
             <DirectoryCombobox
-              label="Ответственные инженеры"
+              label="Ответственный инженер"
+              placeholder="Не выбран"
               options={engineersForObject(lookups.data, act.objectId)}
-              values={engineerIds}
-              onValuesChange={setEngineerIds}
-              emptyText="Нет инженеров на объекте"
+              value={engineerIds[0] || 'none'}
+              onChange={(next) => setEngineerIds(next && next !== 'none' ? [next] : [])}
+              noneOption={{ id: 'none', label: 'Не выбран' }}
+              emptyText="Нет активных ответственных инженеров"
             />
             <DirectoryCombobox
               label="Виновные организации"
@@ -654,7 +658,7 @@ function DeadlineEditor({
           >
             {canPlan ? (
               <div className="grid gap-1.5">
-                <Label>Плановый срок</Label>
+                <Label>Срок устранения</Label>
                 <Input
                   name="plannedDeadline"
                   type="date"
@@ -1108,11 +1112,17 @@ function CancelActButton({ onSave }: { onSave: (reason: string) => Promise<void>
   );
 }
 
+const HISTORY_FIELD_LABELS: Record<string, string> = {
+  plannedDeadline: 'Срок устранения',
+  claimDeadline: 'Претензионный срок',
+  thirdPartyDeadline: 'Срок третьей стороны',
+};
+
 function summarize(value: unknown): string {
   if (!value || typeof value !== 'object') {
     return '—';
   }
   return Object.entries(value as Record<string, unknown>)
-    .map(([key, nested]) => `${key}: ${String(nested)}`)
+    .map(([key, nested]) => `${HISTORY_FIELD_LABELS[key] ?? key}: ${String(nested)}`)
     .join(', ');
 }

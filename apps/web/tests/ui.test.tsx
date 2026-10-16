@@ -259,8 +259,8 @@ describe('role-aware navigation', () => {
       'Справочники',
     ]);
     expect(navSectionsForRole('RESPONSIBLE_ENGINEER').administration).toEqual([]);
-    expect(contractor).toEqual(['Реестр', 'Контроль сроков', 'Уведомления']);
-    expect(contractor).not.toContain('Справочники');
+    expect(contractor).toEqual(['Реестр', 'Контроль сроков', 'Уведомления', 'Справочники']);
+    expect(contractor).toContain('Справочники');
     expect(contractor).not.toContain('Объекты');
     expect(contractor).not.toContain('Создать акт');
     expect(navSectionsForRole('CONTRACTOR_ENGINEER').administration).toEqual([]);
@@ -268,6 +268,7 @@ describe('role-aware navigation', () => {
       'Реестр',
       'Аналитика',
       'Объекты',
+      'Создать акт',
       'Контроль сроков',
       'Уведомления',
       'Справочники',
@@ -279,7 +280,7 @@ describe('role-aware navigation', () => {
       'Состояние системы',
     ]);
     expect(navItemsForRole('SUPER_ADMIN').map((item) => item.href)).toContain('/registry');
-    expect(navItemsForRole('SUPER_ADMIN').map((item) => item.href)).not.toContain('/acts/new');
+    expect(navItemsForRole('SUPER_ADMIN').map((item) => item.href)).toContain('/acts/new');
     const allHrefs = navItemsForRole('ADMIN').map((item) => item.href);
     expect(new Set(allHrefs).size).toBe(allHrefs.length);
     expect(navItemsForRole('PENDING_ROLE')).toEqual([]);
@@ -532,7 +533,7 @@ describe('mobile cards and date-only value', () => {
 
   it('keeps date-only values from date inputs', () => {
     const onChange = vi.fn();
-    render(<DateRange label="Плановый срок" from="2026-03-01" to={null} onChange={onChange} />);
+    render(<DateRange label="Срок устранения" from="2026-03-01" to={null} onChange={onChange} />);
     const from = screen.getByLabelText('с');
     expect((from as HTMLInputElement).value).toBe('2026-03-01');
     fireEvent.change(from, { target: { value: '2026-04-02' } });

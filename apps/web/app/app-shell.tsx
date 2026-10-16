@@ -47,11 +47,13 @@ export function AppShell({ user, children }: { user: SafeUserProfile; children: 
                 Режим просмотра
               </span>
             ) : null}
-            <div className="hidden items-center gap-1 xl:flex">
+            <div className="flex items-center gap-1">
               {showNotifications ? (
                 <NotificationBell csrfToken={user.csrfToken} canMutate={!readOnly} />
               ) : null}
-              <UserMenu user={user} />
+              <div className="hidden xl:block">
+                <UserMenu user={user} />
+              </div>
             </div>
             <Sheet open={open} onOpenChange={setOpen}>
               <SheetTrigger asChild>

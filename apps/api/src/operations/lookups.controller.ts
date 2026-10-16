@@ -1,4 +1,4 @@
-import { Controller, Get, Inject, UseGuards } from '@nestjs/common';
+import { Controller, Get, Inject, Query, UseGuards } from '@nestjs/common';
 import type { AuthenticatedUser } from '../auth/authenticated-user.js';
 import { AuthenticationGuard } from '../auth/authentication.guard.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
@@ -24,7 +24,7 @@ export class LookupsController {
     'VIEW_ORGANIZATION_ACTS',
     'VIEW_ASSIGNED_DEFECTS',
   )
-  lookups(@CurrentUser() user: AuthenticatedUser) {
-    return this.operationsService.lookups(user);
+  lookups(@CurrentUser() user: AuthenticatedUser, @Query('objectId') objectId?: string) {
+    return this.operationsService.lookups(user, objectId);
   }
 }

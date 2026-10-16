@@ -30,10 +30,10 @@ export interface SlaListItem {
   defectItemId: string;
   actId: string;
   officialNumber: string;
-  formCode: 'S1' | 'S23';
-  objectName: string;
-  location: string;
-  defectTypeName: string;
+  formCode: 'S1' | 'S23' | null;
+  objectName: string | null;
+  location: string | null;
+  defectTypeName: string | null;
   responsibleNames: string[];
   kind: (typeof SLA_CLOCK_KINDS)[number];
   deadline: string | null;

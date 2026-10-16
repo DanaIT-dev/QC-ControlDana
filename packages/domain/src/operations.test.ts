@@ -272,7 +272,7 @@ describe('audit secret exclusion', () => {
 });
 
 describe('act create validation', () => {
-  it('requires at least one defect item and rejects unknown fields', () => {
+  it('accepts an empty draft and rejects unknown fields', () => {
     const parsed = createActRequestSchema.safeParse({
       formCode: 'S1',
       objectId: '11111111-1111-4111-8111-111111111111',
@@ -280,7 +280,8 @@ describe('act create validation', () => {
       issuedOn: '2026-08-01',
       defectItems: [],
     });
-    expect(parsed.success).toBe(false);
+    expect(parsed.success).toBe(true);
+    expect(createActRequestSchema.safeParse({}).success).toBe(true);
     const spoofed = createActRequestSchema.safeParse({
       formCode: 'S1',
       objectId: '11111111-1111-4111-8111-111111111111',

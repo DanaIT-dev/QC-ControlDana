@@ -120,9 +120,9 @@ export class SlaQueryService {
           actId: row.defectItem.actId,
           officialNumber: row.defectItem.act.officialNumber ?? 'Без номера',
           formCode: row.defectItem.act.formCode,
-          objectName: row.defectItem.act.propertyObject.name,
-          location: row.defectItem.location ?? '—',
-          defectTypeName: row.defectItem.defectType.name,
+          objectName: row.defectItem.act.propertyObject?.name ?? null,
+          location: row.defectItem.location,
+          defectTypeName: row.defectItem.defectType?.name ?? null,
           responsibleNames: [
             ...row.defectItem.responsibleEngineers.map((item) =>
               formatPersonShort({

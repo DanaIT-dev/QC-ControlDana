@@ -392,7 +392,7 @@ export class ReferenceDataService {
           },
         },
       },
-      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+      orderBy: [{ nameSortKey: 'asc' }, { id: 'asc' }],
       skip: (input.page - 1) * input.pageSize,
       take: input.pageSize,
     });
@@ -560,7 +560,10 @@ export class ReferenceDataService {
     const totalCount = await client.count({ where });
     const items = await client.findMany({
       where,
-      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+      orderBy:
+        model === 'defectType'
+          ? [{ nameSortKey: 'asc' as const }, { id: 'asc' as const }]
+          : [{ sortOrder: 'asc' as const }, { name: 'asc' as const }],
       skip: (input.page - 1) * input.pageSize,
       take: input.pageSize,
     });

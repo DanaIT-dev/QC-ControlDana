@@ -36,13 +36,13 @@ export function fetchObjectsDirectory(query: {
 
 export function linkObjectResponsibleEngineer(
   objectId: string,
-  userId: string | null,
+  userIdOrIds: string | null | string[],
   csrfToken: string,
 ): Promise<{ ok: true }> {
   return commandFetch(`/api/objects/${objectId}/responsible-engineer`, {
     method: 'PATCH',
     csrfToken,
-    body: { userId },
+    body: Array.isArray(userIdOrIds) ? { userIds: userIdOrIds } : { userId: userIdOrIds },
   });
 }
 
@@ -54,6 +54,7 @@ export function createPropertyObject(
     commissionedAt?: string | null;
     warrantyEndsAt?: string | null;
     responsibleEngineerId?: string | null;
+    responsibleEngineerIds?: string[];
     responsibleEngineerName?: string | null;
   },
 ): Promise<{
@@ -78,6 +79,7 @@ export function updatePropertyObject(
     name: string;
     address?: string | null;
     active?: boolean;
+    responsibleEngineerIds?: string[];
   },
 ): Promise<{
   id: string;

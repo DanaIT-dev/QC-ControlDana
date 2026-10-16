@@ -17,8 +17,11 @@ import {
   ATTACHMENT_DUPLICATE_STATUSES,
   ATTACHMENT_MAX_BYTES,
   ATTACHMENT_MAX_PER_OWNER,
+  ACT_DOCUMENT_MAX_BYTES,
   ALLOWED_ATTACHMENT_MIME_TYPES,
   ALLOWED_ATTACHMENT_EXTENSIONS,
+  extensionOf,
+  AttachmentPolicyError,
   AttachmentTooLargeError,
   DuplicateValueError,
   StaleWriteError,
@@ -57,8 +60,13 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3
 export class HashingLimiter extends Transform {
   readonly hash = createHash('sha256');
   size = 0;
+  macro = false;
+  private tail = Buffer.alloc(0);
 
-  constructor(private readonly maxBytes: number) {
+  constructor(
+    private readonly maxBytes: number,
+    private readonly limitMiB = 20,
+  ) {
     super();
   }
 
@@ -69,8 +77,13 @@ export class HashingLimiter extends Transform {
   ): void {
     this.hash.update(chunk);
     this.size += chunk.length;
+    const window = Buffer.concat([this.tail, chunk]);
+    if (window.includes('vbaProject.bin') || window.includes('_VBA_PROJECT')) {
+      this.macro = true;
+    }
+    this.tail = window.subarray(Math.max(0, window.length - 32));
     if (this.size > this.maxBytes) {
-      callback(new AttachmentTooLargeError());
+      callback(new AttachmentTooLargeError(this.limitMiB));
       return;
     }
     callback(null, chunk);
@@ -330,7 +343,13 @@ export class AttachmentsService {
 
     const id = randomUUID();
     const objectKey = createAttachmentObjectKey(id);
-    const hasher = new HashingLimiter(limits.maxBytes);
+    const documentUpload = ['.pdf', '.doc', '.docx', '.xls', '.xlsx'].includes(
+      extensionOf(file.filename),
+    );
+    const maxBytes = documentUpload
+      ? Math.min(limits.maxBytes, ACT_DOCUMENT_MAX_BYTES)
+      : limits.maxBytes;
+    const hasher = new HashingLimiter(maxBytes, documentUpload ? 10 : 20);
     const sink = new PassThrough();
     hasher.pipe(sink);
 
@@ -341,7 +360,7 @@ export class AttachmentsService {
       const onData = (chunk: Buffer) => {
         prefixChunks.push(chunk);
         prefixSize += chunk.length;
-        if (prefixSize >= 16) {
+        if (prefixSize >= 65_536) {
           source.off('data', onData);
           source.off('error', reject);
           source.pause();
@@ -430,8 +449,11 @@ export class AttachmentsService {
       if (hasher.size <= 0) {
         throw new ValidationError('file', 'Пустой файл загружать нельзя');
       }
-      if (hasher.size > limits.maxBytes) {
-        throw new AttachmentTooLargeError();
+      if (hasher.size > maxBytes) {
+        throw new AttachmentTooLargeError(documentUpload ? 10 : 20);
+      }
+      if (hasher.macro) {
+        throw new AttachmentPolicyError('UNSUPPORTED_TYPE', 'Файлы с макросами загружать нельзя');
       }
       const duplicate = await this.withUserDb(user, request, () =>
         this.prisma.client.attachment.findFirst({

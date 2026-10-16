@@ -239,7 +239,10 @@ export function RegistryTable({
   });
 
   return (
-    <div className="overflow-hidden rounded-md border bg-card" data-slot="registry-table-wrap">
+    <div
+      className="min-w-0 overflow-visible rounded-md border bg-card"
+      data-slot="registry-table-wrap"
+    >
       {canViewBC ? (
         <div className="flex items-center justify-end border-b px-3 py-2">
           <Button type="button" variant="outline" size="sm" onClick={onToggleBC}>
@@ -247,7 +250,7 @@ export function RegistryTable({
           </Button>
         </div>
       ) : null}
-      <div className="overflow-x-auto">
+      <div className="max-w-full overflow-x-auto overscroll-x-contain pb-2">
         <table className="registry-table w-full min-w-190 border-separate border-spacing-0 text-sm xl:min-w-275">
           <thead>
             {table.getHeaderGroups().map((group) => (

@@ -108,10 +108,9 @@ test.describe('MANAGER role and profile editing', () => {
     await page.getByLabel('Описание').fill('Дефект руководителя');
     await page.getByRole('combobox', { name: 'Вид дефекта' }).first().click();
     await page.getByRole('option').first().click();
-    await page.getByRole('combobox', { name: 'Ответственные инженеры' }).click();
+    await page.getByRole('combobox', { name: 'Ответственный инженер' }).click();
     await page.getByRole('option').first().click();
-    await page.keyboard.press('Escape');
-    await page.getByRole('button', { name: 'Создать акт' }).click();
+    await page.getByRole('button', { name: 'Сохранить черновик' }).click();
     await expect(page).toHaveURL(/\/acts\//);
     expect(consoleState.hydration()).toEqual([]);
     expect(consoleState.pageErrors).toEqual([]);

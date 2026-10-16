@@ -166,7 +166,7 @@ test.describe('quality analytics', () => {
     await expect(page.getByRole('heading', { name: 'Аналитика' })).toHaveCount(0);
   });
 
-  test('super admin has no mutation actions', async ({ page }) => {
+  test('super admin can review pattern signals', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await login(page, ACCOUNTS.superAdmin);
     await page.goto('/analytics');
@@ -176,7 +176,7 @@ test.describe('quality analytics', () => {
     await expect(
       page.getByText('Сигналов нет').or(page.getByText('Статус: Новый')).first(),
     ).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Подтвердить' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Подтвердить' }).first()).toBeVisible();
     await page.screenshot({
       path: 'test-results/analytics-hardening/super-admin.png',
       fullPage: true,
@@ -202,8 +202,10 @@ test.describe('quality analytics', () => {
     await page.getByLabel('Электронная почта').fill(pendingEmail);
     await page.getByLabel('Пароль', { exact: true }).fill(pendingPassword);
     await page.getByRole('button', { name: 'Войти' }).click();
-    await page.getByLabel('Текущий пароль').fill(pendingPassword);
+    await expect(page.getByText('Смена временного пароля')).toBeVisible();
     await page.getByLabel('Новый пароль').fill('Dana-SGR-WaitRole-2026!');
+    await page.getByLabel('Текущий пароль').fill(pendingPassword);
+    await expect(page.getByLabel('Текущий пароль')).toHaveValue(pendingPassword);
     await page.getByRole('button', { name: 'Сменить пароль' }).click();
     await expect(page).toHaveURL(/\/pending-role/);
     await page.goto('/analytics');

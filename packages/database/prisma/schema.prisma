@@ -172,6 +172,9 @@ model User {
 
   objectAssignments              PropertyObjectEngineer[]
   objectEngineerAssignmentsMade  PropertyObjectEngineer[] @relation("ObjectEngineerAssignedBy")
+  objectEngineerRevocations      PropertyObjectEngineer[] @relation("ObjectEngineerRevokedBy")
+  createdActs                    Act[]                    @relation("ActCreatedBy")
+  filledActs                     Act[]                    @relation("ActFilledBy")
   defectItemAssignments          DefectItemEngineer[]
   cancelledActs         Act[]                    @relation("ActCancelledBy")
   startedActs           Act[]                    @relation("ActStartedBy")
@@ -230,6 +233,7 @@ model PropertyObject {
   active                          Boolean   @default(true)
   archivedAt                      DateTime? @db.Timestamptz(3)
   version                         Int       @default(1)
+  nameSortKey                     String    @default(dbgenerated())
 
   engineers PropertyObjectEngineer[]
   acts      Act[]
@@ -247,11 +251,13 @@ model PropertyObjectEngineer {
   assignedAt       DateTime  @default(now()) @db.Timestamptz(3)
   unassignedAt     DateTime? @db.Timestamptz(3)
   assignedByUserId    String?   @db.Uuid
+  revokedByUserId     String?   @db.Uuid
   directoryLinkMethod String?
 
   propertyObject PropertyObject @relation(fields: [propertyObjectId], references: [id], onDelete: Restrict)
   user           User           @relation(fields: [userId], references: [id], onDelete: Restrict)
   assignedBy     User?          @relation("ObjectEngineerAssignedBy", fields: [assignedByUserId], references: [id], onDelete: Restrict)
+  revokedBy      User?          @relation("ObjectEngineerRevokedBy", fields: [revokedByUserId], references: [id], onDelete: Restrict)
 
   @@unique([propertyObjectId, userId])
   @@index([userId, propertyObjectId])
@@ -371,9 +377,10 @@ model DefectType {
   active     Boolean   @default(true)
   archivedAt DateTime? @db.Timestamptz(3)
   version    Int       @default(1)
-  sortOrder  Int
-  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
-  updatedAt  DateTime  @updatedAt @db.Timestamptz(3)
+  sortOrder   Int
+  nameSortKey String   @default(dbgenerated())
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
 
   defectItems DefectItem[]
 
@@ -382,16 +389,18 @@ model DefectType {
 }
 
 model Act {
-  id                     String      @id @default(uuid()) @db.Uuid
+  id                     String       @id @default(uuid()) @db.Uuid
   officialNumber         String?
-  formCode               ActFormCode
-  year                   Int
-  sequence               Int
-  objectId               String      @db.Uuid
-  customerOrganizationId String      @db.Uuid
+  formCode               ActFormCode?
+  year                   Int?
+  sequence               Int?
+  objectId               String?      @db.Uuid
+  customerOrganizationId String?      @db.Uuid
   signedDocumentRef      String?
-  issuedOn               DateTime    @db.Timestamptz(3)
-  status                 ActStatus   @default(NEW)
+  issuedOn               DateTime?    @db.Timestamptz(3)
+  createdById            String?      @db.Uuid
+  fillingEngineerId      String?      @db.Uuid
+  status                 ActStatus    @default(NEW)
   version                Int         @default(1)
   createdAt              DateTime    @default(now()) @db.Timestamptz(3)
   updatedAt              DateTime    @updatedAt @db.Timestamptz(3)
@@ -412,9 +421,11 @@ model Act {
   importedAt             DateTime?   @db.Timestamptz(3)
   importBatchId          String?     @db.Uuid
 
-  propertyObject PropertyObject @relation(fields: [objectId], references: [id], onDelete: Restrict)
-  customer       Organization   @relation("ActCustomer", fields: [customerOrganizationId], references: [id], onDelete: Restrict)
-  startedBy      User?          @relation("ActStartedBy", fields: [startedById], references: [id], onDelete: Restrict)
+  propertyObject PropertyObject? @relation(fields: [objectId], references: [id], onDelete: Restrict)
+  customer       Organization?   @relation("ActCustomer", fields: [customerOrganizationId], references: [id], onDelete: Restrict)
+  createdBy      User?           @relation("ActCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  fillingEngineer User?          @relation("ActFilledBy", fields: [fillingEngineerId], references: [id], onDelete: Restrict)
+  startedBy      User?           @relation("ActStartedBy", fields: [startedById], references: [id], onDelete: Restrict)
   cancelledBy    User?          @relation("ActCancelledBy", fields: [cancelledByUserId], references: [id], onDelete: Restrict)
   importBatch    ImportBatch?   @relation(fields: [importBatchId], references: [id], onDelete: Restrict)
   defectItems    DefectItem[]
@@ -426,6 +437,8 @@ model Act {
   @@unique([sourceSystem, sourceImportKey], map: "acts_source_import_key_unique")
   @@index([objectId])
   @@index([customerOrganizationId])
+  @@index([createdById])
+  @@index([fillingEngineerId])
   @@index([status])
   @@index([importBatchId])
   @@map("acts")
@@ -504,7 +517,7 @@ model DefectItem {
   id                 String           @id @default(uuid()) @db.Uuid
   actId              String           @db.Uuid
   location           String?
-  defectTypeId       String           @db.Uuid
+  defectTypeId       String?          @db.Uuid
   workTypeId         String?          @db.Uuid
   status             DefectItemStatus @default(IN_PROGRESS)
   claimDetails       String?
@@ -539,7 +552,7 @@ model DefectItem {
   submittedBy          User?                          @relation("DefectSubmittedBy", fields: [submittedByUserId], references: [id], onDelete: Restrict)
   rejectedBy           User?                          @relation("DefectRejectedBy", fields: [rejectedByUserId], references: [id], onDelete: Restrict)
   acceptedBy           User?                          @relation("DefectAcceptedBy", fields: [acceptedByUserId], references: [id], onDelete: Restrict)
-  defectType           DefectType                     @relation(fields: [defectTypeId], references: [id], onDelete: Restrict)
+  defectType           DefectType?                    @relation(fields: [defectTypeId], references: [id], onDelete: Restrict)
   workType             WorkType?                      @relation(fields: [workTypeId], references: [id], onDelete: Restrict)
   importBatch          ImportBatch?                   @relation(fields: [importBatchId], references: [id], onDelete: Restrict)
   responsibleEngineers DefectItemEngineer[]

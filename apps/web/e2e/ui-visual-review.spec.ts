@@ -289,9 +289,10 @@ test.describe('UI visual review', () => {
     await page.setViewportSize(VIEWPORTS.desktop);
     await page.goto('/system-status');
     await setChromiumZoom(page, 1.5);
-    await expect(page.locator('[data-slot="notification-settings-readonly"]')).toBeVisible({
+    await expect(page.getByRole('button', { name: 'Сохранить настройки' })).toBeVisible({
       timeout: 20_000,
     });
+    await expect(page.locator('[data-slot="notification-settings-readonly"]')).toHaveCount(0);
     await screenshotPage(
       page,
       'system-status-super-admin--super-admin--desktop--zoom-150--detail.png',

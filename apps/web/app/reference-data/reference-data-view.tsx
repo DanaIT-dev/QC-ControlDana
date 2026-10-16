@@ -153,10 +153,9 @@ export function ReferenceDataView({
         Array.from({ length: totalPages - 1 }, async (_, index) => {
           const pageParams = new URLSearchParams(params);
           pageParams.set('page', String(index + 2));
-          const pageResponse = await fetch(
-            `/api/reference-data/${tab}?${pageParams.toString()}`,
-            { credentials: 'include' },
-          );
+          const pageResponse = await fetch(`/api/reference-data/${tab}?${pageParams.toString()}`, {
+            credentials: 'include',
+          });
           if (!pageResponse.ok) {
             throw new Error('list');
           }
@@ -349,7 +348,7 @@ export function ReferenceDataView({
                     </>
                   ) : null}
                   {showAddress ? (
-                    <td className="max-w-[28rem] truncate px-3 py-3 text-muted-foreground">
+                    <td className="min-w-0 px-3 py-3 whitespace-normal wrap-break-word text-muted-foreground [overflow-wrap:anywhere]">
                       {address || '—'}
                     </td>
                   ) : null}

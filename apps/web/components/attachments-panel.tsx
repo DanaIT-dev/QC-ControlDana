@@ -221,8 +221,10 @@ function UploadSheet({
   }, [categories]);
 
   function uploadFile(file: File) {
-    if (limits && file.size > limits.maxBytes) {
-      toast.error('Файл больше 20 МиБ');
+    const office = /\.(pdf|docx?|xlsx?)$/i.test(file.name);
+    const limit = office ? 10 * 1024 * 1024 : (limits?.maxBytes ?? 20 * 1024 * 1024);
+    if (file.size > limit) {
+      toast.error(office ? 'Размер файла не должен превышать 10 МиБ' : 'Файл больше 20 МиБ');
       return;
     }
     const form = new FormData();
@@ -300,7 +302,7 @@ function UploadSheet({
           <Input
             id="attachment-file"
             type="file"
-            accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
+            accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,image/jpeg,image/png,image/webp"
             className="sr-only"
             onChange={(event) => {
               const file = event.target.files?.[0];

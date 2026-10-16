@@ -37,6 +37,7 @@ import { PrismaService } from '../auth/prisma.tokens.js';
 import { parseCommandBody } from '../common/command-body.js';
 import { actorContext } from '../common/request-context.js';
 import { resolveRegistryAccessScope } from '../registry/registry-access-scope.js';
+import { syncObjectEngineers } from '../reference-data/sync-object-engineers.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -181,12 +182,12 @@ export class ObjectsService {
         version: true,
         sourceResponsibleEngineerName: true,
         engineers: {
-          where: { directoryLinkMethod: { not: null } },
+          where: { unassignedAt: null },
           select: DIRECTORY_ENGINEER_SELECT,
-          orderBy: [{ unassignedAt: { sort: 'asc', nulls: 'first' } }, { assignedAt: 'desc' }],
+          orderBy: [{ assignedAt: 'asc' }, { userId: 'asc' }],
         },
       },
-      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }, { id: 'asc' }],
+      orderBy: [{ nameSortKey: 'asc' }, { id: 'asc' }],
       skip: (page - 1) * pageSize,
       take: pageSize,
     });
@@ -214,7 +215,14 @@ export class ObjectsService {
           : null,
         active: item.active,
         version: item.version,
-        responsibleEngineer: toResponsibleEngineer(item, engineerAccounts),
+        responsibleEngineer: toResponsibleEngineer(
+          {
+            ...item,
+            engineers: item.engineers.filter((row) => row.directoryLinkMethod !== null),
+          },
+          engineerAccounts,
+        ),
+        responsibleEngineers: toResponsibleEngineers(item),
       })),
       page,
       pageSize,
@@ -251,20 +259,31 @@ export class ObjectsService {
     }
     const parsed = parseCommandBody(createPropertyObjectRequestSchema, body);
     const input = parseManualObjectInput(parsed);
+    const engineerIds = parsed.responsibleEngineerIds;
+    const hasEngineerIds = (engineerIds?.length ?? 0) > 0;
     const ctx = actorContext(user, request);
     try {
       const created = await this.prisma.client.$transaction(async (tx) => {
-        return createPropertyObjectViaDefiner(tx, {
+        const row = await createPropertyObjectViaDefiner(tx, {
           name: input.name,
           address: input.address,
           commissionedAt: input.commissionedAt ? calendarDateToUtcNoon(input.commissionedAt) : null,
           warrantyEndsAt: input.warrantyEndsAt ? calendarDateToUtcNoon(input.warrantyEndsAt) : null,
-          responsibleEngineerId: input.responsibleEngineerId,
-          responsibleEngineerName: input.responsibleEngineerName,
+          responsibleEngineerId: hasEngineerIds ? null : input.responsibleEngineerId,
+          responsibleEngineerName: hasEngineerIds ? null : input.responsibleEngineerName,
           actorUserId: user.id,
           actorName: user.fullName,
           requestId: ctx.requestId,
         });
+        if (hasEngineerIds && engineerIds) {
+          await syncObjectEngineers(tx, {
+            objectId: row.id,
+            objectActive: true,
+            engineerIds,
+            ctx,
+          });
+        }
+        return row;
       });
       return {
         id: created.id,
@@ -310,7 +329,7 @@ export class ObjectsService {
     const ctx = actorContext(user, request);
     try {
       const updated = await this.prisma.client.$transaction(async (tx) => {
-        return updatePropertyObjectViaDefiner(tx, {
+        const row = await updatePropertyObjectViaDefiner(tx, {
           id: objectId,
           expectedVersion: parsed.expectedVersion,
           name: input.name,
@@ -320,6 +339,15 @@ export class ObjectsService {
           actorName: user.fullName,
           requestId: ctx.requestId,
         });
+        if (parsed.responsibleEngineerIds) {
+          await syncObjectEngineers(tx, {
+            objectId,
+            objectActive: row.active,
+            engineerIds: parsed.responsibleEngineerIds,
+            ctx,
+          });
+        }
+        return row;
       });
       return {
         id: updated.id,
@@ -353,6 +381,25 @@ export class ObjectsService {
     }
     const input = parseCommandBody(linkObjectResponsibleEngineerSchema, body);
     const ctx = actorContext(user, request);
+    if (input.userIds) {
+      const engineerIds = input.userIds;
+      await this.prisma.client.$transaction(async (tx) => {
+        const object = await tx.propertyObject.findUnique({ where: { id: objectId } });
+        if (!object) {
+          throw new NotFoundException('Запись не найдена');
+        }
+        await syncObjectEngineers(tx, {
+          objectId,
+          objectActive: object.active,
+          engineerIds,
+          ctx,
+        });
+      });
+      return { ok: true };
+    }
+    if (input.userId === undefined) {
+      throw new ValidationError('userIds', 'Укажите ответственных инженеров');
+    }
     const actor = {
       actorUserId: user.id,
       actorName: user.fullName,
@@ -431,6 +478,34 @@ function toResponsibleEngineer(
         ? 'INVALID'
         : 'UNMATCHED';
   return { fullName: source, linked: false, linkState };
+}
+
+function toResponsibleEngineers(item: {
+  engineers: Array<{
+    unassignedAt: Date | null;
+    user: {
+      id: string;
+      lastName: string;
+      firstName: string;
+      middleName: string | null;
+      fullName: string;
+      status: 'ACTIVE' | 'ARCHIVED';
+      role: string;
+    };
+  }>;
+}): ObjectsResponsibleEngineer[] {
+  return item.engineers
+    .filter((row) => row.unassignedAt === null)
+    .map((row) => ({
+      id: row.user.id,
+      lastName: row.user.lastName,
+      firstName: row.user.firstName,
+      middleName: row.user.middleName,
+      fullName: row.user.fullName,
+      status: row.user.status,
+      linked: true as const,
+      accessActive: row.user.status === 'ACTIVE' && row.user.role === 'RESPONSIBLE_ENGINEER',
+    }));
 }
 
 function prismaRawMessage(error: unknown): string {

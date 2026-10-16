@@ -127,39 +127,52 @@ export const codedReferenceWriteSchema = z
   })
   .strict();
 
+const optionalUuid = z.preprocess(
+  (value) => (typeof value === 'string' && value.trim() === '' ? null : value),
+  z.union([uuid, z.null()]).optional(),
+);
+const optionalCalendarDate = z.preprocess(
+  (value) => (value === '' ? null : value),
+  z.union([calendarDate, z.null()]).optional(),
+);
+
 export const createActDefectItemSchema = z
   .object({
-    location: z.string(),
-    defectTypeId: uuid,
-    workTypeId: z.union([uuid, z.null()]).optional(),
-    claimDetails: z.string(),
+    location: z.string().optional(),
+    defectTypeId: optionalUuid,
+    workTypeId: optionalUuid,
+    claimDetails: z.string().optional(),
     notes: z.union([z.string(), z.null()]).optional(),
-    responsibleEngineerIds: z.array(uuid),
-    liableOrganizationIds: z.array(uuid),
-    plannedDeadline: z.union([calendarDate, z.null()]).optional(),
-    claimDeadline: z.union([calendarDate, z.null()]).optional(),
-    thirdPartyDeadline: z.union([calendarDate, z.null()]).optional(),
+    responsibleEngineerId: optionalUuid,
+    responsibleEngineerIds: z.array(uuid).max(1).optional(),
+    liableOrganizationIds: z.array(uuid).optional(),
+    plannedDeadline: optionalCalendarDate,
+    claimDeadline: optionalCalendarDate,
+    thirdPartyDeadline: optionalCalendarDate,
   })
   .strict();
 
 export const createActRequestSchema = z
   .object({
-    formCode: z.enum(['S1', 'S23']),
-    objectId: uuid,
-    customerOrganizationId: uuid,
-    issuedOn: calendarDate,
+    formCode: z.enum(['S1', 'S23']).nullable().optional(),
+    objectId: optionalUuid,
+    customerOrganizationId: optionalUuid,
+    issuedOn: optionalCalendarDate,
     signedDocumentRef: z.union([z.string(), z.null()]).optional(),
-    defectItems: z.array(createActDefectItemSchema).min(1),
+    fillingEngineerId: optionalUuid,
+    defectItems: z.array(createActDefectItemSchema).optional(),
   })
   .strict();
 
 export const patchActHeaderRequestSchema = z
   .object({
     expectedVersion: expectedVersionSchema,
-    objectId: uuid.optional(),
-    customerOrganizationId: uuid.optional(),
-    issuedOn: calendarDate.optional(),
+    formCode: z.enum(['S1', 'S23']).nullable().optional(),
+    objectId: optionalUuid,
+    customerOrganizationId: optionalUuid,
+    issuedOn: optionalCalendarDate,
     signedDocumentRef: z.union([z.string(), z.null()]).optional(),
+    fillingEngineerId: optionalUuid,
   })
   .strict();
 
@@ -176,7 +189,8 @@ export const resolveImportedEngineerRequestSchema = z
 export const replaceAssignmentsRequestSchema = z
   .object({
     expectedVersion: expectedVersionSchema,
-    responsibleEngineerIds: z.array(uuid),
+    responsibleEngineerId: optionalUuid,
+    responsibleEngineerIds: z.array(uuid).max(1).optional(),
     liableOrganizationIds: z.array(uuid),
     confirmRemoveLastEngineer: z.boolean().optional(),
   })

@@ -776,15 +776,6 @@ describe('notifications and SLA integration', () => {
         })
       ).statusCode,
     ).toBe(403);
-    expect(
-      (
-        await mutate(superSession, {
-          method: 'POST',
-          url: `/api/users/${outsider.id}/organization-memberships`,
-          payload: { organizationId: refs.liable.id },
-        })
-      ).statusCode,
-    ).toBe(403);
 
     const visible = await inject({
       method: 'GET',

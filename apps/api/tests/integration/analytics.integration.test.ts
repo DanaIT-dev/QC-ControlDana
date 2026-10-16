@@ -377,7 +377,7 @@ describe('analytics API', () => {
       cookies: { [SESSION_COOKIE_NAME]: superSession.cookie },
       headers: { [CSRF_HEADER_NAME]: superSession.csrfToken },
     });
-    expect(denied.statusCode).toBe(403);
+    expect(denied.statusCode).toBe(400);
 
     const pendingSession = await login(pending.email);
     expect((await read(pendingSession, '/api/analytics/overview')).statusCode).toBe(403);

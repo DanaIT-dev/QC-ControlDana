@@ -123,7 +123,7 @@ test.describe('directory quick create and engineer select', () => {
     await login(page, ACCOUNTS.admin);
     await page.goto('/objects');
     await page.getByRole('button', { name: 'Добавить объект' }).click();
-    await page.getByRole('combobox', { name: 'Ответственный инженер' }).click();
+    await page.getByRole('combobox', { name: 'Ответственные инженеры' }).click();
     const list = page.locator('[data-slot="command-list"]');
     await expect(list).toBeVisible();
     const overflowY = await list.evaluate((node) => getComputedStyle(node).overflowY);
@@ -142,20 +142,24 @@ test.describe('directory quick create and engineer select', () => {
     await clickPrimaryNavItem(page, 'Создать акт');
     await page.getByRole('combobox', { name: 'Объект', exact: true }).click();
     await page.getByRole('option', { name: /Северный парк/ }).click();
-    await page.getByRole('combobox', { name: 'Ответственные инженеры' }).click();
+    await page.getByRole('combobox', { name: 'Ответственный инженер' }).click();
     await expect(page.locator('[data-slot="command-list"]')).not.toContainText('@');
     await expect(page.getByRole('option', { name: /Орлов Дмитрий/ })).toBeVisible();
     await expect(page.getByRole('button', { name: '+ Добавить объект' })).toHaveCount(0);
     expect(applicationErrors(errors)).toEqual([]);
   });
 
-  test('SUPER_ADMIN and engineers do not see add commands', async ({ page, browser }) => {
+  test('SUPER_ADMIN can manage directories and engineers do not see add commands', async ({
+    page,
+    browser,
+  }) => {
     await login(page, ACCOUNTS.superAdmin);
     await page.goto('/objects');
-    await expect(page.getByRole('button', { name: 'Добавить объект' })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Редактировать' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Объекты' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Добавить объект' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Редактировать' }).first()).toBeVisible();
     await page.goto('/reference-data');
-    await expect(page.getByRole('button', { name: 'Создать' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Создать' })).toBeVisible();
 
     const engineerPage = await browser.newPage();
     await login(engineerPage, ACCOUNTS.responsible);

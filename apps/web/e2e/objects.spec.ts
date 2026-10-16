@@ -16,7 +16,11 @@ const VIEWPORTS = [
   { width: 1280, height: 800 },
   { width: 1024, height: 768 },
   { width: 768, height: 1024 },
+  { width: 700, height: 900 },
+  { width: 640, height: 900 },
+  { width: 540, height: 900 },
   { width: 390, height: 844 },
+  { width: 375, height: 812 },
   { width: 360, height: 800 },
 ] as const;
 
@@ -95,7 +99,8 @@ test.describe('objects directory', () => {
       await clickPrimaryNavItem(page, 'Объекты');
       await expect(page).toHaveURL(/\/objects/);
       await expect(page.getByRole('heading', { name: 'Объекты' })).toBeVisible();
-      if (viewport.width <= 390) {
+      if (viewport.width < 768) {
+        await page.getByLabel('Поиск по объектам').fill('Очень длинное название');
         await expect(
           page.getByRole('heading', { name: /E2E «Очень длинное название/ }),
         ).toBeVisible();
@@ -103,6 +108,10 @@ test.describe('objects directory', () => {
       } else {
         await expect(page.getByRole('columnheader', { name: 'Объект' })).toBeVisible();
         await expect(page.getByRole('columnheader', { name: 'Адрес' })).toBeVisible();
+        const addressClass = await page
+          .locator('tbody tr td:nth-child(2)')
+          .evaluateAll((nodes) => nodes.map((node) => node.className).join(' '));
+        expect(addressClass).not.toMatch(/\btruncate\b|\bline-clamp-/);
       }
       await expectNoHorizontalOverflow(page);
       expect(applicationErrors(errors).filter(isHydrationError)).toEqual([]);
@@ -129,11 +138,8 @@ test.describe('objects directory', () => {
       page.getByText('Не связан с учетной записью').filter({ visible: true }),
     ).toHaveCount(1);
     await page.getByLabel('Поиск по объектам').fill('');
-    await expect(page.getByText('ЖК «Северный парк» (демо)').filter({ visible: true })).toBeVisible(
-      {
-        timeout: 15_000,
-      },
-    );
+    await expect(page).not.toHaveURL(/search=/);
+    await expect(page.locator('tbody tr').first()).toBeVisible();
     await page.getByRole('button', { name: 'Вперёд' }).click();
     await expect(page).toHaveURL(/page=2/);
     await expectNoHorizontalOverflow(page);

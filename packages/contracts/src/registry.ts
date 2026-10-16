@@ -16,22 +16,22 @@ export interface RegistryDefectRow {
   rowId: string;
   defectItemId: string;
   actId: string;
-  formCode: ActFormCode;
+  formCode: ActFormCode | null;
   formLabel: string;
   actNumber: string;
   actStatus: ActStatus;
   actStatusLabel: string;
   defectStatus: DefectItemStatus;
   defectStatusLabel: string;
-  objectId: string;
-  objectName: string;
-  objectAddress: string;
+  objectId: string | null;
+  objectName: string | null;
+  objectAddress: string | null;
   location: string | null;
   sourceDeadlineRaw?: string | null;
-  defectTypeId: string;
-  defectTypeName: string;
-  customerOrganizationId: string;
-  customerName: string;
+  defectTypeId: string | null;
+  defectTypeName: string | null;
+  customerOrganizationId: string | null;
+  customerName: string | null;
   liableOrganizations: Array<{ id: string; name: string }>;
   responsibleEngineers: Array<{
     id: string | null;
@@ -77,6 +77,7 @@ export interface RegistrySummaryResponse {
   deadlineWarningDays: number;
   businessDate: string;
   proposalASum?: string;
+  unfinishedDrafts: Array<{ id: string; label: string; updatedAt: string }>;
 }
 
 export interface RegistryFilterOption {
@@ -107,8 +108,8 @@ export interface ActLegacyImportSource {
 export interface ActDetailDefectItem {
   id: string;
   location: string | null;
-  defectTypeId: string;
-  defectTypeName: string;
+  defectTypeId: string | null;
+  defectTypeName: string | null;
   status: DefectItemStatus;
   statusLabel: string;
   version: number;
@@ -147,9 +148,9 @@ export interface ActDetailDefectItem {
 
 export interface ActDetailResponse {
   id: string;
-  formCode: ActFormCode;
+  formCode: ActFormCode | null;
   formLabel: string;
-  officialNumber: string;
+  officialNumber: string | null;
   status: ActStatus;
   statusLabel: string;
   version: number;
@@ -161,13 +162,22 @@ export interface ActDetailResponse {
     middleName?: string | null;
     fullName: string;
   } | null;
-  objectId: string;
-  objectName: string;
-  objectAddress: string;
+  objectId: string | null;
+  objectName: string | null;
+  objectAddress: string | null;
+  draft: boolean;
+  updatedAt: string;
+  fillingEngineer: {
+    id: string;
+    lastName?: string;
+    firstName?: string;
+    middleName?: string | null;
+    fullName: string;
+  } | null;
   commissionedAt: string | null;
   warrantyEndsAt: string | null;
-  customerOrganizationId: string;
-  customerName: string;
+  customerOrganizationId: string | null;
+  customerName: string | null;
   issuedOn: string | null;
   signedDocumentRef: string | null;
   createdAt: string;

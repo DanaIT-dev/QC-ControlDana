@@ -107,7 +107,9 @@ describe('property object protected update', () => {
     ]);
     expect(direct.error ?? '').toMatch(/permission|42501|must be owner|row-level security|policy/i);
     const del = await sql(appUrl, `DELETE FROM public.property_objects WHERE id = $1`, [objectId]);
-    expect(del.error ?? '').toMatch(/permission|42501|must be owner|row-level security|policy/i);
+    expect(del.error ?? '').toBe('');
+    expect(del.rowCount).toBe(0);
+    expect(await owner.propertyObject.findUnique({ where: { id: objectId } })).not.toBeNull();
 
     await expect(
       withAuthenticatedDbContext({

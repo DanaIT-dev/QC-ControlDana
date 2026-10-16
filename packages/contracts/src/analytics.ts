@@ -157,6 +157,7 @@ export interface AnalyticsRate {
 export interface AnalyticsOverview {
   filters: AnalyticsQuery;
   acts: number;
+  unfinishedDrafts: number;
   defects: number;
   openDefects: number;
   overdueDefects: number;

@@ -61,7 +61,7 @@ test.describe('reference access and linked object selection', () => {
     await page.getByRole('link', { name: 'Справочники' }).click();
     await expect(page).toHaveURL(/\/reference-data/);
     await expect(page.getByRole('tab', { name: 'Объекты' })).toBeVisible();
-    await expect(page.getByRole('tab', { name: 'Организации' })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Организации', exact: true })).toBeVisible();
     await expect(page.getByRole('tab', { name: 'Виды работ' })).toHaveCount(0);
     await expect(page.getByRole('tab', { name: 'Виды дефектов' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Создать' })).toHaveCount(0);
@@ -70,7 +70,7 @@ test.describe('reference access and linked object selection', () => {
     await page.getByLabel('Поиск справочника').fill('Северный парк');
     await expect(page.getByText('ЖК «Северный парк» (демо)').first()).toBeVisible();
     await expect(page.getByText('г. Минск, ул. Вымышленная, 1').first()).toBeVisible();
-    await page.getByRole('tab', { name: 'Организации' }).click();
+    await page.getByRole('tab', { name: 'Организации', exact: true }).click();
     await page.getByLabel('Поиск справочника').fill('Северная инвестиционная');
     await expect(
       page.getByText('ОАО «Северная инвестиционная группа» (демо)').first(),
@@ -103,7 +103,7 @@ test.describe('reference access and linked object selection', () => {
       page.getByRole('tab', { name: 'Организации по выполнению строительных работ' }),
     ).toBeVisible();
     await expect(page.getByRole('tab', { name: 'Объекты' })).toHaveCount(0);
-    await expect(page.getByRole('tab', { name: 'Организации' })).toHaveCount(0);
+    await expect(page.getByRole('tab', { name: 'Организации', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Создать' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Редактировать' }).first()).toBeVisible();
   });
@@ -157,10 +157,10 @@ test.describe('reference access and linked object selection', () => {
     await page.getByLabel('Помещение').fill('Квартира связка');
     await page.getByLabel('Описание').fill('Связанный объект');
     await chooseFirst(page, 'Вид дефекта');
-    await page.getByRole('combobox', { name: 'Ответственные инженеры' }).click();
+    await page.getByRole('combobox', { name: 'Ответственный инженер' }).click();
     await page.getByRole('option').first().click();
     await page.keyboard.press('Escape');
-    await page.getByRole('button', { name: 'Создать акт' }).click();
+    await page.getByRole('button', { name: 'Сохранить черновик' }).click();
     await expect(page).toHaveURL(/\/acts\//);
     await expect(page.getByText('ЖК «Северный парк» (демо)').first()).toBeVisible();
     await expect(page.getByText('г. Минск, ул. Вымышленная, 1').first()).toBeVisible();
@@ -236,12 +236,15 @@ test.describe('reference access and linked object selection', () => {
     await page.getByLabel('Помещение').fill('Квартира инженера');
     await page.getByLabel('Описание').fill('Создание с объекта');
     await chooseFirst(page, 'Вид дефекта');
-    await page.getByRole('combobox', { name: 'Ответственные инженеры' }).click();
+    await page.getByRole('combobox', { name: 'Ответственный инженер' }).click();
     await expect(page.getByRole('option', { name: /Орлов Дмитрий/ })).toBeVisible();
-    await expect(page.getByRole('option', { name: /Крылова Елена/ })).toHaveCount(0);
+    await expect(page.getByRole('option', { name: /Орлов Дмитрий/ })).toContainText(
+      'Закреплён за объектом',
+    );
+    await expect(page.getByRole('option', { name: /Крылова Елена/ })).toBeVisible();
     await page.getByRole('option', { name: /Орлов Дмитрий/ }).click();
     await page.keyboard.press('Escape');
-    await page.getByRole('button', { name: 'Создать акт' }).click();
+    await page.getByRole('button', { name: 'Сохранить черновик' }).click();
     await expect(page).toHaveURL(/\/acts\//);
     await expect(page.getByText('ЖК «Северный парк» (демо)').first()).toBeVisible();
     await expect(page.getByRole('tab', { name: 'История изменений' })).toBeVisible();

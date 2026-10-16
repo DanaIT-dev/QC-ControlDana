@@ -95,20 +95,25 @@ export function toRegistryRow(
     })),
     role,
   );
-  const deadlineState = deadlineStateOf({
-    status: item.status,
-    plannedDeadline: item.plannedDeadline,
-    claimDeadline: item.claimDeadline,
-    deadlineWarningDays: warningDays,
-    now,
-    timeZone,
-  });
+  const deadlineState =
+    item.act.status === 'NEW'
+      ? item.plannedDeadline || item.claimDeadline
+        ? 'NORMAL'
+        : 'NO_DEADLINE'
+      : deadlineStateOf({
+          status: item.status,
+          plannedDeadline: item.plannedDeadline,
+          claimDeadline: item.claimDeadline,
+          deadlineWarningDays: warningDays,
+          now,
+          timeZone,
+        });
   return {
     rowId: item.id,
     defectItemId: item.id,
     actId: item.act.id,
-    formCode: item.act.formCode as ActFormCode,
-    formLabel: formLabel(item.act.formCode as ActFormCode),
+    formCode: item.act.formCode,
+    formLabel: formLabel(item.act.formCode),
     actNumber: displayActNumber({
       officialNumber: item.act.officialNumber,
       sourceActNumberRaw: item.act.sourceActNumberRaw,
@@ -118,14 +123,14 @@ export function toRegistryRow(
     defectStatus: item.status as DefectItemStatus,
     defectStatusLabel: defectItemStatusLabel(item.status as DefectItemStatus),
     objectId: item.act.objectId,
-    objectName: item.act.propertyObject.name,
-    objectAddress: item.act.propertyObject.address ?? '',
+    objectName: item.act.propertyObject?.name ?? null,
+    objectAddress: item.act.propertyObject?.address ?? null,
     location: item.location,
     sourceDeadlineRaw: item.sourceDeadlineRaw,
-    defectTypeId: item.defectType.id,
-    defectTypeName: item.defectType.name,
+    defectTypeId: item.defectType?.id ?? null,
+    defectTypeName: item.defectType?.name ?? null,
     customerOrganizationId: item.act.customerOrganizationId,
-    customerName: item.act.customer.officialName,
+    customerName: item.act.customer?.officialName ?? null,
     liableOrganizations: item.liableOrganizations.map((entry) => ({
       id: entry.organization.id,
       name: entry.organization.officialName,
@@ -166,15 +171,23 @@ export function toRegistryRow(
 
 export function toActHeader(act: {
   id: string;
-  formCode: ActFormCode;
+  formCode: ActFormCode | null;
   officialNumber: string | null;
   sourceActNumberRaw?: string | null;
   status: ActStatus;
   version?: number;
-  objectId?: string;
-  customerOrganizationId?: string;
+  objectId?: string | null;
+  customerOrganizationId?: string | null;
   issuedOn?: Date | null;
   createdAt: Date;
+  updatedAt?: Date;
+  fillingEngineer?: {
+    id: string;
+    lastName: string;
+    firstName: string;
+    middleName: string | null;
+    fullName: string;
+  } | null;
   cancelledAt: Date | null;
   cancellationReason: string | null;
   signedDocumentRef: string | null;
@@ -196,27 +209,36 @@ export function toActHeader(act: {
     address: string | null;
     commissionedAt: Date | null;
     warrantyEndsAt: Date | null;
-  };
-  customer: { officialName: string };
+  } | null;
+  customer: { officialName: string } | null;
 }) {
+  const draft = act.status === 'NEW';
   return {
     id: act.id,
     formCode: act.formCode,
     formLabel: formLabel(act.formCode),
-    officialNumber: displayActNumber({
-      officialNumber: act.officialNumber,
-      sourceActNumberRaw: act.sourceActNumberRaw,
-    }),
+    officialNumber: act.officialNumber,
     status: act.status,
     statusLabel: actStatusLabel(act.status),
     version: act.version ?? 1,
-    objectId: act.objectId ?? '',
-    objectName: act.propertyObject.name,
-    objectAddress: act.propertyObject.address ?? '',
-    commissionedAt: calendarField(act.propertyObject.commissionedAt),
-    warrantyEndsAt: calendarField(act.propertyObject.warrantyEndsAt),
-    customerOrganizationId: act.customerOrganizationId ?? '',
-    customerName: act.customer.officialName,
+    objectId: act.objectId ?? null,
+    objectName: act.propertyObject?.name ?? null,
+    objectAddress: act.propertyObject?.address ?? null,
+    draft,
+    updatedAt: (act.updatedAt ?? act.createdAt).toISOString(),
+    fillingEngineer: act.fillingEngineer
+      ? {
+          id: act.fillingEngineer.id,
+          lastName: act.fillingEngineer.lastName,
+          firstName: act.fillingEngineer.firstName,
+          middleName: act.fillingEngineer.middleName,
+          fullName: act.fillingEngineer.fullName,
+        }
+      : null,
+    commissionedAt: calendarField(act.propertyObject?.commissionedAt ?? null),
+    warrantyEndsAt: calendarField(act.propertyObject?.warrantyEndsAt ?? null),
+    customerOrganizationId: act.customerOrganizationId ?? null,
+    customerName: act.customer?.officialName ?? null,
     issuedOn: act.issuedOn ? calendarField(act.issuedOn) : null,
     signedDocumentRef: act.signedDocumentRef,
     createdAt: act.createdAt.toISOString(),

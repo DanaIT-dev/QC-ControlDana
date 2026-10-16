@@ -170,7 +170,6 @@ describe('SUPER_ADMIN complete read-only visibility', () => {
     });
     const admin = await createUser('ADMIN');
     const archived = await createUser('SGR_MANAGER', { status: 'ARCHIVED' });
-    const engineer = await createUser('RESPONSIBLE_ENGINEER');
     const sa = await login(superA.email);
     const adminSession = await login(admin.email);
 
@@ -269,9 +268,9 @@ describe('SUPER_ADMIN complete read-only visibility', () => {
     expect(
       (await mutate(sa, { method: 'POST', url: '/api/acts', payload: {} })).statusCode,
     ).not.toBe(403);
-    expect((await mutate(sa, { method: 'POST', url: '/api/objects', payload: {} })).statusCode).not.toBe(
-      403,
-    );
+    expect(
+      (await mutate(sa, { method: 'POST', url: '/api/objects', payload: {} })).statusCode,
+    ).not.toBe(403);
     expect(
       (
         await mutate(sa, {

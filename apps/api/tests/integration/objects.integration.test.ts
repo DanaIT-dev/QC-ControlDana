@@ -356,7 +356,7 @@ describe('objects directory API', () => {
     });
     expect([400, 403, 422]).toContain(idor.statusCode);
 
-    for (const session of [managerSession, responsibleSession, contractorSession, superSession]) {
+    for (const session of [managerSession, responsibleSession, contractorSession]) {
       const denied = await inject({
         method: 'PATCH',
         url: `/api/objects/${object.id}/responsible-engineer`,
@@ -512,7 +512,7 @@ describe('objects directory API', () => {
           })
         ).json() as { canCreate: boolean }
       ).canCreate,
-    ).toBe(false);
+    ).toBe(true);
     expect(
       (
         (
@@ -571,7 +571,7 @@ describe('objects directory API', () => {
     });
     expect(invertedDates.statusCode).toBe(400);
 
-    for (const session of [responsibleSession, contractorSession, superSession]) {
+    for (const session of [responsibleSession, contractorSession]) {
       const denied = await inject({
         method: 'POST',
         url: '/api/objects',
@@ -710,7 +710,6 @@ describe('objects directory API', () => {
     const manager = await createUser('MANAGER');
     const sgr = await createUser('SGR_MANAGER');
     const engineer = await createUser('RESPONSIBLE_ENGINEER');
-    const superAdmin = await ensureActiveSuperAdmin();
     const stamp = Date.now();
     const object = await prisma.propertyObject.create({
       data: {
@@ -727,7 +726,6 @@ describe('objects directory API', () => {
     const managerSession = await login(manager.email);
     const sgrSession = await login(sgr.email);
     const engineerSession = await login(engineer.email);
-    const superSession = await login(superAdmin.email);
 
     expect(
       (
@@ -739,7 +737,7 @@ describe('objects directory API', () => {
       ).statusCode,
     ).toBe(401);
 
-    for (const session of [engineerSession, superSession]) {
+    for (const session of [engineerSession]) {
       expect(
         (
           await inject({

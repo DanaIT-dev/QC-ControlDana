@@ -609,7 +609,7 @@ describe('capabilities', () => {
 });
 
 describe('registry query parsing', () => {
-  it('applies defaults and rejects an invalid pageSize', () => {
+  it('applies defaults and replaces an unsupported pageSize', () => {
     const parsed = parseRegistryListQuery({});
     expect(parsed.page).toBe(1);
     expect(parsed.pageSize).toBe(50);
@@ -617,7 +617,7 @@ describe('registry query parsing', () => {
     expect(parsed.search).toBeNull();
     expect(parsed.unmatchedEngineers).toBe(false);
     expect(parsed.importedOnly).toBe(false);
-    expect(() => parseRegistryListQuery({ pageSize: '30' })).toThrow(RegistryQueryError);
+    expect(parseRegistryListQuery({ pageSize: '30' }).pageSize).toBe(50);
   });
 
   it('accepts only the sort whitelist and serializes empty filters as an empty map', () => {
@@ -646,7 +646,7 @@ describe('registry query parsing', () => {
     expect(parseRegistryListQuery({ importedOnly: 'true' }).importedOnly).toBe(true);
     expect(parseRegistryListQuery({ statuses: 'NEW' }).statuses).toEqual(['NEW']);
     expect(parseRegistryListQuery({ statuses: 'CANCELLED' }).statuses).toEqual(['CANCELLED']);
-    expect(() => parseRegistryListQuery({ pageSize: '50abc' })).toThrow(RegistryQueryError);
+    expect(parseRegistryListQuery({ pageSize: '50abc' }).pageSize).toBe(50);
   });
 });
 
@@ -862,12 +862,12 @@ describe('property object linked selection', () => {
     expect(canAccessReferenceKind('RESPONSIBLE_ENGINEER', 'work-types')).toBe(false);
     expect(canAccessReferenceKind('RESPONSIBLE_ENGINEER', 'defect-types')).toBe(false);
     expect(canAccessReferenceKind('CONTRACTOR_ENGINEER', 'property-objects')).toBe(false);
-    expect(
-      canAccessReferenceKind('CONTRACTOR_ENGINEER', 'construction-work-organizations'),
-    ).toBe(true);
-    expect(
-      canAccessReferenceKind('RESPONSIBLE_ENGINEER', 'construction-work-organizations'),
-    ).toBe(true);
+    expect(canAccessReferenceKind('CONTRACTOR_ENGINEER', 'construction-work-organizations')).toBe(
+      true,
+    );
+    expect(canAccessReferenceKind('RESPONSIBLE_ENGINEER', 'construction-work-organizations')).toBe(
+      true,
+    );
     expect(canAccessReferenceKind('ADMIN', 'construction-work-organizations')).toBe(true);
     expect(canAccessReferenceKind('SUPER_ADMIN', 'construction-work-organizations')).toBe(true);
     expect(canAccessReferenceKind('PENDING_ROLE', 'construction-work-organizations')).toBe(false);

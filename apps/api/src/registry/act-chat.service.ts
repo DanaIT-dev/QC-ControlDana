@@ -132,12 +132,16 @@ export class ActChatService {
         ...(search.length > 0 ? { fullName: { contains: search, mode: 'insensitive' } } : {}),
         OR: [
           { role: { in: [...BUSINESS_STAFF_ROLES] } },
-          {
-            role: 'RESPONSIBLE_ENGINEER',
-            objectAssignments: {
-              some: { propertyObjectId: act.objectId, unassignedAt: null },
-            },
-          },
+          ...(act.objectId
+            ? [
+                {
+                  role: 'RESPONSIBLE_ENGINEER' as const,
+                  objectAssignments: {
+                    some: { propertyObjectId: act.objectId, unassignedAt: null },
+                  },
+                },
+              ]
+            : []),
         ],
       },
       select: {
@@ -306,7 +310,7 @@ export class ActChatService {
     });
   }
 
-  private async resolveMentionableUsers(objectId: string, ids: string[]) {
+  private async resolveMentionableUsers(objectId: string | null, ids: string[]) {
     if (ids.length === 0) {
       return [];
     }
@@ -317,12 +321,16 @@ export class ActChatService {
         role: { in: [...CHAT_MENTIONABLE_ROLES] },
         OR: [
           { role: { in: [...BUSINESS_STAFF_ROLES] } },
-          {
-            role: 'RESPONSIBLE_ENGINEER',
-            objectAssignments: {
-              some: { propertyObjectId: objectId, unassignedAt: null },
-            },
-          },
+          ...(objectId
+            ? [
+                {
+                  role: 'RESPONSIBLE_ENGINEER' as const,
+                  objectAssignments: {
+                    some: { propertyObjectId: objectId, unassignedAt: null },
+                  },
+                },
+              ]
+            : []),
         ],
       },
       select: {

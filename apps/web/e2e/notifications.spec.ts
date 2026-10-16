@@ -26,6 +26,32 @@ async function noOverflow(page: Page) {
 }
 
 test.describe('notifications and deadline control', () => {
+  test('bell opens on tablet and split-screen widths', async ({ page }) => {
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    await login(page, ACCOUNTS.admin);
+    for (const viewport of [
+      { width: 1024, height: 768 },
+      { width: 768, height: 1024 },
+      { width: 700, height: 900 },
+      { width: 640, height: 900 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await page.goto('/registry');
+      const bell = page.getByRole('button', { name: /Уведомления/ });
+      await expect(bell).toBeVisible();
+      await bell.click();
+      await expect(page.getByRole('menuitem', { name: 'Все уведомления' })).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('menuitem', { name: 'Все уведомления' })).toBeHidden();
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+      );
+      expect(overflow).toBe(false);
+    }
+    expect(errors.filter((message) => !message.includes('favicon'))).toEqual([]);
+  });
+
   test('ADMIN uses bell, notification center, deadlines and settings', async ({ page }) => {
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));

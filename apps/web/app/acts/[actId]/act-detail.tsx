@@ -112,7 +112,7 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
-            <BreadcrumbPage>Акт {act.officialNumber}</BreadcrumbPage>
+            <BreadcrumbPage>Акт {act.officialNumber ?? 'Черновик'}</BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
@@ -125,12 +125,16 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
             </Link>
           </Button>
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-semibold">Акт {act.officialNumber}</h1>
+            <h1 className="text-2xl font-semibold">Акт {act.officialNumber ?? 'Черновик'}</h1>
             <Badge variant="secondary">{act.formLabel}</Badge>
+            {act.draft ? <Badge variant="outline">Черновик</Badge> : null}
             <StatusBadge status={act.status} label={act.statusLabel} />
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            {act.objectName} · {act.customerName}
+            {blankLabel(act.objectName, act.draft)} · {blankLabel(act.customerName, act.draft)}
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Сохранено {formatTimestamp(act.updatedAt)}
           </p>
           {isStartableActStatus(act.status) ? (
             <p className="mt-2 text-sm text-muted-foreground">
@@ -150,9 +154,24 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
           <CardTitle className="text-lg">Данные акта</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <Meta label="Объект" value={act.objectName} />
-          <Meta label="Адрес" value={act.objectAddress} />
-          <Meta label="Заказчик" value={act.customerName} />
+          <Meta label="Объект" value={blankLabel(act.objectName, act.draft)} />
+          <Meta label="Адрес" value={blankLabel(act.objectAddress, act.draft)} />
+          <Meta label="Заказчик" value={blankLabel(act.customerName, act.draft)} />
+          <Meta
+            label="Инженер, заполняющий акт"
+            value={
+              act.fillingEngineer ? (
+                <PersonName
+                  lastName={act.fillingEngineer.lastName}
+                  firstName={act.fillingEngineer.firstName}
+                  middleName={act.fillingEngineer.middleName}
+                  fullName={act.fillingEngineer.fullName}
+                />
+              ) : (
+                blankLabel(null, act.draft)
+              )
+            }
+          />
           <Meta label="Дата ввода" value={formatCalendarDate(act.commissionedAt)} />
           <Meta label="Окончание гарантии" value={formatCalendarDate(act.warrantyEndsAt)} />
           <Meta label="Создан" value={formatTimestamp(act.createdAt)} />
@@ -267,7 +286,7 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
               </CardHeader>
               <CardContent className="grid gap-4">
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  <Meta label="Плановый срок" value={formatCalendarDate(item.plannedDeadline)} />
+                  <Meta label="Срок устранения" value={formatCalendarDate(item.plannedDeadline)} />
                   {item.sourceDeadlineRaw ? (
                     <Meta label="Исходный срок" value={item.sourceDeadlineRaw} />
                   ) : null}
@@ -479,6 +498,13 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
       </Tabs>
     </article>
   );
+}
+
+function blankLabel(value: string | null | undefined, draft: boolean): string {
+  if (value && value.trim()) {
+    return value;
+  }
+  return draft ? 'Не заполнено' : '—';
 }
 
 function Meta({ label, value }: { label: string; value: ReactNode }) {

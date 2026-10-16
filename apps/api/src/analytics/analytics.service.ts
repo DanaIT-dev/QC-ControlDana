@@ -65,7 +65,11 @@ import {
   scopedFrom,
   withMaterializedAnalyticsScope,
 } from './analytics-filter.js';
-import { analyticsScopeStamp, refreshAnalyticsPatterns } from './analytics-patterns.js';
+import {
+  analyticsScopeStamp,
+  isInsightSnapshotConflict,
+  refreshAnalyticsPatterns,
+} from './analytics-patterns.js';
 
 @Injectable()
 export class AnalyticsService {
@@ -93,6 +97,9 @@ export class AnalyticsService {
         }),
       );
       const payload = overviewPayload(row?.payload);
+      const draftCount = await this.one<{ n: number }>(
+        Prisma.sql`SELECT count(*)::int AS n FROM public.acts WHERE status::text = 'NEW'`,
+      );
       const attempts = firstTimeRight({
         completedAcceptedOnFirstAttempt: num(payload.accepted_first),
         completedWithAttempts: num(payload.with_attempts),
@@ -104,6 +111,7 @@ export class AnalyticsService {
       return {
         filters: ctx.query,
         acts: num(payload.acts),
+        unfinishedDrafts: num(draftCount?.n),
         defects: num(payload.defects),
         openDefects: num(payload.open_defects),
         overdueDefects: num(payload.overdue_defects),
@@ -963,13 +971,27 @@ export class AnalyticsService {
     if (!ctx.canPersistInsights) {
       return;
     }
-    await refreshAnalyticsPatterns((query) => this.prisma.$queryRaw(query), this.prisma, {
-      where: ctx.where,
-      query: ctx.query,
-      scope: ctx.scope,
-      financial: ctx.financial,
-      crossOrganization: ctx.cross,
-    });
+    const persist = () =>
+      refreshAnalyticsPatterns((query) => this.prisma.$queryRaw(query), this.prisma, {
+        where: ctx.where,
+        query: ctx.query,
+        scope: ctx.scope,
+        financial: ctx.financial,
+        crossOrganization: ctx.cross,
+      });
+    try {
+      await persist();
+    } catch (error) {
+      if (!isInsightSnapshotConflict(error)) {
+        throw error;
+      }
+      try {
+        await this.prisma.$executeRaw(Prisma.sql`ROLLBACK`);
+      } catch {
+        // The failed statement may already have ended the transaction.
+      }
+      await persist();
+    }
   }
 
   private async attemptSummary(where: Prisma.Sql) {

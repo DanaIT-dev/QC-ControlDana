@@ -1602,15 +1602,6 @@ describe('operations integration', () => {
     ).toBe(403);
     expect(
       (
-        await mutate(superAdminSession, {
-          method: 'POST',
-          url: `/api/acts/${actId}/start`,
-          payload: {},
-        })
-      ).statusCode,
-    ).toBe(403);
-    expect(
-      (
         await mutate(foreignSession, {
           method: 'POST',
           url: `/api/acts/${actId}/start`,
@@ -1650,6 +1641,13 @@ describe('operations integration', () => {
     });
     expect(repeat.statusCode).toBe(200);
     expect((repeat.json() as { startedBy: { id: string } }).startedBy.id).toBe(firstStarterId);
+    const superRepeat = await mutate(superAdminSession, {
+      method: 'POST',
+      url: `/api/acts/${actId}/start`,
+      payload: {},
+    });
+    expect(superRepeat.statusCode).toBe(200);
+    expect((superRepeat.json() as { startedBy: { id: string } }).startedBy.id).toBe(firstStarterId);
     expect(await prisma.auditLog.count({ where: { entityId: actId, action: 'ACT_STARTED' } })).toBe(
       1,
     );
@@ -1761,15 +1759,6 @@ describe('operations integration', () => {
         })
       ).statusCode,
     ).toBe(403);
-    expect(
-      (
-        await mutate(superSession, {
-          method: 'POST',
-          url: `/api/acts/${actId}/cancel`,
-          payload: { expectedVersion: version, reason: 'надзор' },
-        })
-      ).statusCode,
-    ).toBe(403);
     const cancelled = await mutate(adminSession, {
       method: 'POST',
       url: `/api/acts/${actId}/cancel`,
@@ -1783,6 +1772,12 @@ describe('operations integration', () => {
       payload: { expectedVersion: version + 1, reason: 'повтор' },
     });
     expect(repeat.statusCode).toBe(200);
+    const superRepeat = await mutate(superSession, {
+      method: 'POST',
+      url: `/api/acts/${actId}/cancel`,
+      payload: { expectedVersion: version + 1, reason: 'надзор' },
+    });
+    expect(superRepeat.statusCode).toBe(200);
     expect(
       await prisma.auditLog.count({ where: { entityId: actId, action: 'ACT_CANCELLED' } }),
     ).toBe(1);
@@ -1846,5 +1841,80 @@ describe('operations integration', () => {
     expect((await prisma.act.findUniqueOrThrow({ where: { id: completedId } })).status).toBe(
       'COMPLETED',
     );
+  });
+
+  it('stores an empty draft and rejects only invalid entered values', async () => {
+    const admin = await createUser('ADMIN');
+    const outsider = await createUser('RESPONSIBLE_ENGINEER');
+    const contractor = await createUser('CONTRACTOR_ENGINEER');
+    const engineer = await createUser('RESPONSIBLE_ENGINEER');
+    const adminSession = await login(admin.email);
+    const created = await mutate(adminSession, {
+      method: 'POST',
+      url: '/api/acts',
+      payload: { defectItems: [{ location: '   ', claimDetails: '  ' }] },
+      headers: { 'idempotency-key': `empty-draft-${Date.now()}` },
+    });
+    expect(created.statusCode).toBe(201);
+    const draft = created.json() as { id: string; version: number };
+    createdActIds.push(draft.id);
+    const stored = await prisma.act.findUniqueOrThrow({
+      where: { id: draft.id },
+      include: { defectItems: true },
+    });
+    expect(stored.status).toBe('NEW');
+    expect(stored.objectId).toBeNull();
+    expect(stored.customerOrganizationId).toBeNull();
+    expect(stored.issuedOn).toBeNull();
+    expect(stored.formCode).toBeNull();
+    expect(stored.createdById).toBe(admin.id);
+    expect(stored.defectItems).toHaveLength(0);
+    expect(await prisma.slaClock.count({ where: { defectItem: { actId: draft.id } } })).toBe(0);
+    expect((await read(await login(outsider.email), `/api/acts/${draft.id}`)).statusCode).toBe(404);
+    expect((await read(await login(contractor.email), `/api/acts/${draft.id}`)).statusCode).toBe(
+      404,
+    );
+
+    const invalidDate = await mutate(adminSession, {
+      method: 'PATCH',
+      url: `/api/acts/${draft.id}/header`,
+      payload: { expectedVersion: draft.version, issuedOn: '2026-02-31' },
+    });
+    expect(invalidDate.statusCode).toBe(400);
+
+    const partial = await mutate(adminSession, {
+      method: 'POST',
+      url: `/api/acts/${draft.id}/defects`,
+      payload: {
+        expectedActVersion: draft.version,
+        location: 'Кухня',
+        responsibleEngineerId: engineer.id,
+      },
+    });
+    expect(partial.statusCode).toBe(201);
+    const defect = await prisma.defectItem.findFirstOrThrow({
+      where: { actId: draft.id },
+      include: { responsibleEngineers: true },
+    });
+    expect(defect.defectTypeId).toBeNull();
+    expect(defect.claimDetails).toBeNull();
+    expect(defect.responsibleEngineers.map((row) => row.userId)).toEqual([engineer.id]);
+    expect(await prisma.slaClock.count({ where: { defectItemId: defect.id } })).toBe(0);
+
+    const blocked = await mutate(adminSession, {
+      method: 'POST',
+      url: `/api/acts/${draft.id}/start`,
+      payload: {},
+    });
+    expect(blocked.statusCode).toBe(400);
+    expect((await prisma.act.findUniqueOrThrow({ where: { id: draft.id } })).status).toBe('NEW');
+
+    const conflict = await mutate(adminSession, {
+      method: 'PATCH',
+      url: `/api/acts/${draft.id}/header`,
+      payload: { expectedVersion: draft.version + 9, issuedOn: '2026-10-16' },
+    });
+    expect(conflict.statusCode).toBe(409);
+    expect((await prisma.act.findUniqueOrThrow({ where: { id: draft.id } })).issuedOn).toBeNull();
   });
 });

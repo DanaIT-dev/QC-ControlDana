@@ -29,12 +29,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { DirectoryCombobox } from '@/components/directory-combobox';
 import { ApiError } from '@/lib/command-api';
+import { personOption } from '@/lib/lookups';
 import { updatePropertyObject } from '@/lib/objects-api';
 
 export function EditPropertyObjectDialog({
   csrfToken,
   target,
+  engineers = [],
   onClose,
   onSaved,
 }: {
@@ -45,13 +48,22 @@ export function EditPropertyObjectDialog({
     name: string;
     address: string | null;
     active: boolean;
+    responsibleEngineerIds?: string[];
   };
+  engineers?: Array<{
+    id: string;
+    lastName?: string;
+    firstName?: string;
+    middleName?: string | null;
+    fullName: string;
+  }>;
   onClose: () => void;
   onSaved: () => Promise<void> | void;
 }) {
   const [name, setName] = useState(target.name);
   const [address, setAddress] = useState(target.address ?? '');
   const [active, setActive] = useState(target.active);
+  const [engineerIds, setEngineerIds] = useState(target.responsibleEngineerIds ?? []);
   const [pending, setPending] = useState(false);
   const [confirmStatus, setConfirmStatus] = useState(false);
 
@@ -66,6 +78,7 @@ export function EditPropertyObjectDialog({
         name,
         address: address.trim() ? address : null,
         active,
+        responsibleEngineerIds: engineerIds,
       });
       toast.success('Объект сохранён');
       await onSaved();
@@ -133,6 +146,13 @@ export function EditPropertyObjectDialog({
                 </SelectContent>
               </Select>
             </div>
+            <DirectoryCombobox
+              label="Ответственные инженеры"
+              options={engineers.map((item) => personOption(item))}
+              values={engineerIds}
+              onValuesChange={setEngineerIds}
+              emptyText="Нет активных ответственных инженеров"
+            />
             <DialogFooter>
               <Button type="button" variant="outline" onClick={onClose} disabled={pending}>
                 Отмена

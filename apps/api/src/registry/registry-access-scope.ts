@@ -66,7 +66,12 @@ export class RegistryAccessScope {
     }
     if (options?.includeCancelled) {
       return mode === 'object_assigned'
-        ? { act: { propertyObject: this.assignedObjectWhere() } }
+        ? {
+            OR: [
+              { act: { propertyObject: this.assignedObjectWhere() } },
+              { act: { status: 'NEW', createdById: this.userId } },
+            ],
+          }
         : {};
     }
     const uncancelled: Prisma.DefectItemWhereInput = {
@@ -74,7 +79,15 @@ export class RegistryAccessScope {
     };
     if (mode === 'object_assigned') {
       return {
-        AND: [uncancelled, { act: { propertyObject: this.assignedObjectWhere() } }],
+        AND: [
+          uncancelled,
+          {
+            OR: [
+              { act: { propertyObject: this.assignedObjectWhere() } },
+              { act: { status: 'NEW', createdById: this.userId } },
+            ],
+          },
+        ],
       };
     }
     return uncancelled;
@@ -83,7 +96,13 @@ export class RegistryAccessScope {
   actVisibleWhere(actId: string): Prisma.ActWhereInput {
     const mode = registryAccessMode(this.role);
     if (mode === 'object_assigned') {
-      return { id: actId, propertyObject: this.assignedObjectWhere() };
+      return {
+        id: actId,
+        OR: [
+          { propertyObject: this.assignedObjectWhere() },
+          { status: 'NEW', createdById: this.userId },
+        ],
+      };
     }
     if (mode === 'organization_liable') {
       return {
@@ -119,7 +138,10 @@ export class RegistryAccessScope {
     if (mode === 'object_assigned') {
       return {
         actId,
-        act: { propertyObject: this.assignedObjectWhere() },
+        OR: [
+          { act: { propertyObject: this.assignedObjectWhere() } },
+          { act: { status: 'NEW', createdById: this.userId } },
+        ],
       };
     }
     if (mode === 'organization_liable') {
@@ -132,11 +154,37 @@ export class RegistryAccessScope {
     return { actId };
   }
 
+  emptyDraftWhere(): Prisma.ActWhereInput {
+    const draft: Prisma.ActWhereInput = { status: 'NEW', defectItems: { none: {} } };
+    const mode = registryAccessMode(this.role);
+    if (mode === 'organization_liable') {
+      return { id: { in: [] } };
+    }
+    if (mode === 'object_assigned') {
+      return {
+        AND: [
+          draft,
+          {
+            OR: [{ propertyObject: this.assignedObjectWhere() }, { createdById: this.userId }],
+          },
+        ],
+      };
+    }
+    return draft;
+  }
+
   visibleActRelationWhere(): Prisma.ActWhereInput {
     if (this.objectScoped) {
       return {
-        status: { not: 'CANCELLED' },
-        propertyObject: this.assignedObjectWhere(),
+        AND: [
+          { status: { not: 'CANCELLED' } },
+          {
+            OR: [
+              { propertyObject: this.assignedObjectWhere() },
+              { status: 'NEW', createdById: this.userId },
+            ],
+          },
+        ],
       };
     }
     if (this.organizationScoped) {

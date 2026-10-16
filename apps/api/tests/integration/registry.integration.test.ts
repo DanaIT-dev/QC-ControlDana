@@ -456,14 +456,16 @@ describe('registry integration', () => {
     expect(JSON.stringify(withBC)).toMatch(/Альтернатива тест Б/);
   });
 
-  it('accepts only 25/50/100/200 page sizes', async () => {
+  it('accepts supported page sizes and replaces an unsupported size with the default', async () => {
     const cookie = await login(admin.email);
     for (const size of [25, 50, 100, 200]) {
       const response = await authedGet(cookie, `/api/registry/defects?pageSize=${size}`);
       expect(response.statusCode).toBe(200);
       expect((response.json() as { pageSize: number }).pageSize).toBe(size);
     }
-    expect((await authedGet(cookie, '/api/registry/defects?pageSize=30')).statusCode).toBe(400);
+    const fallback = await authedGet(cookie, '/api/registry/defects?pageSize=30');
+    expect(fallback.statusCode).toBe(200);
+    expect((fallback.json() as { pageSize: number }).pageSize).toBe(50);
   });
 
   it('searches, filters and sorts without loading hidden rows', async () => {

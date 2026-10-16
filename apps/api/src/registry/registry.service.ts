@@ -107,6 +107,12 @@ export class RegistryService {
       rawQuery,
     );
     const where = registryListWhere(scope, query, todayIso, warningDays, personSearchDefectIds);
+    const unfinishedDraftRows = await this.prisma.client.act.findMany({
+      where: scope.emptyDraftWhere(),
+      select: { id: true, officialNumber: true, updatedAt: true },
+      orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
+      take: 20,
+    });
     const [
       total,
       actCount,
@@ -158,6 +164,11 @@ export class RegistryService {
         currency: 'BYN',
         deadlineWarningDays: warningDays,
         businessDate: todayIso,
+        unfinishedDrafts: unfinishedDraftRows.map((row) => ({
+          id: row.id,
+          label: row.officialNumber?.trim() || 'Черновик',
+          updatedAt: row.updatedAt.toISOString(),
+        })),
       },
       user.role,
       proposalSum?._sum.amount ?? '0.00',
@@ -176,11 +187,13 @@ export class RegistryService {
         }),
         this.prisma.client.propertyObject.findMany({
           where: { acts: { some: { defectItems: { some: itemWhere } } } },
-          select: { id: true, name: true },
+          select: { id: true, name: true, nameSortKey: true },
+          orderBy: [{ nameSortKey: 'asc' }, { id: 'asc' }],
         }),
         this.prisma.client.defectType.findMany({
           where: { defectItems: { some: itemWhere } },
-          select: { id: true, name: true },
+          select: { id: true, name: true, nameSortKey: true },
+          orderBy: [{ nameSortKey: 'asc' }, { id: 'asc' }],
         }),
         this.prisma.client.organization.findMany({
           where: { customerActs: { some: { defectItems: { some: itemWhere } } } },
@@ -197,10 +210,14 @@ export class RegistryService {
       ]);
 
     return {
-      formCodes: sortOptions(formRows.map((row) => [row.formCode, formLabel(row.formCode)])),
+      formCodes: sortOptions(
+        formRows.flatMap((row) =>
+          row.formCode ? ([[row.formCode, formLabel(row.formCode)]] as [string, string][]) : [],
+        ),
+      ),
       statuses: [...REGISTRY_STATUS_FILTER_OPTIONS],
-      objects: sortOptions(objectRows.map((row) => [row.id, row.name])),
-      defectTypes: sortOptions(defectTypeRows.map((row) => [row.id, row.name])),
+      objects: objectRows.map((row) => ({ id: row.id, label: row.name })),
+      defectTypes: defectTypeRows.map((row) => ({ id: row.id, label: row.name })),
       customers: sortOptions(customerRows.map((row) => [row.id, row.officialName])),
       liableOrganizations: sortOptions(liableRows.map((row) => [row.id, row.officialName])),
       responsibleEngineers: engineerRows
@@ -239,6 +256,10 @@ export class RegistryService {
         customerOrganizationId: true,
         issuedOn: true,
         createdAt: true,
+        updatedAt: true,
+        fillingEngineer: {
+          select: { id: true, lastName: true, firstName: true, middleName: true, fullName: true },
+        },
         startedAt: true,
         startedBy: {
           select: { id: true, lastName: true, firstName: true, middleName: true, fullName: true },
@@ -322,7 +343,7 @@ export class RegistryService {
         },
       },
     });
-    if (!act || act.defectItems.length === 0) {
+    if (!act) {
       throw new NotFoundException('Запись не найдена');
     }
     const defectItems: ActDetailDefectItem[] = act.defectItems.map((item) => {
@@ -339,19 +360,24 @@ export class RegistryService {
         })),
         user.role,
       );
-      const deadlineState = deadlineStateOf({
-        status: item.status,
-        plannedDeadline: item.plannedDeadline,
-        claimDeadline: item.claimDeadline,
-        deadlineWarningDays: warningDays,
-        now,
-        timeZone,
-      });
+      const deadlineState =
+        act.status === 'NEW'
+          ? item.plannedDeadline || item.claimDeadline
+            ? 'NORMAL'
+            : 'NO_DEADLINE'
+          : deadlineStateOf({
+              status: item.status,
+              plannedDeadline: item.plannedDeadline,
+              claimDeadline: item.claimDeadline,
+              deadlineWarningDays: warningDays,
+              now,
+              timeZone,
+            });
       return {
         id: item.id,
         location: item.location,
-        defectTypeId: item.defectType.id,
-        defectTypeName: item.defectType.name,
+        defectTypeId: item.defectType?.id ?? null,
+        defectTypeName: item.defectType?.name ?? null,
         status: item.status,
         statusLabel: defectItemStatusLabel(item.status),
         version: item.version,

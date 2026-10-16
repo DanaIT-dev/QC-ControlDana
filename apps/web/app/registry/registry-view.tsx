@@ -34,6 +34,7 @@ import {
   searchParamsFromQuery,
 } from '../../lib/registry-url';
 import { queryKeys } from '../../lib/query-keys';
+import { readPageSizePreference, writePageSizePreference } from '../../lib/page-size-preference';
 import { RegistryCards } from './registry-cards';
 import { RegistryFilters } from './registry-filters';
 import { RegistrySummary } from './registry-summary';
@@ -127,6 +128,21 @@ export function RegistryView({ user }: { user: SafeUserProfile }) {
     navigateQuery(next, 'replace');
   }
 
+  useEffect(() => {
+    if (params.has('pageSize')) {
+      return;
+    }
+    const stored = readPageSizePreference('sgr.registry.pageSize', REGISTRY_PAGE_SIZES, 50);
+    if (stored === query.pageSize) {
+      return;
+    }
+    replaceQuery({
+      ...query,
+      page: 1,
+      pageSize: stored as (typeof REGISTRY_PAGE_SIZES)[number],
+    });
+  }, [params, query.pageSize]);
+
   function openRow(row: RegistryDefectRow) {
     const preserved = searchParamsFromQuery(query);
     const extra = new URLSearchParams(preserved);
@@ -184,6 +200,26 @@ export function RegistryView({ user }: { user: SafeUserProfile }) {
         onChange={pushQuery}
         loading={summaryQuery.isLoading}
       />
+      {(summaryQuery.data?.unfinishedDrafts.length ?? 0) > 0 ? (
+        <section
+          className="rounded-md border bg-card px-4 py-3"
+          aria-label="Незавершённые черновики"
+        >
+          <h2 className="text-sm font-medium">Незавершённые черновики</h2>
+          <ul className="mt-2 flex flex-wrap gap-2">
+            {summaryQuery.data?.unfinishedDrafts.map((draft) => (
+              <li key={draft.id}>
+                <Link
+                  className="text-sm text-primary underline-offset-2 hover:underline"
+                  href={`/acts/${draft.id}`}
+                >
+                  {draft.label}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
       <RegistryFilters
         query={query}
         options={optionsQuery.data ?? null}
@@ -246,13 +282,15 @@ export function RegistryView({ user }: { user: SafeUserProfile }) {
             Строк на странице
             <Select
               value={String(pageSize)}
-              onValueChange={(value) =>
+              onValueChange={(value) => {
+                const pageSize = Number(value) as (typeof REGISTRY_PAGE_SIZES)[number];
+                writePageSizePreference('sgr.registry.pageSize', pageSize);
                 replaceQuery({
                   ...query,
                   page: 1,
-                  pageSize: Number(value) as (typeof REGISTRY_PAGE_SIZES)[number],
-                })
-              }
+                  pageSize,
+                });
+              }}
             >
               <SelectTrigger aria-label="Строк на странице" className="w-[88px]">
                 <SelectValue />

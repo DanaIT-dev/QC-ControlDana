@@ -137,7 +137,7 @@ test.describe('read-only SUPER_ADMIN oversight', () => {
 
     await page.goto('/acts/new');
     await expect(page.getByText('Недостаточно прав для создания акта.')).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Создать акт' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Сохранить черновик' })).toBeVisible();
 
     await page.goto('/history');
     await expect(page.getByRole('heading', { name: 'Журнал аудита' })).toBeVisible();

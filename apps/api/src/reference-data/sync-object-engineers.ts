@@ -70,6 +70,7 @@ export async function syncObjectEngineers(
       },
       update: {
         unassignedAt: null,
+        revokedByUserId: null,
         assignedAt: now,
         assignedByUserId,
       },
@@ -82,7 +83,26 @@ export async function syncObjectEngineers(
         userId: { in: toRemove },
         unassignedAt: null,
       },
-      data: { unassignedAt: now },
+      data: { unassignedAt: now, revokedByUserId: assignedByUserId },
+    });
+  }
+
+  for (const userId of toAdd) {
+    await writeAuditLog(tx, {
+      ...input.ctx,
+      action: 'PROPERTY_OBJECT_ENGINEER_LINKED',
+      entityType: 'PROPERTY_OBJECT',
+      entityId: input.objectId,
+      newValue: toJsonValue({ userId }),
+    });
+  }
+  for (const userId of toRemove) {
+    await writeAuditLog(tx, {
+      ...input.ctx,
+      action: 'PROPERTY_OBJECT_ENGINEER_UNLINKED',
+      entityType: 'PROPERTY_OBJECT',
+      entityId: input.objectId,
+      oldValue: toJsonValue({ userId }),
     });
   }
 

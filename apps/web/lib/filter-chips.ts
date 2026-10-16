@@ -125,7 +125,7 @@ export function buildRegistryFilterChips(
       : null,
     chipForRange(
       'plannedDeadline',
-      'Плановый срок',
+      'Срок устранения',
       query.plannedDeadlineFrom,
       query.plannedDeadlineTo,
       { plannedDeadlineFrom: null, plannedDeadlineTo: null },

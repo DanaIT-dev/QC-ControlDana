@@ -123,9 +123,12 @@ function parsePageSize(value: string | undefined): RegistryPageSize {
   if (value === undefined || value.trim().length === 0) {
     return DEFAULT_REGISTRY_PAGE_SIZE;
   }
-  const parsed = parsePositiveInt(value, 'pageSize', DEFAULT_REGISTRY_PAGE_SIZE);
+  if (!/^\d+$/.test(value.trim())) {
+    return DEFAULT_REGISTRY_PAGE_SIZE;
+  }
+  const parsed = Number.parseInt(value.trim(), 10);
   if (!REGISTRY_PAGE_SIZES.includes(parsed as RegistryPageSize)) {
-    throw new RegistryQueryError('Invalid pageSize');
+    return DEFAULT_REGISTRY_PAGE_SIZE;
   }
   return parsed as RegistryPageSize;
 }

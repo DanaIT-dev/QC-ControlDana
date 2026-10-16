@@ -52,6 +52,22 @@ interface BuiltSignal {
   members: Sql;
 }
 
+export function isInsightSnapshotConflict(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) {
+    return false;
+  }
+  const record = error as { code?: string; message?: string; meta?: { code?: string } };
+  const message = record.message ?? '';
+  return (
+    record.code === 'P2002' ||
+    record.meta?.code === '23505' ||
+    record.meta?.code === '25P02' ||
+    message.includes('25P02') ||
+    message.includes('analytics_insights_snapshot_scope_unique') ||
+    message.includes('Unique constraint')
+  );
+}
+
 export async function refreshAnalyticsPatterns(
   raw: Raw,
   prisma: Pick<PrismaClient, 'analyticsInsight' | 'analyticsInsightDefect' | '$transaction'>,
@@ -95,44 +111,58 @@ export async function refreshAnalyticsPatterns(
     if (existing) {
       continue;
     }
-    await prisma.$transaction(async (tx) => {
-      const created = await tx.analyticsInsight.create({
-        data: {
-          signalKey: built.signal.signalKey,
-          signalType: built.signal.signalType,
-          title: built.signal.title,
-          plainLanguageExplanation: built.signal.plainLanguageExplanation,
-          dimensions: built.signal.dimensions,
-          supportCount,
-          totalCount: built.signal.totalCount,
-          observedValue: built.signal.observedValue.toFixed(6),
-          baselineValue: built.signal.baselineValue.toFixed(6),
-          lift: built.signal.lift == null ? null : built.signal.lift.toFixed(6),
-          confidence: built.signal.confidence,
-          sampleCoverage:
-            built.signal.sampleCoverage == null ? null : built.signal.sampleCoverage.toFixed(4),
-          periodFrom: input.query.dateFrom
-            ? new Date(`${input.query.dateFrom}T00:00:00.000+03:00`)
-            : null,
-          periodTo: input.query.dateTo
-            ? new Date(`${input.query.dateTo}T00:00:00.000+03:00`)
-            : null,
-          generatedAt: now,
-          ruleVersion: ANALYTICS_RULE_VERSION,
-          status: 'NEW',
-          statisticallyStable: built.signal.statisticallyStable,
-          active: true,
-          scopeKind: stamp.kind,
-          scopeFingerprint: stamp.fingerprint,
-          scopeOrganizationId: stamp.organizationId,
-          scopeUserId: stamp.userId,
-          filterSnapshot: filters.snapshot,
-          filterHash: filters.hash,
-          snapshotHash,
-          supportAvailable: true,
-        },
-      });
-      await tx.$queryRaw(Prisma.sql`
+    try {
+      await prisma.$transaction(async (tx) => {
+        const inserted = await tx.analyticsInsight.createMany({
+          data: [
+            {
+              signalKey: built.signal.signalKey,
+              signalType: built.signal.signalType,
+              title: built.signal.title,
+              plainLanguageExplanation: built.signal.plainLanguageExplanation,
+              dimensions: built.signal.dimensions,
+              supportCount,
+              totalCount: built.signal.totalCount,
+              observedValue: built.signal.observedValue.toFixed(6),
+              baselineValue: built.signal.baselineValue.toFixed(6),
+              lift: built.signal.lift == null ? null : built.signal.lift.toFixed(6),
+              confidence: built.signal.confidence,
+              sampleCoverage:
+                built.signal.sampleCoverage == null ? null : built.signal.sampleCoverage.toFixed(4),
+              periodFrom: input.query.dateFrom
+                ? new Date(`${input.query.dateFrom}T00:00:00.000+03:00`)
+                : null,
+              periodTo: input.query.dateTo
+                ? new Date(`${input.query.dateTo}T00:00:00.000+03:00`)
+                : null,
+              generatedAt: now,
+              ruleVersion: ANALYTICS_RULE_VERSION,
+              status: 'NEW',
+              statisticallyStable: built.signal.statisticallyStable,
+              active: true,
+              scopeKind: stamp.kind,
+              scopeFingerprint: stamp.fingerprint,
+              scopeOrganizationId: stamp.organizationId,
+              scopeUserId: stamp.userId,
+              filterSnapshot: filters.snapshot,
+              filterHash: filters.hash,
+              snapshotHash,
+              supportAvailable: true,
+            },
+          ],
+          skipDuplicates: true,
+        });
+        if (inserted.count === 0) {
+          return;
+        }
+        const created = await tx.analyticsInsight.findFirst({
+          where: { scopeFingerprint: stamp.fingerprint, snapshotHash, active: true },
+          select: { id: true },
+        });
+        if (!created) {
+          return;
+        }
+        await tx.$queryRaw(Prisma.sql`
         SELECT public.sgr_insert_insight_support(
           ${created.id}::uuid,
           ${built.reason},
@@ -140,17 +170,22 @@ export async function refreshAnalyticsPatterns(
           COALESCE(ARRAY(SELECT members.id::uuid FROM (${built.members}) AS members), ARRAY[]::uuid[])
         ) AS inserted
       `);
-      await tx.analyticsInsight.updateMany({
-        where: {
-          scopeFingerprint: stamp.fingerprint,
-          signalKey: built.signal.signalKey,
-          filterHash: filters.hash,
-          active: true,
-          id: { not: created.id },
-        },
-        data: { active: false },
+        await tx.analyticsInsight.updateMany({
+          where: {
+            scopeFingerprint: stamp.fingerprint,
+            signalKey: built.signal.signalKey,
+            filterHash: filters.hash,
+            active: true,
+            id: { not: created.id },
+          },
+          data: { active: false },
+        });
       });
-    });
+    } catch (error) {
+      if (!isInsightSnapshotConflict(error)) {
+        throw error;
+      }
+    }
   }
   await prisma.analyticsInsight.updateMany({
     where: {

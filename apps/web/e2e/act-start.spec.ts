@@ -78,12 +78,14 @@ async function createActFromForm(page: Page, location: string) {
   await page.getByLabel('Помещение').fill(location);
   await page.getByLabel('Описание').fill('Дефект для статуса нового акта');
   await chooseFirst(page, 'Вид дефекта');
-  await page.getByRole('combobox', { name: 'Ответственные инженеры' }).click();
+  await page.getByLabel('Форма').click();
+  await page.getByRole('option', { name: 'С-1' }).click();
+  await page.getByLabel('Дата акта').fill('2026-10-16');
+  await page.getByRole('combobox', { name: 'Ответственный инженер' }).click();
   const engineer = page.getByRole('option', { name: /Орлов Дмитрий/ });
   await expect(engineer).toBeVisible();
   await engineer.click();
-  await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: 'Создать акт' }).click();
+  await page.getByRole('button', { name: 'Сохранить черновик' }).click();
   await expect(page).toHaveURL(
     /\/acts\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
   );
@@ -135,7 +137,7 @@ test.describe('new act workflow status', () => {
     expect(errors.filter((message) => /hydrat/i.test(message))).toEqual([]);
   });
 
-  test('hides start action from SUPER_ADMIN and CONTRACTOR', async ({ page }) => {
+  test('shows start to SUPER_ADMIN and hides it from CONTRACTOR', async ({ page }) => {
     test.setTimeout(90_000);
     const provision = spawnSync(
       'pnpm',
@@ -164,7 +166,7 @@ test.describe('new act workflow status', () => {
     await login(page, SUPER_ADMIN_EMAIL);
     await page.goto(actUrl);
     await expect(page.getByText('Новый акт', { exact: true }).first()).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Взять в работу' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Взять в работу' })).toBeVisible();
 
     await page.getByRole('button', { name: 'Меню пользователя' }).click();
     await page.getByRole('menuitem', { name: 'Выйти' }).click();
