@@ -10,6 +10,7 @@ describe('web content security policy', () => {
     expect(policy).toContain("base-uri 'none'");
     expect(policy).toContain("form-action 'self'");
     expect(policy).toContain("img-src 'self' data: blob:");
+    expect(policy).toContain("frame-src 'self'");
     expect(policy).toContain("font-src 'self'");
     expect(policy).not.toContain('unsafe-eval');
     expect(policy).toContain("'nonce-abc123'");

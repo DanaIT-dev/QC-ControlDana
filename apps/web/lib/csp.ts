@@ -20,7 +20,7 @@ export function buildWebContentSecurityPolicy(input: {
     "font-src 'self'",
     `connect-src ${connectSrc}`,
     "object-src 'none'",
-    "frame-src 'none'",
+    "frame-src 'self'",
     "worker-src 'self' blob:",
   ].join('; ');
 }

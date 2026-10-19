@@ -24,10 +24,17 @@
 	header {
 		Strict-Transport-Security "max-age=15552000; includeSubDomains"
 		X-Content-Type-Options nosniff
-		X-Frame-Options DENY
 		Referrer-Policy strict-origin-when-cross-origin
 		Permissions-Policy "camera=(), microphone=(), geolocation=()"
 		-Server
+	}
+	@not_attachment_preview not path /api/attachments/*/content
+	header @not_attachment_preview X-Frame-Options DENY
+	handle /api/attachments/*/content {
+		reverse_proxy api:3001 {
+			header_down -X-Frame-Options
+			header_down Content-Security-Policy "default-src 'none'; base-uri 'none'; frame-ancestors 'self'"
+		}
 	}
 	handle /api/* {
 		reverse_proxy api:3001

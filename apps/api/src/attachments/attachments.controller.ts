@@ -123,10 +123,16 @@ export class AttachmentsController {
     const range = typeof request.headers.range === 'string' ? request.headers.range : undefined;
     const result = await this.attachments.content(user, attachmentId, range);
     const inline = result.mimeType.startsWith('image/') || result.mimeType === 'application/pdf';
+    reply.removeHeader('x-frame-options');
+    reply.removeHeader('content-security-policy');
     reply.header('Content-Type', result.mimeType);
     reply.header('Content-Disposition', buildContentDisposition(result.filename, inline));
     reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('Cache-Control', 'private, no-store');
+    reply.header(
+      'Content-Security-Policy',
+      "default-src 'none'; base-uri 'none'; frame-ancestors 'self'",
+    );
     if (result.contentRange) {
       reply.header('Content-Range', result.contentRange);
       reply.header('Accept-Ranges', 'bytes');

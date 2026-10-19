@@ -75,14 +75,6 @@ export function AttachmentsPanel({
     },
   });
   const polling = shouldKeepPolling(query.data?.items.map((item) => item.status) ?? []);
-  const previewUrl = useRef<string | null>(null);
-  useEffect(() => {
-    return () => {
-      if (previewUrl.current) {
-        URL.revokeObjectURL(previewUrl.current);
-      }
-    };
-  }, []);
   useEffect(() => {
     if (!polling) return;
     const timer = setInterval(() => {
@@ -94,38 +86,6 @@ export function AttachmentsPanel({
   const [open, setOpen] = useState(false);
   const [archiveId, setArchiveId] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ src: string; name: string; mime: string } | null>(null);
-
-  function closePreview() {
-    if (previewUrl.current) {
-      URL.revokeObjectURL(previewUrl.current);
-      previewUrl.current = null;
-    }
-    setPreview(null);
-  }
-
-  async function openPreview(item: {
-    id: string;
-    safeDisplayName: string;
-    detectedMimeType: string | null;
-  }) {
-    const response = await fetch(`/api/attachments/${item.id}/content`, {
-      credentials: 'include',
-      cache: 'no-store',
-    });
-    if (!response.ok) {
-      toast.error('Не удалось открыть файл');
-      return;
-    }
-    const downloaded = await response.blob();
-    const mime = item.detectedMimeType || downloaded.type || 'application/octet-stream';
-    const blob = downloaded.type === mime ? downloaded : new Blob([downloaded], { type: mime });
-    if (previewUrl.current) {
-      URL.revokeObjectURL(previewUrl.current);
-    }
-    const src = URL.createObjectURL(blob);
-    previewUrl.current = src;
-    setPreview({ src, name: item.safeDisplayName, mime });
-  }
 
   const items = query.data?.items ?? [];
 
@@ -160,7 +120,13 @@ export function AttachmentsPanel({
                   size="sm"
                   variant="outline"
                   className="min-h-11"
-                  onClick={() => void openPreview(item)}
+                  onClick={() =>
+                    setPreview({
+                      src: `/api/attachments/${item.id}/content`,
+                      name: item.safeDisplayName,
+                      mime: item.detectedMimeType ?? '',
+                    })
+                  }
                 >
                   Открыть
                 </Button>
@@ -207,7 +173,7 @@ export function AttachmentsPanel({
           void queryClient.invalidateQueries({ queryKey: queryKeys.attachments(listPath) });
         }}
       />
-      <Dialog open={Boolean(preview)} onOpenChange={(next) => !next && closePreview()}>
+      <Dialog open={Boolean(preview)} onOpenChange={(next) => !next && setPreview(null)}>
         <DialogContent className="max-h-[90dvh] overflow-hidden sm:max-w-4xl">
           <DialogHeader>
             <DialogTitle className="break-all">{preview?.name}</DialogTitle>
