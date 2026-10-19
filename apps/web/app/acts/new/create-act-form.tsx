@@ -250,7 +250,16 @@ export function CreateActForm({ csrfToken }: { csrfToken: string }) {
           body: form,
         });
         if (!uploaded.ok) {
-          failedDocuments.push(file.name);
+          let reason = file.name;
+          try {
+            const body = (await uploaded.json()) as { message?: unknown };
+            if (typeof body.message === 'string' && body.message.trim().length > 0) {
+              reason = `${file.name}: ${body.message}`;
+            }
+          } catch {
+            reason = file.name;
+          }
+          failedDocuments.push(reason);
         }
       }
       setDirty(false);

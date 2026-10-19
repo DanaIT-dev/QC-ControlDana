@@ -142,6 +142,10 @@ describe('filename and content policy', () => {
   it('normalizes, strips CR/LF and path separators', () => {
     expect(normalizeAttachmentFilename('  фото\r\n/../a.pdf  ')).toBe('фото_.._a.pdf');
     expect(() => assertSafeFilename('photo.jpg.exe')).toThrow(/Двойное расширение/);
+    expect(() => assertSafeFilename('payload.exe.pdf')).toThrow(/Двойное расширение/);
+    expect(assertSafeFilename('7.1_дефектный_акт_от_06.10.2026.pdf')).toBe(
+      '7.1_дефектный_акт_от_06.10.2026.pdf',
+    );
     expect(() => assertSafeFilename('..\\secret.pdf')).toThrow(/путь/);
     expect(extensionOf('scan.PDF')).toBe('.pdf');
   });

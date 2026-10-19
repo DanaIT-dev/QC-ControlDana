@@ -277,6 +277,50 @@ export function normalizeAttachmentFilename(raw: string): string {
   return cut.length > 0 ? cut : 'attachment';
 }
 
+const EXTRA_EXTENSIONS = new Set([
+  'pdf',
+  'doc',
+  'docx',
+  'xls',
+  'xlsx',
+  'jpg',
+  'jpeg',
+  'png',
+  'webp',
+  'zip',
+  'rar',
+  '7z',
+  'gz',
+  'tar',
+  'exe',
+  'dll',
+  'bat',
+  'cmd',
+  'com',
+  'scr',
+  'js',
+  'mjs',
+  'vbs',
+  'ps1',
+  'sh',
+  'jar',
+  'html',
+  'htm',
+  'svg',
+  'xml',
+  'msi',
+  'apk',
+  'php',
+  'asp',
+  'aspx',
+  'cgi',
+  'hta',
+  'lnk',
+  'iso',
+  'dmg',
+  'bin',
+]);
+
 export function assertSafeFilename(raw: string): string {
   const safe = normalizeAttachmentFilename(raw);
   if (safe.includes('\r') || safe.includes('\n')) {
@@ -287,7 +331,11 @@ export function assertSafeFilename(raw: string): string {
     throw new AttachmentPolicyError('UNSAFE_FILENAME', 'Имя файла содержит недопустимый путь');
   }
   const parts = lower.split('.');
-  if (parts.length > 2) {
+  if (parts.some((part) => part.length === 0)) {
+    throw new AttachmentPolicyError('UNSAFE_FILENAME', 'Имя файла содержит недопустимый путь');
+  }
+  const hiddenExtensions = parts.slice(1, -1);
+  if (hiddenExtensions.some((part) => EXTRA_EXTENSIONS.has(part))) {
     throw new AttachmentPolicyError('UNSAFE_FILENAME', 'Двойное расширение файла запрещено');
   }
   return safe;
