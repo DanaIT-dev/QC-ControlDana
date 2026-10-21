@@ -47,3 +47,4 @@ export * from './organization-completeness';
 export * from './directory-codes';
 export * from './analytics';
 export * from './draft-act';
+export * from './act-fill';

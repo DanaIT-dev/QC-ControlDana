@@ -15,7 +15,7 @@ export const DEFECT_ITEM_STATUS_LABELS: Record<DefectItemStatus, string> = {
 };
 
 export const ACT_STATUS_LABELS: Record<ActStatus, string> = {
-  NEW: 'Новый акт',
+  NEW: 'Статус не установлен',
   IMPORTED_UNSPECIFIED: 'Статус не указан',
   IN_PROGRESS: 'В работе',
   COMPLETED: 'Исполнено',
@@ -61,7 +61,7 @@ export const DEADLINE_STATE_LABELS: Record<DeadlineState, string> = {
 
 export function formLabel(formCode: ActFormCode | null | undefined): string {
   if (!formCode) {
-    return 'Черновик';
+    return 'Форма не указана';
   }
   return ACT_FORM_DISPLAY[formCode].officialLabel;
 }

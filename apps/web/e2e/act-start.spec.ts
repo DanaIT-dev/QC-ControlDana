@@ -85,7 +85,7 @@ async function createActFromForm(page: Page, location: string) {
   const engineer = page.getByRole('option', { name: /Орлов Дмитрий/ });
   await expect(engineer).toBeVisible();
   await engineer.click();
-  await page.getByRole('button', { name: 'Сохранить черновик' }).click();
+  await page.getByRole('button', { name: 'Сохранить акт' }).click();
   await expect(page).toHaveURL(
     /\/acts\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
   );
@@ -99,9 +99,9 @@ test.describe('new act workflow status', () => {
     const errors = attachConsole(page);
     await page.setViewportSize({ width: 1440, height: 900 });
     await login(page, ACCOUNTS.admin);
-    const location = `Новый акт ${Date.now()}`;
+    const location = `Статус не установлен ${Date.now()}`;
     await createActFromForm(page, location);
-    await expect(page.getByText('Новый акт', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('Статус не установлен', { exact: true }).first()).toBeVisible();
     await expect(page.getByText('Работа по акту ещё не начата')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Взять в работу' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Исполнить' })).toHaveCount(0);
@@ -110,11 +110,11 @@ test.describe('new act workflow status', () => {
     const actUrl = page.url();
     await page.getByRole('link', { name: 'Назад к реестру' }).click();
     await expect(page).toHaveURL(/\/registry/);
-    await page.getByRole('button', { name: /^Новый акт/ }).click();
+    await page.getByRole('button', { name: /^Статус не установлен/ }).click();
     await expect(page).toHaveURL(/statuses=NEW/);
     await expect(page.getByText(location).first()).toBeVisible();
     await page.getByRole('combobox', { name: 'Статус' }).first().click();
-    await expect(page.getByRole('option', { name: 'Новый акт' })).toBeVisible();
+    await expect(page.getByRole('option', { name: 'Статус не установлен' })).toBeVisible();
     await page.keyboard.press('Escape');
 
     await page.goto(actUrl);
@@ -165,7 +165,7 @@ test.describe('new act workflow status', () => {
     await expect(page).toHaveURL(/\/login/);
     await login(page, SUPER_ADMIN_EMAIL);
     await page.goto(actUrl);
-    await expect(page.getByText('Новый акт', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('Статус не установлен', { exact: true }).first()).toBeVisible();
     await expect(page.getByRole('button', { name: 'Взять в работу' })).toBeVisible();
 
     await page.getByRole('button', { name: 'Меню пользователя' }).click();
@@ -184,7 +184,7 @@ test.describe('new act workflow status', () => {
       await login(page, ACCOUNTS.admin);
       const location = `Viewport ${viewport.width} ${Date.now()}`;
       await createActFromForm(page, location);
-      await expect(page.getByText('Новый акт', { exact: true }).first()).toBeVisible();
+      await expect(page.getByText('Статус не установлен', { exact: true }).first()).toBeVisible();
       await expectNoHorizontalOverflow(page);
       const start = page.getByRole('button', { name: 'Взять в работу' });
       await expect(start).toBeVisible();

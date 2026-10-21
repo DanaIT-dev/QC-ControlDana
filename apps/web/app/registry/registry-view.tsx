@@ -146,7 +146,9 @@ export function RegistryView({ user }: { user: SafeUserProfile }) {
   function openRow(row: RegistryDefectRow) {
     const preserved = searchParamsFromQuery(query);
     const extra = new URLSearchParams(preserved);
-    extra.set('defect', row.defectItemId);
+    if (row.defectItemId) {
+      extra.set('defect', row.defectItemId);
+    }
     router.push(`/acts/${row.actId}?${extra.toString()}`);
   }
 
@@ -201,11 +203,8 @@ export function RegistryView({ user }: { user: SafeUserProfile }) {
         loading={summaryQuery.isLoading}
       />
       {(summaryQuery.data?.unfinishedDrafts.length ?? 0) > 0 ? (
-        <section
-          className="rounded-md border bg-card px-4 py-3"
-          aria-label="Незавершённые черновики"
-        >
-          <h2 className="text-sm font-medium">Незавершённые черновики</h2>
+        <section className="rounded-md border bg-card px-4 py-3" aria-label="Незаполненные акты">
+          <h2 className="text-sm font-medium">Незаполненные акты</h2>
           <ul className="mt-2 flex flex-wrap gap-2">
             {summaryQuery.data?.unfinishedDrafts.map((draft) => (
               <li key={draft.id}>

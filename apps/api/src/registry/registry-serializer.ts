@@ -2,15 +2,18 @@ import type { Prisma } from '@sgr-registry/database';
 import type { ActFormCode, ActStatus, DefectItemStatus, UserRole } from '@sgr-registry/contracts';
 import {
   BUSINESS_TIME_ZONE,
+  actFillLabel,
+  actFillState,
   actStatusLabel,
+  assignmentLabel,
   calendarDateInTimeZone,
-  deadlineStateLabel,
-  deadlineStateOf,
+  deadlinePresentation,
   defectItemStatusLabel,
   displayActNumber,
   effectiveDeadlineOf,
   formLabel,
   shapeProposals,
+  type ActFillState,
 } from '@sgr-registry/domain';
 
 const LIST_SELECT = {
@@ -31,6 +34,8 @@ const LIST_SELECT = {
       formCode: true,
       signedDocumentRef: true,
       status: true,
+      issuedOn: true,
+      startedAt: true,
       objectId: true,
       customerOrganizationId: true,
       propertyObject: { select: { id: true, name: true, address: true } },
@@ -95,19 +100,33 @@ export function toRegistryRow(
     })),
     role,
   );
-  const deadlineState =
-    item.act.status === 'NEW'
-      ? item.plannedDeadline || item.claimDeadline
-        ? 'NORMAL'
-        : 'NO_DEADLINE'
-      : deadlineStateOf({
-          status: item.status,
-          plannedDeadline: item.plannedDeadline,
-          claimDeadline: item.claimDeadline,
-          deadlineWarningDays: warningDays,
-          now,
-          timeZone,
-        });
+  const presentation = deadlinePresentation({
+    actStatus: item.act.status as ActStatus,
+    startedAt: item.act.startedAt,
+    defectStatus: item.status as DefectItemStatus,
+    claimDeadline: item.claimDeadline,
+    plannedDeadline: item.plannedDeadline,
+    deadlineWarningDays: warningDays,
+    now,
+    timeZone,
+  });
+  const fillState = actFillState({
+    officialNumber: item.act.officialNumber,
+    formCode: item.act.formCode,
+    objectId: item.act.objectId,
+    customerOrganizationId: item.act.customerOrganizationId,
+    issuedOn: item.act.issuedOn,
+    defects: [
+      {
+        location: item.location,
+        defectTypeId: item.defectType?.id ?? null,
+        responsibleCount: item.responsibleEngineers.length,
+        liableCount: item.liableOrganizations.length,
+        plannedDeadline: item.plannedDeadline ? 'set' : null,
+        claimDeadline: item.claimDeadline ? 'set' : null,
+      },
+    ],
+  });
   return {
     rowId: item.id,
     defectItemId: item.id,
@@ -161,10 +180,89 @@ export function toRegistryRow(
       }),
       timeZone,
     ),
-    deadlineState,
-    deadlineStateLabel: deadlineStateLabel(deadlineState),
+    deadlineState: presentation.deadlineState,
+    deadlineStateLabel: presentation.deadlineStateLabel,
+    daysRemaining: presentation.daysRemaining,
+    daysRemainingLabel: presentation.daysRemainingLabel,
+    deadlineNotice: presentation.deadlineNotice,
+    deadlineControlActive: presentation.deadlineControlActive,
+    fillState,
+    fillLabel: actFillLabel(fillState),
+    assignmentLabel: assignmentLabel(item.responsibleEngineers.length),
     readyAt: timestampField(item.readyAt),
     documentRef: item.act.signedDocumentRef,
+    ...proposals,
+  };
+}
+
+export const emptyActSelect = {
+  id: true,
+  officialNumber: true,
+  sourceActNumberRaw: true,
+  formCode: true,
+  status: true,
+  issuedOn: true,
+  startedAt: true,
+  objectId: true,
+  customerOrganizationId: true,
+  createdAt: true,
+  updatedAt: true,
+  signedDocumentRef: true,
+  propertyObject: { select: { id: true, name: true, address: true } },
+  customer: { select: { id: true, officialName: true } },
+} satisfies Prisma.ActSelect;
+
+export type EmptyActRecord = Prisma.ActGetPayload<{ select: typeof emptyActSelect }>;
+
+export function toEmptyRegistryRow(act: EmptyActRecord, role: UserRole) {
+  const fillState: ActFillState = actFillState({
+    officialNumber: act.officialNumber,
+    formCode: act.formCode,
+    objectId: act.objectId,
+    customerOrganizationId: act.customerOrganizationId,
+    issuedOn: act.issuedOn,
+    defects: [],
+  });
+  const proposals = shapeProposals([], role);
+  return {
+    rowId: `act:${act.id}`,
+    defectItemId: null,
+    actId: act.id,
+    formCode: act.formCode,
+    formLabel: formLabel(act.formCode),
+    actNumber: displayActNumber({
+      officialNumber: act.officialNumber,
+      sourceActNumberRaw: act.sourceActNumberRaw,
+    }),
+    actStatus: act.status as ActStatus,
+    actStatusLabel: actStatusLabel(act.status as ActStatus),
+    defectStatus: 'IN_PROGRESS' as DefectItemStatus,
+    defectStatusLabel: 'Дефект не добавлен',
+    objectId: act.objectId,
+    objectName: act.propertyObject?.name ?? null,
+    objectAddress: act.propertyObject?.address ?? null,
+    location: null,
+    sourceDeadlineRaw: null,
+    defectTypeId: null,
+    defectTypeName: null,
+    customerOrganizationId: act.customerOrganizationId,
+    customerName: act.customer?.officialName ?? null,
+    liableOrganizations: [],
+    responsibleEngineers: [],
+    plannedDeadline: null,
+    claimDeadline: null,
+    effectiveDeadline: null,
+    deadlineState: 'NO_DEADLINE' as const,
+    deadlineStateLabel: 'Срок не установлен',
+    daysRemaining: null,
+    daysRemainingLabel: null,
+    deadlineNotice: null,
+    deadlineControlActive: false,
+    fillState,
+    fillLabel: actFillLabel(fillState),
+    assignmentLabel: assignmentLabel(0),
+    readyAt: null,
+    documentRef: act.signedDocumentRef,
     ...proposals,
   };
 }

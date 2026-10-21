@@ -98,6 +98,7 @@ import { resolveRegistryAccessScope } from '../registry/registry-access-scope.js
 import {
   notifyActCancelled,
   notifyContractorsAssigned,
+  notifyDeadlineActivated,
   notifyDeadlineChanges,
   notifyDefectRepairRejected,
   notifyDefectStatus,
@@ -1286,10 +1287,21 @@ export class OperationsService {
           requestId: ctx.requestId,
         });
         const warningDays = await warningDaysOf(tx);
+        const outboxIds: string[] = [];
         for (const defect of defects) {
           await syncSlaClocks(tx, defect, warningDays);
+          if (!started.alreadyStarted) {
+            outboxIds.push(
+              ...(await notifyDeadlineActivated(this.outboxWriter, tx, {
+                actId,
+                defectItemId: defect.id,
+                actorUserId: user.id,
+                claimDeadline: defect.claimDeadline,
+                plannedDeadline: defect.plannedDeadline,
+              })),
+            );
+          }
         }
-        const outboxIds: string[] = [];
         if (!started.alreadyStarted) {
           const assigned = await tx.defectItem.findMany({
             where: { actId },

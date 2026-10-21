@@ -19,10 +19,13 @@ import {
   REGISTRY_STATUS_FILTER_OPTIONS,
   calendarDateInTimeZone,
   canResolveImportedEngineer,
+  actFillLabel,
+  actFillState,
+  assignmentLabel,
   canViewProposalASum,
-  deadlineStateLabel,
-  deadlineStateOf,
+  deadlinePresentation,
   defectItemStatusLabel,
+  displayActNumber,
   effectiveDeadlineOf,
   formLabel,
   formatPersonShort,
@@ -43,15 +46,18 @@ import { parseCommandBody } from '../common/command-body.js';
 import { resolveRegistryAccessScope } from './registry-access-scope.js';
 import {
   deadlineStateWhere,
+  emptyActListWhere,
   personSearchDefectItemIds,
   registryListWhere,
   registryOrderBy,
 } from './registry-query-builder.js';
 import {
   calendarField,
+  emptyActSelect,
   registryListSelect,
   timestampField,
   toActHeader,
+  toEmptyRegistryRow,
   toRegistryRow,
 } from './registry-serializer.js';
 
@@ -68,27 +74,52 @@ export class RegistryService {
     const { query, scope, todayIso, warningDays, now, timeZone, personSearchDefectIds } =
       await this.prepare(user, rawQuery);
     const where = registryListWhere(scope, query, todayIso, warningDays, personSearchDefectIds);
-    const [totalCount, actCount] = await Promise.all([
+    const emptyWhere = emptyActListWhere(scope, query);
+    const [defectCount, actCountWithDefects, emptyCount] = await Promise.all([
       this.prisma.client.defectItem.count({ where }),
       this.prisma.client.act.count({ where: { defectItems: { some: where } } }),
+      emptyWhere ? this.prisma.client.act.count({ where: emptyWhere }) : Promise.resolve(0),
     ]);
+    const totalCount = defectCount + emptyCount;
+    const actCount = actCountWithDefects + emptyCount;
     const totalPages = totalCount === 0 ? 0 : Math.ceil(totalCount / query.pageSize);
     const page = totalCount === 0 ? 1 : Math.min(query.page, Math.max(totalPages, 1));
-    const items = await this.prisma.client.defectItem.findMany({
-      where,
-      select: {
-        ...registryListSelect,
-        proposals: {
-          ...registryListSelect.proposals,
-          where: { slot: { in: visibleProposalSlots(user.role) }, status: 'ACTIVE' },
-        },
-      },
-      orderBy: registryOrderBy(query.sortBy, query.sortDirection),
-      skip: (page - 1) * query.pageSize,
-      take: query.pageSize,
-    });
+    const offset = (page - 1) * query.pageSize;
+    const defectSkip = Math.min(offset, defectCount);
+    const defectTake = Math.max(0, Math.min(query.pageSize, defectCount - defectSkip));
+    const emptySkip = Math.max(0, offset - defectCount);
+    const emptyTake = query.pageSize - defectTake;
+    const [items, emptyActs] = await Promise.all([
+      defectTake === 0
+        ? Promise.resolve([])
+        : this.prisma.client.defectItem.findMany({
+            where,
+            select: {
+              ...registryListSelect,
+              proposals: {
+                ...registryListSelect.proposals,
+                where: { slot: { in: visibleProposalSlots(user.role) }, status: 'ACTIVE' },
+              },
+            },
+            orderBy: registryOrderBy(query.sortBy, query.sortDirection),
+            skip: defectSkip,
+            take: defectTake,
+          }),
+      emptyWhere && emptyTake > 0
+        ? this.prisma.client.act.findMany({
+            where: emptyWhere,
+            select: emptyActSelect,
+            orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
+            skip: emptySkip,
+            take: emptyTake,
+          })
+        : Promise.resolve([]),
+    ]);
     return {
-      items: items.map((item) => toRegistryRow(item, user.role, warningDays, now, timeZone)),
+      items: [
+        ...items.map((item) => toRegistryRow(item, user.role, warningDays, now, timeZone)),
+        ...emptyActs.map((act) => toEmptyRegistryRow(act, user.role)),
+      ],
       page,
       pageSize: query.pageSize,
       totalCount,
@@ -107,6 +138,7 @@ export class RegistryService {
       rawQuery,
     );
     const where = registryListWhere(scope, query, todayIso, warningDays, personSearchDefectIds);
+    const emptyWhere = emptyActListWhere(scope, query);
     const unfinishedDraftRows = await this.prisma.client.act.findMany({
       where: scope.emptyDraftWhere(),
       select: { id: true, officialNumber: true, updatedAt: true },
@@ -123,6 +155,7 @@ export class RegistryService {
       overdue,
       noDeadline,
       proposalSum,
+      emptyCount,
     ] = await Promise.all([
       this.prisma.client.defectItem.count({ where }),
       this.prisma.client.act.count({ where: { defectItems: { some: where } } }),
@@ -150,12 +183,13 @@ export class RegistryService {
             where: { slot: 'A', status: 'ACTIVE', defectItem: where },
           })
         : Promise.resolve(null),
+      emptyWhere ? this.prisma.client.act.count({ where: emptyWhere }) : Promise.resolve(0),
     ]);
     return shapeSummary(
       {
-        total,
-        actCount,
-        newCount,
+        total: total + emptyCount,
+        actCount: actCount + emptyCount,
+        newCount: newCount + emptyCount,
         inProgress,
         completed,
         warning,
@@ -166,7 +200,7 @@ export class RegistryService {
         businessDate: todayIso,
         unfinishedDrafts: unfinishedDraftRows.map((row) => ({
           id: row.id,
-          label: row.officialNumber?.trim() || 'Черновик',
+          label: displayActNumber({ officialNumber: row.officialNumber }),
           updatedAt: row.updatedAt.toISOString(),
         })),
       },
@@ -360,19 +394,16 @@ export class RegistryService {
         })),
         user.role,
       );
-      const deadlineState =
-        act.status === 'NEW'
-          ? item.plannedDeadline || item.claimDeadline
-            ? 'NORMAL'
-            : 'NO_DEADLINE'
-          : deadlineStateOf({
-              status: item.status,
-              plannedDeadline: item.plannedDeadline,
-              claimDeadline: item.claimDeadline,
-              deadlineWarningDays: warningDays,
-              now,
-              timeZone,
-            });
+      const presentation = deadlinePresentation({
+        actStatus: act.status,
+        startedAt: act.startedAt,
+        defectStatus: item.status,
+        claimDeadline: item.claimDeadline,
+        plannedDeadline: item.plannedDeadline,
+        deadlineWarningDays: warningDays,
+        now,
+        timeZone,
+      });
       return {
         id: item.id,
         location: item.location,
@@ -413,8 +444,12 @@ export class RegistryService {
           }),
           timeZone,
         ),
-        deadlineState,
-        deadlineStateLabel: deadlineStateLabel(deadlineState),
+        deadlineState: presentation.deadlineState,
+        deadlineStateLabel: presentation.deadlineStateLabel,
+        daysRemaining: presentation.daysRemaining,
+        daysRemainingLabel: presentation.daysRemainingLabel,
+        deadlineNotice: presentation.deadlineNotice,
+        deadlineControlActive: presentation.deadlineControlActive,
         readyAt: timestampField(item.readyAt),
         thirdPartyDeadline: calendarField(item.thirdPartyDeadline, timeZone),
         submittedForInspectionAt: timestampField(item.submittedForInspectionAt),
@@ -429,17 +464,43 @@ export class RegistryService {
         ...proposals,
       };
     });
+    const header = toActHeader({
+      ...act,
+      sourceDeadlineRaws: [
+        ...new Set(
+          act.defectItems
+            .map((item) => item.sourceDeadlineRaw)
+            .filter((value): value is string => Boolean(value)),
+        ),
+      ],
+    });
+    const fillState = actFillState({
+      officialNumber: act.officialNumber,
+      formCode: act.formCode,
+      objectId: act.objectId,
+      customerOrganizationId: act.customerOrganizationId,
+      issuedOn: act.issuedOn,
+      defects: act.defectItems.map((item) => ({
+        location: item.location,
+        defectTypeId: item.defectType?.id ?? null,
+        claimDetails: item.claimDetails,
+        notes: item.notes,
+        responsibleCount: item.responsibleEngineers.length,
+        liableCount: item.liableOrganizations.length,
+        plannedDeadline: item.plannedDeadline ? 'set' : null,
+        claimDeadline: item.claimDeadline ? 'set' : null,
+        thirdPartyDeadline: item.thirdPartyDeadline ? 'set' : null,
+      })),
+    });
+    const assignedEngineers = act.defectItems.reduce(
+      (count, item) => count + item.responsibleEngineers.length,
+      0,
+    );
     return {
-      ...toActHeader({
-        ...act,
-        sourceDeadlineRaws: [
-          ...new Set(
-            act.defectItems
-              .map((item) => item.sourceDeadlineRaw)
-              .filter((value): value is string => Boolean(value)),
-          ),
-        ],
-      }),
+      ...header,
+      fillState,
+      fillLabel: actFillLabel(fillState),
+      assignmentLabel: assignmentLabel(assignedEngineers),
       defectItems,
     };
   }

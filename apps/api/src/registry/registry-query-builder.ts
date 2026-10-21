@@ -201,6 +201,55 @@ export function registryListWhere(
   return { AND: parts };
 }
 
+export function emptyActListWhere(
+  scope: RegistryAccessScope,
+  query: RegistryListQuery,
+): Prisma.ActWhereInput | null {
+  if (
+    query.defectTypeIds.length > 0 ||
+    query.liableOrganizationIds.length > 0 ||
+    query.responsibleEngineerIds.length > 0 ||
+    query.unmatchedEngineers ||
+    query.importedOnly ||
+    query.plannedDeadlineFrom ||
+    query.plannedDeadlineTo ||
+    query.claimDeadlineFrom ||
+    query.claimDeadlineTo ||
+    query.readyAtFrom ||
+    query.readyAtTo
+  ) {
+    return null;
+  }
+  if (query.statuses.length > 0 && !query.statuses.includes('NEW')) {
+    return null;
+  }
+  if (query.deadlineState.length > 0 && !query.deadlineState.includes('NO_DEADLINE')) {
+    return null;
+  }
+  const parts: Prisma.ActWhereInput[] = [scope.emptyDraftWhere()];
+  if (query.formCodes.length > 0) {
+    parts.push({ formCode: { in: query.formCodes } });
+  }
+  if (query.objectIds.length > 0) {
+    parts.push({ objectId: { in: query.objectIds } });
+  }
+  if (query.customerOrganizationIds.length > 0) {
+    parts.push({ customerOrganizationId: { in: query.customerOrganizationIds } });
+  }
+  if (query.search) {
+    parts.push({
+      OR: [
+        { officialNumber: { contains: query.search, mode: 'insensitive' } },
+        { sourceActNumberRaw: { contains: query.search, mode: 'insensitive' } },
+        { propertyObject: { name: { contains: query.search, mode: 'insensitive' } } },
+        { propertyObject: { address: { contains: query.search, mode: 'insensitive' } } },
+        { customer: { officialName: { contains: query.search, mode: 'insensitive' } } },
+      ],
+    });
+  }
+  return { AND: parts };
+}
+
 export function registryStatusFilterWhere(
   status: RegistryStatusFilter,
 ): Prisma.DefectItemWhereInput {

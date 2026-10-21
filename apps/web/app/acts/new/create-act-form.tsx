@@ -263,10 +263,11 @@ export function CreateActForm({ csrfToken }: { csrfToken: string }) {
         }
       }
       setDirty(false);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.registry.all });
       if (failedDocuments.length > 0) {
-        toast.error(`Черновик сохранён. Не удалось прикрепить: ${failedDocuments.join(', ')}`);
+        toast.error(`Акт сохранён. Не удалось прикрепить: ${failedDocuments.join(', ')}`);
       } else {
-        toast.success('Черновик сохранён');
+        toast.success('Акт сохранён');
       }
       router.replace(`/acts/${created.id}`);
       router.refresh();
@@ -311,7 +312,7 @@ export function CreateActForm({ csrfToken }: { csrfToken: string }) {
     <div className="grid gap-4 pb-24">
       <PageHeader
         title="Создание акта"
-        description="Можно сохранить пустой или частично заполненный черновик и дополнить его позже."
+        description="Можно сохранить пустой или частично заполненный акт и дополнить его позже."
       />
       {lookups.isError ? (
         <ErrorState
@@ -488,7 +489,7 @@ export function CreateActForm({ csrfToken }: { csrfToken: string }) {
           Добавить дефект
         </Button>
         <Button type="button" onClick={() => void onCreate()} disabled={pending}>
-          {pending ? 'Сохранение…' : 'Сохранить черновик'}
+          {pending ? 'Сохранение…' : 'Сохранить акт'}
         </Button>
       </div>
       <DirectoryCreateDialogs

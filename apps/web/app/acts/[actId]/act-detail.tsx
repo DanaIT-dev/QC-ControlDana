@@ -3,6 +3,8 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   canViewProposalGroupBC,
+  displayActNumber,
+  displayObjectName,
   canViewHistory,
   canViewActChat,
   canUploadCategory,
@@ -111,7 +113,13 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
-            <BreadcrumbPage>Акт {act.officialNumber ?? 'Черновик'}</BreadcrumbPage>
+            <BreadcrumbPage>
+              Акт{' '}
+              {displayActNumber({
+                officialNumber: act.officialNumber,
+                sourceActNumberRaw: act.legacyImport?.sourceActNumberRaw,
+              })}
+            </BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
@@ -124,13 +132,19 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
             </Link>
           </Button>
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-semibold">Акт {act.officialNumber ?? 'Черновик'}</h1>
+            <h1 className="text-2xl font-semibold">
+              Акт{' '}
+              {displayActNumber({
+                officialNumber: act.officialNumber,
+                sourceActNumberRaw: act.legacyImport?.sourceActNumberRaw,
+              })}
+            </h1>
             <Badge variant="secondary">{act.formLabel}</Badge>
-            {act.draft ? <Badge variant="outline">Черновик</Badge> : null}
+            {act.fillLabel ? <Badge variant="outline">Заполнение: {act.fillLabel}</Badge> : null}
             <StatusBadge status={act.status} label={act.statusLabel} />
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            {blankLabel(act.objectName, act.draft)} · {blankLabel(act.customerName, act.draft)}
+            {displayObjectName(act.objectName)} · {blankLabel(act.customerName, act.draft)}
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
             Сохранено {formatTimestamp(act.updatedAt)}
@@ -153,7 +167,7 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
           <CardTitle className="text-lg">Данные акта</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <Meta label="Объект" value={blankLabel(act.objectName, act.draft)} />
+          <Meta label="Объект" value={displayObjectName(act.objectName)} />
           <Meta label="Адрес" value={blankLabel(act.objectAddress, act.draft)} />
           <Meta label="Заказчик" value={blankLabel(act.customerName, act.draft)} />
           <Meta
@@ -285,7 +299,22 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
               </CardHeader>
               <CardContent className="grid gap-4">
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  <Meta label="Срок устранения" value={formatCalendarDate(item.plannedDeadline)} />
+                  <Meta
+                    label="Срок устранения"
+                    value={
+                      item.plannedDeadline
+                        ? formatCalendarDate(item.plannedDeadline)
+                        : 'Срок не установлен'
+                    }
+                  />
+                  {item.daysRemainingLabel ? (
+                    <Meta label="До срока" value={item.daysRemainingLabel} />
+                  ) : null}
+                  {item.deadlineNotice ? (
+                    <p className="text-sm text-muted-foreground sm:col-span-2">
+                      {item.deadlineNotice}
+                    </p>
+                  ) : null}
                   {item.sourceDeadlineRaw ? (
                     <Meta label="Исходный срок" value={item.sourceDeadlineRaw} />
                   ) : null}

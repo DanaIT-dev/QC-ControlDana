@@ -864,7 +864,7 @@ function QualityPane({
     ['Без вида работ', data.missingWorkType, 'defects'],
     ['Без виновной организации', data.missingLiableOrganization, 'noLiableOrganization'],
     ['Без ответственного', data.missingResponsible, 'noResponsible'],
-    ['Без срока', data.missingDeadline, 'defects'],
+    ['Срок не установлен', data.missingDeadline, 'defects'],
     ['Без истории попыток', data.missingAttemptHistory, 'withoutAttempts'],
     ...(data.coverage.some((item) => item.metric === 'financial')
       ? ([['Без финансовых данных', data.missingFinancialData, 'defects']] as Array<

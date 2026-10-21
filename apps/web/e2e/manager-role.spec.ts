@@ -110,7 +110,7 @@ test.describe('MANAGER role and profile editing', () => {
     await page.getByRole('option').first().click();
     await page.getByRole('combobox', { name: 'Ответственный инженер' }).click();
     await page.getByRole('option').first().click();
-    await page.getByRole('button', { name: 'Сохранить черновик' }).click();
+    await page.getByRole('button', { name: 'Сохранить акт' }).click();
     await expect(page).toHaveURL(/\/acts\//);
     expect(consoleState.hydration()).toEqual([]);
     expect(consoleState.pageErrors).toEqual([]);

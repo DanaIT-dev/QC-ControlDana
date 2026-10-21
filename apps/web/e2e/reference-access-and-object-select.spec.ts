@@ -160,7 +160,7 @@ test.describe('reference access and linked object selection', () => {
     await page.getByRole('combobox', { name: 'Ответственный инженер' }).click();
     await page.getByRole('option').first().click();
     await page.keyboard.press('Escape');
-    await page.getByRole('button', { name: 'Сохранить черновик' }).click();
+    await page.getByRole('button', { name: 'Сохранить акт' }).click();
     await expect(page).toHaveURL(/\/acts\//);
     await expect(page.getByText('ЖК «Северный парк» (демо)').first()).toBeVisible();
     await expect(page.getByText('г. Минск, ул. Вымышленная, 1').first()).toBeVisible();
@@ -244,7 +244,7 @@ test.describe('reference access and linked object selection', () => {
     await expect(page.getByRole('option', { name: /Крылова Елена/ })).toBeVisible();
     await page.getByRole('option', { name: /Орлов Дмитрий/ }).click();
     await page.keyboard.press('Escape');
-    await page.getByRole('button', { name: 'Сохранить черновик' }).click();
+    await page.getByRole('button', { name: 'Сохранить акт' }).click();
     await expect(page).toHaveURL(/\/acts\//);
     await expect(page.getByText('ЖК «Северный парк» (демо)').first()).toBeVisible();
     await expect(page.getByRole('tab', { name: 'История изменений' })).toBeVisible();

@@ -1,7 +1,11 @@
 'use client';
 
 import type { RegistryDefectRow } from '@sgr-registry/contracts';
-import { displayedRegistryStatus } from '@sgr-registry/domain';
+import {
+  MISSING_ENGINEER_LABEL,
+  displayObjectName,
+  displayedRegistryStatus,
+} from '@sgr-registry/domain';
 import { flexRender, getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table';
 import { ArrowDown, ArrowUp, FileText } from 'lucide-react';
 import { useMemo } from 'react';
@@ -80,11 +84,31 @@ export function RegistryTable({
         header: headerButton('Статус', 'status', sortBy, sortDirection, onSort),
         cell: ({ row }) => {
           const displayed = displayedRegistryStatus(row.original);
-          return <StatusBadge status={displayed.status} label={displayed.label} />;
+          return (
+            <span className="grid gap-1">
+              <StatusBadge status={displayed.status} label={displayed.label} />
+              {row.original.actStatus === 'NEW' && row.original.fillLabel ? (
+                <span className="text-xs text-muted-foreground">
+                  Заполнение: {row.original.fillLabel}
+                </span>
+              ) : null}
+              {row.original.actStatus === 'NEW' && row.original.assignmentLabel ? (
+                <span className="text-xs text-muted-foreground">
+                  Назначение: {row.original.assignmentLabel}
+                </span>
+              ) : null}
+            </span>
+          );
         },
         meta: { className: 'col-status' },
       },
-      column('objectName', 'Объект', 'objectName', 'col-required'),
+      {
+        id: 'objectName',
+        accessorKey: 'objectName',
+        header: headerButton('Объект', 'objectName', sortBy, sortDirection, onSort),
+        cell: ({ row }) => <TruncateText text={displayObjectName(row.original.objectName)} />,
+        meta: { className: 'col-required' },
+      },
       column('objectAddress', 'Адрес', undefined, 'col-secondary hidden xl:table-cell'),
       column('location', 'Помещение', undefined, 'col-required'),
       column('defectTypeName', 'Вид дефекта', 'defectTypeName', 'col-required'),
@@ -112,7 +136,7 @@ export function RegistryTable({
                     sourceNameRaw={item.sourceNameRaw}
                   />
                 ))
-              : '—'}
+              : MISSING_ENGINEER_LABEL}
           </div>
         ),
         meta: { className: 'col-required' },
@@ -341,8 +365,13 @@ function headerButton(
 function DeadlineCell({ row }: { row: RegistryDefectRow }) {
   return (
     <span className="grid gap-1">
-      <span>{formatCalendarDate(row.effectiveDeadline)}</span>
+      <span>
+        {row.effectiveDeadline ? formatCalendarDate(row.effectiveDeadline) : 'Срок не установлен'}
+      </span>
       <DeadlineBadge state={row.deadlineState} label={row.deadlineStateLabel} />
+      {row.deadlineNotice && row.deadlineNotice !== row.deadlineStateLabel ? (
+        <span className="text-xs text-muted-foreground">{row.deadlineNotice}</span>
+      ) : null}
     </span>
   );
 }

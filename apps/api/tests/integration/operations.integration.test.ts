@@ -13,6 +13,8 @@ import {
   CSRF_HEADER_NAME,
   SESSION_COOKIE_NAME,
   CONFIRMED_LAST_FIRST_TOKEN_ORDER,
+  addCalendarDays,
+  calendarDateInTimeZone,
   personNameWriteFields,
 } from '@sgr-registry/domain';
 import Redis from 'ioredis';
@@ -1918,5 +1920,191 @@ describe('operations integration', () => {
     });
     expect(conflict.statusCode).toBe(409);
     expect((await prisma.act.findUniqueOrThrow({ where: { id: draft.id } })).issuedOn).toBeNull();
+  });
+
+  it('lists an empty NEW act and separates informational and active deadlines', async () => {
+    const admin = await createUser('ADMIN');
+    const contractor = await createUser('CONTRACTOR_ENGINEER');
+    const adminSession = await login(admin.email);
+    const contractorSession = await login(contractor.email);
+    const { object, customer, defectType } = await catalogs();
+    const empty = await mutate(adminSession, {
+      method: 'POST',
+      url: '/api/acts',
+      payload: { defectItems: [] },
+      headers: { 'idempotency-key': `empty-${Date.now()}` },
+    });
+    expect(empty.statusCode).toBe(201);
+    const emptyBody = empty.json() as { id: string };
+    createdActIds.push(emptyBody.id);
+    const stored = await prisma.act.findUniqueOrThrow({ where: { id: emptyBody.id } });
+    expect(stored.status).toBe('NEW');
+    expect(stored.status).not.toBeNull();
+    expect(await prisma.defectItem.count({ where: { actId: emptyBody.id } })).toBe(0);
+
+    const filters = await read(adminSession, '/api/registry/filter-options');
+    expect(filters.statusCode).toBe(200);
+    const filterBody = filters.json() as { statuses: Array<{ id: string; label: string }> };
+    expect(filterBody.statuses.find((item) => item.id === 'NEW')?.label).toBe(
+      'Статус не установлен',
+    );
+    expect(JSON.stringify(filterBody.statuses)).not.toMatch(/SLA/);
+
+    const summary = await read(adminSession, '/api/registry/summary?statuses=NEW');
+    expect(summary.statusCode).toBe(200);
+    const summaryBody = summary.json() as {
+      total: number;
+      newCount: number;
+      unfinishedDrafts: Array<{ id: string; label: string }>;
+    };
+    expect(summaryBody.unfinishedDrafts.some((item) => item.id === emptyBody.id)).toBe(true);
+    expect(summaryBody.unfinishedDrafts.find((item) => item.id === emptyBody.id)?.label).toBe(
+      'Без номера',
+    );
+    expect(summaryBody.total).toBeGreaterThan(0);
+    expect(summaryBody.newCount).toBeGreaterThan(0);
+    let visible = false;
+    let page = 1;
+    for (;;) {
+      const listed = await read(
+        adminSession,
+        `/api/registry/defects?statuses=NEW&pageSize=200&page=${page}`,
+      );
+      expect(listed.statusCode).toBe(200);
+      const body = listed.json() as {
+        items: Array<{ actId: string; actStatusLabel: string; actNumber: string }>;
+        totalPages: number;
+      };
+      const row = body.items.find((item) => item.actId === emptyBody.id);
+      if (row) {
+        visible = true;
+        expect(row.actStatusLabel).toBe('Статус не установлен');
+        expect(row.actNumber).toBe('Без номера');
+      }
+      page += 1;
+      if (visible || page > body.totalPages || page > 40) {
+        break;
+      }
+    }
+    expect(visible).toBe(true);
+    expect((await read(contractorSession, `/api/acts/${emptyBody.id}`)).statusCode).toBe(404);
+
+    const today = calendarDateInTimeZone(new Date());
+    const futureDeadline = addCalendarDays(today, 5);
+    const pastDeadline = addCalendarDays(today, -10);
+    const dated = await mutate(adminSession, {
+      method: 'POST',
+      url: '/api/acts',
+      payload: {
+        formCode: 'S1',
+        objectId: object.id,
+        customerOrganizationId: customer.id,
+        issuedOn: '2026-10-16',
+        defectItems: [
+          {
+            location: 'Срок до старта',
+            defectTypeId: defectType.id,
+            claimDetails: 'Информационный срок',
+            plannedDeadline: futureDeadline,
+          },
+        ],
+      },
+      headers: { 'idempotency-key': `dated-${Date.now()}` },
+    });
+    expect(dated.statusCode).toBe(201);
+    const datedBody = dated.json() as { id: string };
+    createdActIds.push(datedBody.id);
+    const before = await read(adminSession, `/api/acts/${datedBody.id}`);
+    const beforeAct = before.json() as {
+      status: string;
+      statusLabel: string;
+      defectItems: Array<{
+        id: string;
+        version: number;
+        plannedDeadline: string | null;
+        daysRemaining: number | null;
+        deadlineNotice: string | null;
+        deadlineControlActive: boolean;
+        deadlineState: string;
+      }>;
+    };
+    expect(beforeAct.status).toBe('NEW');
+    expect(beforeAct.statusLabel).toBe('Статус не установлен');
+    expect(beforeAct.defectItems[0]?.plannedDeadline).toBe(futureDeadline);
+    expect(beforeAct.defectItems[0]?.deadlineControlActive).toBe(false);
+    expect(beforeAct.defectItems[0]?.deadlineState).not.toBe('OVERDUE');
+    expect(beforeAct.defectItems[0]?.deadlineNotice).toBe('Контроль сроков ещё не запущен');
+    expect(beforeAct.defectItems[0]?.daysRemaining).toBeGreaterThan(0);
+    expect(JSON.stringify(beforeAct)).not.toMatch(/\bSLA\b/);
+
+    const changed = await mutate(adminSession, {
+      method: 'PATCH',
+      url: `/api/defects/${beforeAct.defectItems[0]!.id}/deadlines`,
+      payload: {
+        expectedVersion: beforeAct.defectItems[0]!.version,
+        plannedDeadline: pastDeadline,
+        reason: 'Срок указан раньше',
+      },
+    });
+    expect(changed.statusCode).toBe(200);
+    const past = await read(adminSession, `/api/acts/${datedBody.id}`);
+    const pastAct = past.json() as {
+      defectItems: Array<{
+        version: number;
+        plannedDeadline: string | null;
+        deadlineNotice: string | null;
+        deadlineState: string;
+        deadlineControlActive: boolean;
+      }>;
+    };
+    expect(pastAct.defectItems[0]?.plannedDeadline).toBe(pastDeadline);
+    expect(pastAct.defectItems[0]?.deadlineNotice).toContain('Контроль сроков ещё не запущен');
+    expect(pastAct.defectItems[0]?.deadlineState).not.toBe('OVERDUE');
+    expect(await prisma.slaClock.count({ where: { defectItem: { actId: datedBody.id } } })).toBe(0);
+    const deadlineAudit = await prisma.auditLog.findFirstOrThrow({
+      where: { entityId: beforeAct.defectItems[0]!.id, action: 'DEADLINE_UPDATED' },
+    });
+    expect(JSON.stringify(deadlineAudit.oldValue)).toContain(futureDeadline);
+    expect(JSON.stringify(deadlineAudit.newValue)).toContain(pastDeadline);
+
+    const superAdmin = await ensureActiveSuperAdmin();
+    const superSession = await login(superAdmin.email);
+    expect((await read(superSession, `/api/acts/${emptyBody.id}`)).statusCode).toBe(200);
+
+    const [firstStart, secondStart] = await Promise.all([
+      mutate(adminSession, {
+        method: 'POST',
+        url: `/api/acts/${datedBody.id}/start`,
+        payload: {},
+      }),
+      mutate(adminSession, {
+        method: 'POST',
+        url: `/api/acts/${datedBody.id}/start`,
+        payload: {},
+      }),
+    ]);
+    expect([firstStart.statusCode, secondStart.statusCode].sort()).toEqual([200, 200]);
+    const afterStart = await prisma.defectItem.findFirstOrThrow({
+      where: { actId: datedBody.id },
+    });
+    expect(afterStart.plannedDeadline?.toISOString().slice(0, 10)).toBe(pastDeadline);
+    const startedAct = await prisma.act.findUniqueOrThrow({ where: { id: datedBody.id } });
+    expect(startedAct.status).toBe('IN_PROGRESS');
+    expect(startedAct.startedAt).not.toBeNull();
+    const detail = await read(adminSession, `/api/acts/${datedBody.id}`);
+    const detailBody = detail.json() as {
+      defectItems: Array<{ deadlineState: string; deadlineControlActive: boolean }>;
+    };
+    expect(detailBody.defectItems[0]?.deadlineControlActive).toBe(true);
+    expect(detailBody.defectItems[0]?.deadlineState).toBe('OVERDUE');
+    const slaEvents = await prisma.outboxEvent.findMany({
+      where: { type: { in: ['SLA_OVERDUE', 'SLA_DUE_TODAY', 'SLA_WARNING'] } },
+      select: { payload: true },
+    });
+    const forDefect = slaEvents.filter((event) => {
+      const payload = event.payload as { defectItemId?: string } | null;
+      return payload?.defectItemId === afterStart.id;
+    });
+    expect(forDefect).toHaveLength(1);
   });
 });

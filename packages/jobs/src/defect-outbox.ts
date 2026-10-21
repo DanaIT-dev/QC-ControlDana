@@ -2,7 +2,11 @@ import { Prisma, type Prisma as PrismaTypes } from '@sgr-registry/database';
 import {
   buildOccurrenceKey,
   calendarDateInTimeZone,
+  daysUntilDeadline,
+  effectiveDeadlineOf,
   notificationTitle,
+  overdueDaysOf,
+  reachedEscalationThresholds,
   shouldBumpGeneralCycle,
   type NotificationType,
 } from '@sgr-registry/domain';
@@ -243,7 +247,65 @@ export async function notifyDeadlineChanges(
       }),
     );
   }
+  ids.push(
+    ...(await notifyDeadlineActivated(writer, tx, {
+      actId: input.actId,
+      defectItemId: input.defectItemId,
+      actorUserId: input.actorUserId,
+      claimDeadline: input.next.claimDeadline,
+      plannedDeadline: input.next.plannedDeadline,
+    })),
+  );
   return ids;
+}
+
+export async function notifyDeadlineActivated(
+  writer: OutboxWriter,
+  tx: OutboxTx,
+  input: {
+    actId: string;
+    defectItemId: string;
+    actorUserId: string;
+    claimDeadline: Date | null;
+    plannedDeadline: Date | null;
+  },
+): Promise<string[]> {
+  const deadline = effectiveDeadlineOf({
+    claimDeadline: input.claimDeadline,
+    plannedDeadline: input.plannedDeadline,
+  });
+  if (!deadline) {
+    return [];
+  }
+  const days = daysUntilDeadline({ deadline });
+  if (days === null || days > 0) {
+    return [];
+  }
+  const overdueDays = overdueDaysOf({ deadline }) ?? 0;
+  const thresholds = reachedEscalationThresholds(overdueDays);
+  const threshold = days === 0 ? 0 : (thresholds.at(-1) ?? 0);
+  const type = days === 0 ? 'SLA_DUE_TODAY' : 'SLA_OVERDUE';
+  const clock = await tx.slaClock.findUnique({
+    where: { defectItemId_kind: { defectItemId: input.defectItemId, kind: 'GENERAL' } },
+  });
+  const assigned = await assignedIds(tx, input.defectItemId);
+  const managers = await activeRoleIds(tx, 'SGR_MANAGER');
+  const admins = threshold >= 3 ? await activeRoleIds(tx, 'ADMIN') : [];
+  return [
+    await writeDomainOutbox(writer, tx, {
+      type,
+      occurrenceParts: [type, 'GENERAL', input.defectItemId, clock?.cycle ?? 1, threshold],
+      actId: input.actId,
+      defectItemId: input.defectItemId,
+      actorUserId: input.actorUserId,
+      automatic: true,
+      extraRecipientIds: [...assigned, ...managers, ...admins],
+      kind: 'GENERAL',
+      cycle: clock?.cycle ?? 1,
+      deadline: calendarDateInTimeZone(deadline),
+      threshold,
+    }),
+  ];
 }
 
 export async function notifyActCancelled(

@@ -500,6 +500,13 @@ describe('notifications and SLA integration', () => {
         assignedByUserId: adminUser.id,
       },
     });
+    await prisma.propertyObjectEngineer.create({
+      data: {
+        propertyObjectId: refs.object.id,
+        userId: contractor.id,
+        assignedByUserId: adminUser.id,
+      },
+    });
     await mutate(admin, {
       method: 'PATCH',
       url: `/api/defects/${created.defectItemId}/deadlines`,

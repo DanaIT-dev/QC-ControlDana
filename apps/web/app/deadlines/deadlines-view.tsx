@@ -27,13 +27,19 @@ import { fetchSlaItems, fetchSlaSummary } from '@/lib/notifications-api';
 import { queryKeys } from '@/lib/query-keys';
 import { formatCalendarDate } from '@/lib/registry-url';
 
+function deadlineKindLabel(kind: string): string {
+  if (kind === 'GENERAL') return 'Общий срок';
+  if (kind === 'THIRD_PARTY') return 'Срок третьей стороны';
+  return kind;
+}
+
 const BUCKETS = [
   { id: 'WARNING', label: 'Приближается срок', key: 'warning' as const },
   { id: 'DUE_TODAY', label: 'Срок сегодня', key: 'dueToday' as const },
   { id: 'OVERDUE_1_2', label: 'Просрочено 1–2 дня', key: 'overdue1to2' as const },
   { id: 'OVERDUE_3_6', label: 'Просрочено 3–6 дней', key: 'overdue3to6' as const },
   { id: 'OVERDUE_7_PLUS', label: 'Просрочено 7+ дней', key: 'overdue7plus' as const },
-  { id: 'NO_DEADLINE', label: 'Без срока', key: 'noDeadline' as const },
+  { id: 'NO_DEADLINE', label: 'Срок не установлен', key: 'noDeadline' as const },
 ];
 
 export function DeadlinesView() {
@@ -74,7 +80,7 @@ export function DeadlinesView() {
     <div>
       <PageHeader
         title="Контроль сроков"
-        description="Серверный контроль установленных сроков DefectItem. Это не юридический SLA подрядчика."
+        description="Контроль установленных сроков. Отсчёт и уведомления включаются после взятия акта в работу."
       />
       {summary.isLoading ? <MetricSkeleton /> : null}
       {summary.data ? (
@@ -104,8 +110,8 @@ export function DeadlinesView() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Все виды</SelectItem>
-            <SelectItem value="GENERAL">GENERAL</SelectItem>
-            <SelectItem value="THIRD_PARTY">THIRD_PARTY</SelectItem>
+            <SelectItem value="GENERAL">Общий срок</SelectItem>
+            <SelectItem value="THIRD_PARTY">Срок третьей стороны</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -135,7 +141,7 @@ export function DeadlinesView() {
                   <p className="text-sm">{row.location}</p>
                   <p className="text-sm">{row.defectTypeName}</p>
                   <p className="text-sm">Ответственные: {row.responsibleNames.join(', ') || '—'}</p>
-                  <Badge variant="outline">{row.kind}</Badge>
+                  <Badge variant="outline">{deadlineKindLabel(row.kind)}</Badge>
                   <p className="text-sm">
                     Срок: {formatCalendarDate(row.deadline?.slice(0, 10) ?? null)}
                   </p>
@@ -182,7 +188,7 @@ export function DeadlinesView() {
                   <td className="p-3">{row.location}</td>
                   <td className="p-3">{row.defectTypeName}</td>
                   <td className="p-3">{row.responsibleNames.join(', ') || '—'}</td>
-                  <td className="p-3">{row.kind}</td>
+                  <td className="p-3">{deadlineKindLabel(row.kind)}</td>
                   <td className="p-3">{formatCalendarDate(row.deadline?.slice(0, 10) ?? null)}</td>
                   <td className="p-3">{row.daysOffset ?? '—'}</td>
                   <td className="p-3">{row.escalationLevel ?? '—'}</td>

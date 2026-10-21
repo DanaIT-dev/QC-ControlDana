@@ -162,7 +162,7 @@ describe('create act draft ids', () => {
     const user = userEvent.setup();
     await user.click(await findByRole('combobox', { name: 'Объект' }));
     await user.click(await findByRole('option', { name: /ул\. Первая, 1/ }));
-    await user.click(getByRole('button', { name: 'Сохранить черновик' }));
+    await user.click(getByRole('button', { name: 'Сохранить акт' }));
 
     await waitFor(() => {
       expect(fetchMock.mock.calls.some((call) => String(call[0]).includes('/api/acts'))).toBe(true);

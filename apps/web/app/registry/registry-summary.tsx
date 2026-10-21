@@ -47,7 +47,7 @@ export function RegistrySummary({
     },
     {
       key: 'newCount',
-      label: 'Новый акт',
+      label: 'Статус не установлен',
       value: summary?.newCount,
       active: query.statuses.length === 1 && query.statuses[0] === 'NEW',
       apply: () => onChange({ ...query, page: 1, statuses: ['NEW'], deadlineState: [] }),

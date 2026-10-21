@@ -1,7 +1,11 @@
 'use client';
 
 import type { RegistryDefectRow } from '@sgr-registry/contracts';
-import { displayedRegistryStatus } from '@sgr-registry/domain';
+import {
+  MISSING_ENGINEER_LABEL,
+  displayObjectName,
+  displayedRegistryStatus,
+} from '@sgr-registry/domain';
 import { DeadlineBadge, deadlineToneClass, StatusBadge } from '@/components/status-badge';
 import { ProposalValue, proposalSlotOf } from '@/components/proposal-value';
 import { Button } from '@/components/ui/button';
@@ -33,17 +37,27 @@ export function RegistryCards({
               <p className="text-[13px] text-muted-foreground">
                 {row.formLabel} · {row.actNumber}
               </p>
-              <h3 className="text-base font-semibold">{row.objectName}</h3>
+              <h3 className="text-base font-semibold">{displayObjectName(row.objectName)}</h3>
               <p className="text-sm">{row.location ?? '—'}</p>
               <p className="text-sm">{row.defectTypeName}</p>
               <StatusBadge
                 status={displayedRegistryStatus(row).status}
                 label={displayedRegistryStatus(row).label}
               />
+              {row.actStatus === 'NEW' && row.fillLabel ? (
+                <p className="text-sm">Заполнение: {row.fillLabel}</p>
+              ) : null}
+              {row.actStatus === 'NEW' && row.assignmentLabel ? (
+                <p className="text-sm">Назначение: {row.assignmentLabel}</p>
+              ) : null}
               <p className="text-sm">
-                Эффективный срок: {formatCalendarDate(row.effectiveDeadline)}
+                Срок устранения:{' '}
+                {row.effectiveDeadline
+                  ? formatCalendarDate(row.effectiveDeadline)
+                  : 'Срок не установлен'}
               </p>
               <DeadlineBadge state={row.deadlineState} label={row.deadlineStateLabel} />
+              {row.deadlineNotice ? <p className="text-sm">{row.deadlineNotice}</p> : null}
               <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 text-sm text-muted-foreground">
                 <span className="shrink-0">Инженеры:</span>
                 {row.responsibleEngineers.length
@@ -58,7 +72,7 @@ export function RegistryCards({
                         sourceNameRaw={item.sourceNameRaw}
                       />
                     ))
-                  : '—'}
+                  : MISSING_ENGINEER_LABEL}
               </div>
               <p className="text-sm text-muted-foreground">
                 Виновные: {row.liableOrganizations.map((item) => item.name).join(', ') || '—'}

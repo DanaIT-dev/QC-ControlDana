@@ -55,7 +55,7 @@ test.describe('operational workflow', () => {
     await page.getByRole('option').first().click();
     await page.getByRole('combobox', { name: 'Ответственный инженер' }).nth(1).click();
     await page.getByRole('option').first().click();
-    await page.getByRole('button', { name: 'Сохранить черновик' }).click();
+    await page.getByRole('button', { name: 'Сохранить акт' }).click();
     await expect(page).toHaveURL(/\/acts\//);
     await expect(page.getByText('История изменений')).toBeVisible();
   });

@@ -14,7 +14,7 @@ export interface RegistryProposalDto {
 
 export interface RegistryDefectRow {
   rowId: string;
-  defectItemId: string;
+  defectItemId: string | null;
   actId: string;
   formCode: ActFormCode | null;
   formLabel: string;
@@ -48,6 +48,13 @@ export interface RegistryDefectRow {
   effectiveDeadline: string | null;
   deadlineState: DeadlineState;
   deadlineStateLabel: string;
+  daysRemaining?: number | null;
+  daysRemainingLabel?: string | null;
+  deadlineNotice?: string | null;
+  deadlineControlActive?: boolean;
+  fillState?: 'EMPTY' | 'INCOMPLETE' | 'READY';
+  fillLabel?: string;
+  assignmentLabel?: string | null;
   readyAt: string | null;
   documentRef: string | null;
   proposalA: RegistryProposalDto | null;
@@ -131,6 +138,10 @@ export interface ActDetailDefectItem {
   effectiveDeadline: string | null;
   deadlineState: DeadlineState;
   deadlineStateLabel: string;
+  daysRemaining?: number | null;
+  daysRemainingLabel?: string | null;
+  deadlineNotice?: string | null;
+  deadlineControlActive?: boolean;
   readyAt: string | null;
   thirdPartyDeadline: string | null;
   submittedForInspectionAt: string | null;
@@ -166,6 +177,9 @@ export interface ActDetailResponse {
   objectName: string | null;
   objectAddress: string | null;
   draft: boolean;
+  fillState?: 'EMPTY' | 'INCOMPLETE' | 'READY';
+  fillLabel?: string;
+  assignmentLabel?: string | null;
   updatedAt: string;
   fillingEngineer: {
     id: string;

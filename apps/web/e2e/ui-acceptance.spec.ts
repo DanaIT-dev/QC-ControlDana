@@ -99,7 +99,7 @@ async function createActFromForm(page: Page, location: string) {
   await expect(engineer).toBeVisible();
   await engineer.click();
   await page.getByLabel('Срок устранения').fill('2026-09-01');
-  await page.getByRole('button', { name: 'Сохранить черновик' }).click();
+  await page.getByRole('button', { name: 'Сохранить акт' }).click();
   await expect(page).toHaveURL(/\/acts\//);
 }
 

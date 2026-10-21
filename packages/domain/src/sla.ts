@@ -143,7 +143,7 @@ export function nextDailyEvaluationAt(
 export function displaySlaLabel(state: SlaClockState): string {
   switch (state) {
     case 'NO_DEADLINE':
-      return 'Без срока';
+      return 'Срок не установлен';
     case 'NORMAL':
       return 'В норме';
     case 'WARNING':

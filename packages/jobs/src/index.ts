@@ -10,6 +10,7 @@ export {
   notifyAttachmentScan,
   notifyActCancelled,
   notifyContractorsAssigned,
+  notifyDeadlineActivated,
   notifyDeadlineChanges,
   notifyDefectRepairRejected,
   notifyDefectStatus,

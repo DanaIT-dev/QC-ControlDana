@@ -246,6 +246,8 @@ function UploadSheet({
         toast.success('Загружено, выполняется проверка');
         onOpenChange(false);
         onDone();
+      } else if (xhr.status >= 500) {
+        toast.error('Не удалось загрузить файл');
       } else {
         toast.error(uploadErrorMessage(xhr.responseText));
       }
