@@ -130,6 +130,67 @@ test.describe('registry filter toolbar alignment', () => {
     });
   }
 
+  test('status dropdown matches its trigger and keeps the checkbox size', async ({ page }) => {
+    const errors = attachConsole(page);
+    await login(page);
+    const viewports = [
+      { name: 'desktop-1440', width: 1440, height: 900, sheet: false },
+      { name: 'tablet-1024', width: 1024, height: 768, sheet: false },
+      { name: 'split-700', width: 700, height: 900, sheet: true },
+      { name: 'mobile-390', width: 390, height: 844, sheet: true },
+    ] as const;
+
+    for (const viewport of viewports) {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      await page.goto('/registry');
+      if (viewport.sheet) {
+        await page.getByRole('button', { name: /Фильтры/ }).click();
+        await expect(page.getByRole('heading', { name: 'Фильтры' })).toBeVisible();
+      }
+
+      const status = page.getByRole('combobox', { name: 'Статус' }).first();
+      await status.click();
+      const popover = page.locator('[data-slot="popover-content"]').last();
+      await expect(popover).toBeVisible();
+      const triggerBox = await box(status);
+      const popoverBox = await box(popover);
+      expect(Math.abs(popoverBox.width - triggerBox.width)).toBeLessThanOrEqual(1);
+
+      const check = popover.locator('[data-slot="option-check"]').first();
+      const option = popover.getByRole('option').first();
+      const selectAll = page.getByRole('button', { name: 'Выбрать все: Статус' });
+      await expect(check).toBeVisible();
+      const metrics = await check.evaluate((element) => {
+        const style = getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        return {
+          width: rect.width,
+          height: rect.height,
+          maxWidth: Number.parseFloat(style.maxWidth),
+          maxHeight: Number.parseFloat(style.maxHeight),
+        };
+      });
+      expect(metrics.width).toBeCloseTo(16, 0);
+      expect(metrics.height).toBeCloseTo(16, 0);
+      expect(metrics.maxWidth).toBeCloseTo(18, 0);
+      expect(metrics.maxHeight).toBeCloseTo(18, 0);
+      expect((await box(option)).height).toBeCloseTo(36, 0);
+      expect((await box(selectAll)).height).toBeGreaterThanOrEqual(44);
+      await noOverflow(page);
+      await popover.screenshot({
+        path: resolve(ARTIFACTS, `multi-select-dropdown-${viewport.name}.png`),
+      });
+      await page.keyboard.press('Escape');
+      if (viewport.sheet) {
+        await page.getByRole('button', { name: 'Показать результаты' }).click();
+        await expect(page.getByRole('heading', { name: 'Фильтры' })).toBeHidden();
+      }
+    }
+
+    expect(errors.filter((message) => /hydrat/i.test(message))).toEqual([]);
+    expect(applicationErrors(errors)).toEqual([]);
+  });
+
   test('desktop filter apply, URL, back/forward and reset', async ({ page }) => {
     const errors = attachConsole(page);
     await page.setViewportSize({ width: 1440, height: 900 });

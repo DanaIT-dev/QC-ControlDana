@@ -157,6 +157,25 @@ describe('MultiSelect', () => {
     );
   });
 
+  it('keeps the trigger-width dropdown and the 18px checkbox cap', async () => {
+    const user = userEvent.setup();
+    render(
+      <MultiSelect label="Статус" options={options} values={['a']} onChange={() => undefined} />,
+    );
+    await user.click(screen.getByRole('combobox', { name: 'Статус' }));
+    const content = document.querySelector('[data-slot="popover-content"]');
+    expect(content?.className).toContain('w-(--radix-popover-trigger-width)');
+    expect(content?.className).not.toMatch(/\bw-72\b/);
+    const check = document.querySelector('[data-slot="option-check"]');
+    expect(check?.className).toContain('size-4');
+    expect(check?.className).toContain('max-h-4.5');
+    expect(check?.className).toContain('max-w-4.5');
+    expect(check?.className).not.toContain('max-h-[18px]');
+    expect(screen.getByRole('button', { name: 'Выбрать все: Статус' }).className).toContain(
+      'min-h-11',
+    );
+  });
+
   it('selects every option and clears the selection', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();

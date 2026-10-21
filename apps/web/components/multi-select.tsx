@@ -89,7 +89,7 @@ export function MultiSelect({
             <ChevronsUpDownIcon className={controlTriggerIconClasses} />
           </Button>
         </PopoverTrigger>
-        <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] p-0">
+        <PopoverContent align="start" className="w-(--radix-popover-trigger-width) p-0">
           <div className="flex gap-2 border-b p-2">
             <Button
               type="button"
@@ -134,7 +134,7 @@ export function MultiSelect({
                       <span
                         data-slot="option-check"
                         className={cn(
-                          'flex size-4 max-h-[18px] max-w-[18px] shrink-0 items-center justify-center rounded-[4px] border',
+                          'flex size-4 max-h-4.5 max-w-4.5 shrink-0 items-center justify-center rounded-[4px] border',
                           checked
                             ? 'border-primary bg-primary text-primary-foreground'
                             : 'border-input bg-white',
