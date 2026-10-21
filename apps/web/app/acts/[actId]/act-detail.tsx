@@ -15,7 +15,7 @@ import {
   formatPersonShort,
 } from '@sgr-registry/domain';
 import type { SafeUserProfile } from '@sgr-registry/contracts';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
@@ -32,6 +32,7 @@ import {
   BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb';
 import { Button } from '@/components/ui/button';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -307,32 +308,6 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
                     }
                   />
                   <Meta
-                    label="Передан на проверку"
-                    value={
-                      item.submittedForInspectionAt
-                        ? `${formatTimestamp(item.submittedForInspectionAt)}${item.submittedByName ? ` · ${item.submittedByName}` : ''}`
-                        : '—'
-                    }
-                  />
-                  <Meta label="Комментарий подрядчика" value={item.submissionComment ?? '—'} />
-                  <Meta
-                    label="Последнее отклонение"
-                    value={
-                      item.rejectedAt
-                        ? `${formatTimestamp(item.rejectedAt)}${item.rejectedByName ? ` · ${item.rejectedByName}` : ''}`
-                        : '—'
-                    }
-                  />
-                  <Meta label="Причина отклонения" value={item.rejectionReason ?? '—'} />
-                  <Meta
-                    label="Устранение принято"
-                    value={
-                      item.acceptedAt
-                        ? `${formatTimestamp(item.acceptedAt)}${item.acceptedByName ? ` · ${item.acceptedByName}` : ''}`
-                        : '—'
-                    }
-                  />
-                  <Meta
                     label="Предложение А"
                     value={<ProposalValue proposal={item.proposalA} layout="block" />}
                   />
@@ -359,6 +334,40 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
                     </>
                   ) : null}
                 </div>
+                <Collapsible>
+                  <CollapsibleTrigger className="group inline-flex min-h-11 items-center gap-1 rounded-md px-1 text-sm text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
+                    <ChevronRight className="size-4 transition-transform group-data-[state=open]:rotate-90" />
+                    Проверка устранения
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="grid gap-3 pt-1 sm:grid-cols-2 lg:grid-cols-3">
+                    <Meta
+                      label="Передан на проверку"
+                      value={
+                        item.submittedForInspectionAt
+                          ? `${formatTimestamp(item.submittedForInspectionAt)}${item.submittedByName ? ` · ${item.submittedByName}` : ''}`
+                          : '—'
+                      }
+                    />
+                    <Meta label="Комментарий подрядчика" value={item.submissionComment ?? '—'} />
+                    <Meta
+                      label="Последнее отклонение"
+                      value={
+                        item.rejectedAt
+                          ? `${formatTimestamp(item.rejectedAt)}${item.rejectedByName ? ` · ${item.rejectedByName}` : ''}`
+                          : '—'
+                      }
+                    />
+                    <Meta label="Причина отклонения" value={item.rejectionReason ?? '—'} />
+                    <Meta
+                      label="Устранение принято"
+                      value={
+                        item.acceptedAt
+                          ? `${formatTimestamp(item.acceptedAt)}${item.acceptedByName ? ` · ${item.acceptedByName}` : ''}`
+                          : '—'
+                      }
+                    />
+                  </CollapsibleContent>
+                </Collapsible>
                 {item.notes ? <p className="text-sm">Примечания: {item.notes}</p> : null}
                 {!item.claimDetails && act.legacyImport ? (
                   <p className="text-sm text-muted-foreground">{importedDescriptionLabel(null)}</p>
