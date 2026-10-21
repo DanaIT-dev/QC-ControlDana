@@ -198,20 +198,10 @@ export class RegistryAccessScope {
 }
 
 export async function resolveRegistryAccessScope(
-  db: MembershipReader,
+  _db: MembershipReader,
   user: { id: string; role: UserRole },
 ): Promise<RegistryAccessScope> {
-  if (user.role !== 'CONTRACTOR_ENGINEER') {
-    return new RegistryAccessScope(user);
-  }
-  const rows = await db.userOrganizationMembership.findMany({
-    where: { userId: user.id, revokedAt: null },
-    select: { organizationId: true },
-  });
-  return new RegistryAccessScope(
-    user,
-    rows.map((row) => row.organizationId),
-  );
+  return new RegistryAccessScope(user);
 }
 
 export type RegistryPrisma = PrismaClient | Prisma.TransactionClient;

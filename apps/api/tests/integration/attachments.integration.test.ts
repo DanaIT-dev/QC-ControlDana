@@ -283,6 +283,9 @@ describe('attachments integration', () => {
     await prisma.userOrganizationMembership.create({
       data: { userId: contractor.id, organizationId: liable.id, assignedByUserId: admin.id },
     });
+    await prisma.propertyObjectEngineer.create({
+      data: { propertyObjectId: object.id, userId: contractor.id, assignedByUserId: admin.id },
+    });
     await prisma.defectItemEngineer.create({
       data: { defectItemId: assigned.id, userId: responsible.id },
     });

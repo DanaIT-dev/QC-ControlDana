@@ -726,6 +726,7 @@ describe('operations integration', () => {
     await prisma.userOrganizationMembership.create({
       data: { userId: contractor.id, organizationId: liable.id, assignedByUserId: admin.id },
     });
+    await assignObjectEngineers(object.id, [contractor.id]);
     expect(
       (
         await mutate(contractorSession, {
@@ -1119,6 +1120,7 @@ describe('operations integration', () => {
     await prisma.userOrganizationMembership.create({
       data: { userId: contractor.id, organizationId: liable.id, assignedByUserId: admin.id },
     });
+    await assignObjectEngineers(object.id, [contractor.id]);
     const thirdParty = await mutate(contractorSession, {
       method: 'PATCH',
       url: `/api/defects/${defectId}/deadlines`,

@@ -448,7 +448,9 @@ function toResponsibleEngineer(
   },
   candidates: Array<{ fullName: string; role: string; status: string }>,
 ): ObjectsResponsibleEngineer | null {
-  const active = item.engineers.find((row) => row.unassignedAt === null);
+  const active = item.engineers.find(
+    (row) => row.unassignedAt === null && row.user.role === 'RESPONSIBLE_ENGINEER',
+  );
   const stored = active ?? item.engineers[0];
   if (stored) {
     const accessActive =
@@ -495,7 +497,7 @@ function toResponsibleEngineers(item: {
   }>;
 }): ObjectsResponsibleEngineer[] {
   return item.engineers
-    .filter((row) => row.unassignedAt === null)
+    .filter((row) => row.unassignedAt === null && row.user.role === 'RESPONSIBLE_ENGINEER')
     .map((row) => ({
       id: row.user.id,
       lastName: row.user.lastName,

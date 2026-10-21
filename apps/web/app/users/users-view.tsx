@@ -428,17 +428,12 @@ function UserActions({
   const canChangeRole = canMutateManagedUser(actor, user) && assignableRoles.length > 0;
   const canArchiveRestore = canManage && canMutateManagedUser(actor, user);
   const canResetPassword = canManage && canMutateManagedUser(actor, user);
-  const canViewMemberships =
-    hasCapability(actor.role, 'MANAGE_USERS') ||
-    hasCapability(actor.role, 'VIEW_ALL_BUSINESS_DATA');
-  const [membershipOpen, setMembershipOpen] = useState(false);
-  if (
-    !canEdit &&
-    !canChangeRole &&
-    !canArchiveRestore &&
-    !canResetPassword &&
-    !canViewMemberships
-  ) {
+  const canManageObjects =
+    (user.role === 'RESPONSIBLE_ENGINEER' || user.role === 'CONTRACTOR_ENGINEER') &&
+    (hasCapability(actor.role, 'MANAGE_USERS') ||
+      hasCapability(actor.role, 'VIEW_ALL_BUSINESS_DATA'));
+  const [objectsOpen, setObjectsOpen] = useState(false);
+  if (!canEdit && !canChangeRole && !canArchiveRestore && !canResetPassword && !canManageObjects) {
     return null;
   }
   return (
@@ -478,10 +473,8 @@ function UserActions({
               Восстановить
             </DropdownMenuItem>
           ) : null}
-          {canViewMemberships ? (
-            <DropdownMenuItem onSelect={() => setMembershipOpen(true)}>
-              Организации
-            </DropdownMenuItem>
+          {canManageObjects ? (
+            <DropdownMenuItem onSelect={() => setObjectsOpen(true)}>Объекты</DropdownMenuItem>
           ) : null}
           {canResetPassword ? (
             <DropdownMenuItem
@@ -530,20 +523,20 @@ function UserActions({
           }}
         />
       ) : null}
-      {canViewMemberships ? (
-        <MembershipDialog
+      {canManageObjects ? (
+        <ObjectAssignmentsDialog
           userId={user.id}
           csrfToken={csrfToken}
           canAssign={hasCapability(actor.role, 'MANAGE_USERS')}
-          open={membershipOpen}
-          onOpenChange={setMembershipOpen}
+          open={objectsOpen}
+          onOpenChange={setObjectsOpen}
         />
       ) : null}
     </>
   );
 }
 
-function MembershipDialog({
+function ObjectAssignmentsDialog({
   userId,
   csrfToken,
   canAssign,
@@ -556,54 +549,67 @@ function MembershipDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const [organizationId, setOrganizationId] = useState('');
-  const memberships = useQuery({
-    queryKey: ['user-organization-memberships', userId],
+  const queryClient = useQueryClient();
+  const [objectId, setObjectId] = useState('');
+  const assignments = useQuery({
+    queryKey: ['user-object-assignments', userId],
     enabled: open,
     queryFn: async () => {
-      const response = await fetch(`/api/users/${userId}/organization-memberships`, {
+      const response = await fetch(`/api/users/${userId}/object-assignments`, {
         credentials: 'include',
       });
       if (!response.ok) {
-        throw new Error('memberships');
+        throw new Error('objects');
       }
       return (await response.json()) as {
         canAssign: boolean;
-        memberships: Array<{
+        assignments: Array<{
           id: string;
-          organizationName: string;
-          active: boolean;
+          objectId: string;
+          objectName: string;
+          objectActive: boolean;
         }>;
-        organizations: Array<{ id: string; name: string }>;
+        objects: Array<{ id: string; name: string }>;
       };
     },
   });
+  const allowAssign = assignments.data ? assignments.data.canAssign && canAssign : canAssign;
+  const assignedIds = new Set((assignments.data?.assignments ?? []).map((item) => item.objectId));
+  const available = (assignments.data?.objects ?? []).filter((item) => !assignedIds.has(item.id));
+  async function refresh() {
+    setObjectId('');
+    await assignments.refetch();
+    await queryClient.invalidateQueries({ queryKey: queryKeys.objects.all });
+  }
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Организации пользователя</DialogTitle>
+          <DialogTitle>Объекты пользователя</DialogTitle>
           <DialogDescription>
-            Подрядчик видит только дефекты организаций с активной связью. Совпадение имени или почты
-            доступ не даёт.
+            Инженер видит дефекты только назначенных объектов. Связь с организацией доступ не даёт.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-3">
-          {(memberships.data?.memberships ?? []).map((item) => (
+          {(assignments.data?.assignments ?? []).map((item) => (
             <div key={item.id} className="flex flex-wrap items-center justify-between gap-2">
               <span>
-                {item.organizationName}
-                {item.active ? '' : ' (отозвана)'}
+                {item.objectName}
+                {item.objectActive ? '' : ' (архив)'}
               </span>
-              {canAssign && item.active ? (
+              {allowAssign ? (
                 <Button
                   type="button"
                   variant="outline"
                   onClick={() =>
-                    void commandFetch(
-                      `/api/users/${userId}/organization-memberships/${item.id}/revoke`,
-                      { method: 'POST', csrfToken },
-                    ).then(() => memberships.refetch())
+                    void commandFetch(`/api/users/${userId}/object-assignments/${item.id}/revoke`, {
+                      method: 'POST',
+                      csrfToken,
+                    })
+                      .then(() => refresh())
+                      .catch((error: unknown) => {
+                        toast.error(error instanceof Error ? error.message : 'Не удалось отозвать');
+                      })
                   }
                 >
                   Отозвать
@@ -611,22 +617,20 @@ function MembershipDialog({
               ) : null}
             </div>
           ))}
-          {memberships.data && memberships.data.memberships.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Активных связей нет. Администратор назначает организацию здесь.
-            </p>
+          {assignments.data && assignments.data.assignments.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Назначенных объектов нет.</p>
           ) : null}
-          {canAssign ? (
+          {allowAssign ? (
             <div className="grid gap-2">
-              <Label htmlFor="membership-organization">Организация</Label>
-              <Select value={organizationId} onValueChange={setOrganizationId}>
-                <SelectTrigger id="membership-organization">
-                  <SelectValue placeholder="Выберите организацию" />
+              <Label htmlFor="engineer-object">Объект</Label>
+              <Select value={objectId} onValueChange={setObjectId}>
+                <SelectTrigger id="engineer-object">
+                  <SelectValue placeholder="Выберите объект" />
                 </SelectTrigger>
                 <SelectContent>
-                  {(memberships.data?.organizations ?? []).map((organization) => (
-                    <SelectItem key={organization.id} value={organization.id}>
-                      {organization.name}
+                  {available.map((object) => (
+                    <SelectItem key={object.id} value={object.id}>
+                      {object.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -640,16 +644,20 @@ function MembershipDialog({
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Закрыть
           </Button>
-          {canAssign ? (
+          {allowAssign ? (
             <Button
               type="button"
-              disabled={!organizationId}
+              disabled={!objectId}
               onClick={() =>
-                void commandFetch(`/api/users/${userId}/organization-memberships`, {
+                void commandFetch(`/api/users/${userId}/object-assignments`, {
                   method: 'POST',
                   csrfToken,
-                  body: { organizationId },
-                }).then(() => memberships.refetch())
+                  body: { objectId },
+                })
+                  .then(() => refresh())
+                  .catch((error: unknown) => {
+                    toast.error(error instanceof Error ? error.message : 'Не удалось назначить');
+                  })
               }
             >
               Назначить

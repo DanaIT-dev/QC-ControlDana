@@ -213,6 +213,9 @@ describe('PostgreSQL RLS', () => {
     await owner.userOrganizationMembership.create({
       data: { userId: contractorId, organizationId: org.id, assignedByUserId: adminId },
     });
+    await owner.propertyObjectEngineer.create({
+      data: { propertyObjectId: objectId, userId: contractorId, assignedByUserId: adminId },
+    });
     await owner.auditLog.create({
       data: {
         action: 'ACT_CREATED',
@@ -253,8 +256,10 @@ describe('PostgreSQL RLS', () => {
       await owner.notificationEvent.deleteMany({ where: { actId: { in: actIds } } });
       await owner.act.deleteMany({ where: { id: { in: actIds } } });
     }
-    if (assignmentId) {
-      await owner.propertyObjectEngineer.deleteMany({ where: { id: assignmentId } });
+    if (objectId || otherObjectId) {
+      await owner.propertyObjectEngineer.deleteMany({
+        where: { propertyObjectId: { in: [objectId, otherObjectId].filter((value) => value) } },
+      });
     }
     const objectIds = ids(objectId, otherObjectId);
     if (objectIds.length > 0) {

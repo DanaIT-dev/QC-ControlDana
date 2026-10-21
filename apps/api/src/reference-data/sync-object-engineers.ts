@@ -17,8 +17,15 @@ export async function syncObjectEngineers(
   const nextIds = assertUniqueIds(input.engineerIds, 'responsibleEngineerIds');
   const current = await tx.propertyObjectEngineer.findMany({
     where: { propertyObjectId: input.objectId },
+    select: {
+      userId: true,
+      unassignedAt: true,
+      user: { select: { role: true } },
+    },
   });
-  const activeIds = current.filter((row) => row.unassignedAt === null).map((row) => row.userId);
+  const activeIds = current
+    .filter((row) => row.unassignedAt === null && row.user.role === ASSIGNABLE_ENGINEER_ROLE)
+    .map((row) => row.userId);
   const activeSet = new Set(activeIds);
   const nextSet = new Set(nextIds);
   const toAdd = nextIds.filter((id) => !activeSet.has(id));

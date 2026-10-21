@@ -255,6 +255,12 @@ export const assignOrganizationMembershipRequestSchema = z
   })
   .strict();
 
+export const assignUserObjectRequestSchema = z
+  .object({
+    objectId: uuid,
+  })
+  .strict();
+
 export const upsertProposalRequestSchema = z
   .object({
     expectedVersion: expectedVersionSchema.optional(),

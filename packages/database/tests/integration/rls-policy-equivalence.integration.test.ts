@@ -187,6 +187,9 @@ describe('analytics visibility policy equivalence', () => {
     await owner.userOrganizationMembership.create({
       data: { userId: contractorId, organizationId: orgA.id, assignedByUserId: adminId },
     });
+    await owner.propertyObjectEngineer.create({
+      data: { propertyObjectId: objectA.id, userId: contractorId, assignedByUserId: adminId },
+    });
     const sequence = Math.floor(Math.random() * 800_000) + 100_000;
     const actA = await owner.act.create({
       data: {
@@ -541,7 +544,9 @@ describe('analytics visibility policy equivalence', () => {
       });
       await owner.defectItem.deleteMany({ where: { id: { in: [defectA.id, defectB.id] } } });
       await owner.userOrganizationMembership.deleteMany({ where: { userId: contractorId } });
-      await owner.propertyObjectEngineer.deleteMany({ where: { userId: responsibleId } });
+      await owner.propertyObjectEngineer.deleteMany({
+        where: { propertyObjectId: { in: [objectA.id, objectB.id] } },
+      });
       await owner.act.deleteMany({ where: { id: { in: [actA.id, actB.id] } } });
       await owner.propertyObject.deleteMany({ where: { id: { in: [objectA.id, objectB.id] } } });
       await owner.organization.deleteMany({ where: { id: { in: [orgA.id, orgB.id] } } });

@@ -10,11 +10,8 @@ export function registryAccessMode(role: UserRole): RegistryAccessMode {
   if (isOversightRole(role)) {
     return 'all';
   }
-  if (role === 'RESPONSIBLE_ENGINEER') {
+  if (role === 'RESPONSIBLE_ENGINEER' || role === 'CONTRACTOR_ENGINEER') {
     return 'object_assigned';
-  }
-  if (role === 'CONTRACTOR_ENGINEER') {
-    return 'organization_liable';
   }
   return 'all_uncancelled';
 }

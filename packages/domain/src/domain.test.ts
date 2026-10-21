@@ -678,10 +678,11 @@ describe('registry access and proposal shaping', () => {
   it('scopes responsible engineers to assigned objects and hides B/C', () => {
     expect(registryAccessMode('ADMIN')).toBe('all_uncancelled');
     expect(registryAccessMode('SGR_MANAGER')).toBe('all_uncancelled');
-    expect(registryAccessMode('CONTRACTOR_ENGINEER')).toBe('organization_liable');
+    expect(registryAccessMode('CONTRACTOR_ENGINEER')).toBe('object_assigned');
     expect(registryAccessMode('SUPER_ADMIN')).toBe('all');
     expect(registryAccessMode('RESPONSIBLE_ENGINEER')).toBe('object_assigned');
     expect(isObjectScopedRole('RESPONSIBLE_ENGINEER')).toBe(true);
+    expect(isObjectScopedRole('CONTRACTOR_ENGINEER')).toBe(true);
     expect(isObjectScopedRole('ADMIN')).toBe(false);
     expect(visibleProposalSlots('RESPONSIBLE_ENGINEER')).toEqual(['A']);
     expect(visibleProposalSlots('ADMIN')).toEqual(['A', 'B', 'C']);

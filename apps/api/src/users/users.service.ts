@@ -6,11 +6,13 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import {
   completeOwnProfileRequestSchema,
   createUserRequestSchema,
   historyQuerySchema,
   assignOrganizationMembershipRequestSchema,
+  assignUserObjectRequestSchema,
   patchUserEmploymentRequestSchema,
   patchUserProfileRequestSchema,
   patchUserRequestSchema,
@@ -32,6 +34,7 @@ import {
   composeOfficialFullName,
   comparePersonNames,
   hasCapability,
+  isObjectScopedRole,
   normalizeUserEmail,
   parsePersonNameInput,
   personMatchesSearch,
@@ -922,6 +925,157 @@ export class UsersService {
           organizationId: current.organizationId,
           active: false,
         }),
+      });
+      return { id: current.id, active: false };
+    });
+  }
+
+  async listObjectAssignments(actor: AuthenticatedUser, userId: string) {
+    assertUserId(userId);
+    const target = await this.prisma.client.user.findUnique({
+      where: { id: userId },
+      select: { id: true, role: true, status: true },
+    });
+    if (!target || !isObjectScopedRole(target.role)) {
+      throw new NotFoundException('Запись не найдена');
+    }
+    const canAssign = hasCapability(actor.role, 'MANAGE_USERS') && target.status === 'ACTIVE';
+    const [assignments, objects] = await Promise.all([
+      this.prisma.client.propertyObjectEngineer.findMany({
+        where: { userId, unassignedAt: null },
+        orderBy: [{ assignedAt: 'desc' }, { id: 'asc' }],
+        select: {
+          id: true,
+          propertyObjectId: true,
+          assignedAt: true,
+          propertyObject: { select: { name: true, active: true } },
+        },
+      }),
+      canAssign
+        ? this.prisma.client.propertyObject.findMany({
+            where: { active: true },
+            select: { id: true, name: true },
+            orderBy: [{ nameSortKey: 'asc' }, { id: 'asc' }],
+          })
+        : Promise.resolve([]),
+    ]);
+    return {
+      canAssign,
+      assignments: assignments.map((row) => ({
+        id: row.id,
+        objectId: row.propertyObjectId,
+        objectName: row.propertyObject.name,
+        objectActive: row.propertyObject.active,
+        assignedAt: row.assignedAt.toISOString(),
+      })),
+      objects: objects.map((row) => ({ id: row.id, name: row.name })),
+    };
+  }
+
+  async assignObject(
+    actor: AuthenticatedUser,
+    userId: string,
+    body: unknown,
+    request: FastifyRequest,
+  ) {
+    if (!hasCapability(actor.role, 'MANAGE_USERS')) {
+      throw new NotFoundException('Запись не найдена');
+    }
+    const input = parseCommandBody(assignUserObjectRequestSchema, body);
+    assertUserId(userId);
+    const ctx = actorContext(actor, request);
+    return this.prisma.client.$transaction(async (tx) => {
+      const target = await tx.user.findUnique({
+        where: { id: userId },
+        select: { id: true, role: true, status: true },
+      });
+      if (!target || !isObjectScopedRole(target.role)) {
+        throw new NotFoundException('Запись не найдена');
+      }
+      if (target.status !== 'ACTIVE') {
+        throw new ValidationError('userId', 'Назначить объект можно только активному инженеру');
+      }
+      const object = await tx.propertyObject.findUnique({
+        where: { id: input.objectId },
+        select: { id: true, active: true },
+      });
+      if (!object) {
+        throw new ValidationError('objectId', 'Объект не найден');
+      }
+      const existing = await tx.propertyObjectEngineer.findUnique({
+        where: {
+          propertyObjectId_userId: { propertyObjectId: object.id, userId },
+        },
+      });
+      if (existing && existing.unassignedAt == null) {
+        return { id: existing.id, active: true };
+      }
+      if (!object.active) {
+        throw new ValidationError('objectId', 'Архивный объект нельзя назначать');
+      }
+      const now = new Date();
+      const saved = existing
+        ? await tx.propertyObjectEngineer.update({
+            where: { id: existing.id },
+            data: {
+              unassignedAt: null,
+              revokedByUserId: null,
+              assignedAt: now,
+              assignedByUserId: actor.id,
+            },
+          })
+        : await tx.propertyObjectEngineer.create({
+            data: {
+              id: randomUUID(),
+              propertyObjectId: object.id,
+              userId,
+              assignedAt: now,
+              assignedByUserId: actor.id,
+            },
+          });
+      await writeAuditLog(tx, {
+        ...ctx,
+        action: 'PROPERTY_OBJECT_ENGINEER_LINKED',
+        entityType: 'PROPERTY_OBJECT',
+        entityId: object.id,
+        newValue: toJsonValue({ userId }),
+      });
+      return { id: saved.id, active: true };
+    });
+  }
+
+  async revokeObjectAssignment(
+    actor: AuthenticatedUser,
+    userId: string,
+    assignmentId: string,
+    request: FastifyRequest,
+  ) {
+    if (!hasCapability(actor.role, 'MANAGE_USERS')) {
+      throw new NotFoundException('Запись не найдена');
+    }
+    assertUserId(userId);
+    assertUserId(assignmentId);
+    const ctx = actorContext(actor, request);
+    return this.prisma.client.$transaction(async (tx) => {
+      const current = await tx.propertyObjectEngineer.findFirst({
+        where: { id: assignmentId, userId },
+      });
+      if (!current) {
+        throw new NotFoundException('Запись не найдена');
+      }
+      if (current.unassignedAt) {
+        return { id: current.id, active: false };
+      }
+      await tx.propertyObjectEngineer.update({
+        where: { id: current.id },
+        data: { unassignedAt: new Date(), revokedByUserId: actor.id },
+      });
+      await writeAuditLog(tx, {
+        ...ctx,
+        action: 'PROPERTY_OBJECT_ENGINEER_UNLINKED',
+        entityType: 'PROPERTY_OBJECT',
+        entityId: current.propertyObjectId,
+        oldValue: toJsonValue({ userId }),
       });
       return { id: current.id, active: false };
     });

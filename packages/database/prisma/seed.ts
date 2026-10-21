@@ -437,6 +437,8 @@ async function seed(): Promise<void> {
             },
           });
         }
+        await ensureActiveObjectEngineer(tx, northPark.id, demoContractor.id);
+        await ensureActiveObjectEngineer(tx, riverQuarter.id, demoContractor.id);
 
         await seedDemoRegistry(tx, {
           engineerNorth,

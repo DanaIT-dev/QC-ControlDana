@@ -333,7 +333,7 @@ describe('registry integration', () => {
     }
   });
 
-  it('shows a contractor only acts of an active organization membership', async () => {
+  it('shows a contractor only defects of assigned objects', async () => {
     const emptyCookie = await login(contractor.email);
     const empty = await authedGet(emptyCookie, '/api/registry/defects?pageSize=200');
     expect(empty.statusCode).toBe(200);
@@ -345,10 +345,10 @@ describe('registry integration', () => {
     expect(emptyIds).not.toContain(foreignActId);
     expect((await authedGet(emptyCookie, `/api/acts/${sharedActId}`)).statusCode).toBe(404);
 
-    const membership = await prisma.userOrganizationMembership.create({
+    const assignment = await prisma.propertyObjectEngineer.create({
       data: {
+        propertyObjectId: objectA.id,
         userId: contractor.id,
-        organizationId: liableA.id,
         assignedByUserId: admin.id,
       },
     });
@@ -367,9 +367,9 @@ describe('registry integration', () => {
     );
     expect(foreignBody).not.toContain(foreignActId);
 
-    await prisma.userOrganizationMembership.update({
-      where: { id: membership.id },
-      data: { revokedAt: new Date(), revokedByUserId: admin.id },
+    await prisma.propertyObjectEngineer.update({
+      where: { id: assignment.id },
+      data: { unassignedAt: new Date(), revokedByUserId: admin.id },
     });
     const revokedCookie = await login(contractor.email);
     const revoked = await authedGet(revokedCookie, '/api/registry/defects?pageSize=200');

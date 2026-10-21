@@ -166,6 +166,38 @@ export class UsersController {
     return this.usersService.revokeOrganizationMembership(user, userId, membershipId, request);
   }
 
+  @Get(':userId/object-assignments')
+  @RequireCapability('MANAGE_USERS', 'VIEW_ALL_BUSINESS_DATA')
+  objectAssignments(@CurrentUser() user: AuthenticatedUser, @Param('userId') userId: string) {
+    return this.usersService.listObjectAssignments(user, userId);
+  }
+
+  @Post(':userId/object-assignments')
+  @HttpCode(201)
+  @RequireCapability('MANAGE_USERS')
+  @UseGuards(BrowserOriginGuard, CsrfGuard)
+  assignObject(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('userId') userId: string,
+    @Body() body: unknown,
+    @Req() request: FastifyRequest,
+  ) {
+    return this.usersService.assignObject(user, userId, body, request);
+  }
+
+  @Post(':userId/object-assignments/:assignmentId/revoke')
+  @HttpCode(200)
+  @RequireCapability('MANAGE_USERS')
+  @UseGuards(BrowserOriginGuard, CsrfGuard)
+  revokeObjectAssignment(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('userId') userId: string,
+    @Param('assignmentId') assignmentId: string,
+    @Req() request: FastifyRequest,
+  ) {
+    return this.usersService.revokeObjectAssignment(user, userId, assignmentId, request);
+  }
+
   @Get(':userId/history')
   @RequireCapability('MANAGE_USERS', 'VIEW_ALL_BUSINESS_DATA')
   history(

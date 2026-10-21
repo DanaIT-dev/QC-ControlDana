@@ -767,6 +767,13 @@ describe('notifications and SLA integration', () => {
       payload: { organizationId: refs.liable.id },
     });
     expect(assigned.statusCode).toBe(201);
+    await prisma.propertyObjectEngineer.create({
+      data: {
+        propertyObjectId: refs.object.id,
+        userId: contractor.id,
+        assignedByUserId: adminUser.id,
+      },
+    });
     expect(
       (
         await mutate(contractorSession, {

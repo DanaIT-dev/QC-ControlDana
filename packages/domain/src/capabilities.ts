@@ -239,7 +239,7 @@ export const CAPABILITY_LABELS: Record<Capability, string> = {
   SUBMIT_DEFECT_FOR_INSPECTION: 'Передача дефекта на проверку',
   ACCEPT_DEFECT_REPAIR: 'Приёмка устранения дефекта',
   REJECT_DEFECT_REPAIR: 'Возврат устранения на доработку',
-  VIEW_ORGANIZATION_ACTS: 'Просмотр актов своей организации',
+  VIEW_ORGANIZATION_ACTS: 'Просмотр актов назначенных объектов',
   MANAGE_PROPOSALS: 'Управление предложениями',
   VIEW_PROPOSAL_A: 'Просмотр предложения A',
   VIEW_HISTORY: 'Просмотр полной истории изменений',
