@@ -157,6 +157,25 @@ describe('MultiSelect', () => {
     );
   });
 
+  it('selects every option and clears the selection', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <MultiSelect label="Статус" options={options} values={[]} onChange={onChange} />,
+    );
+    await user.click(screen.getByRole('combobox', { name: 'Статус' }));
+    expect(screen.getByRole('button', { name: 'Сбросить: Статус' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Выбрать все: Статус' }));
+    expect(onChange).toHaveBeenCalledWith(['a', 'b', 'c']);
+
+    rerender(
+      <MultiSelect label="Статус" options={options} values={['a', 'b', 'c']} onChange={onChange} />,
+    );
+    expect(screen.getByRole('button', { name: 'Выбрать все: Статус' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Сбросить: Статус' }));
+    expect(onChange).toHaveBeenLastCalledWith([]);
+  });
+
   it('supports keyboard open, search and escape', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();

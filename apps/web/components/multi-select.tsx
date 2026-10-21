@@ -51,6 +51,8 @@ export function MultiSelect({
     onChange(values.includes(id) ? values.filter((value) => value !== id) : [...values, id]);
   }
 
+  const allSelected = options.length > 0 && options.every((option) => values.includes(option.id));
+
   const summary =
     selected.length === 0 ? (
       <span className="truncate text-muted-foreground">{placeholder}</span>
@@ -88,6 +90,28 @@ export function MultiSelect({
           </Button>
         </PopoverTrigger>
         <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] p-0">
+          <div className="flex gap-2 border-b p-2">
+            <Button
+              type="button"
+              variant="ghost"
+              className="min-h-11 flex-1"
+              disabled={options.length === 0 || allSelected}
+              aria-label={`Выбрать все: ${label}`}
+              onClick={() => onChange(options.map((option) => option.id))}
+            >
+              Выбрать все
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="min-h-11 flex-1"
+              disabled={values.length === 0}
+              aria-label={`Сбросить: ${label}`}
+              onClick={() => onChange([])}
+            >
+              Сбросить
+            </Button>
+          </div>
           <Command>
             <CommandInput placeholder="Поиск…" aria-label={`Поиск: ${label}`} />
             <CommandList className="max-h-60">
