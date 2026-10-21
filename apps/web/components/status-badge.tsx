@@ -3,6 +3,9 @@ import { AlertCircle, CheckCircle2, Circle, Clock3, Sparkles } from 'lucide-reac
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
+const wrappingBadgeClass =
+  'h-auto max-w-full min-w-0 shrink items-start justify-start overflow-visible py-1 whitespace-normal text-left leading-snug';
+
 export function StatusBadge({
   status,
   label,
@@ -25,9 +28,9 @@ export function StatusBadge({
         ? Sparkles
         : Circle;
   return (
-    <Badge variant={variant} className="gap-1">
-      <Icon className="size-3" aria-hidden />
-      {label}
+    <Badge variant={variant} className={wrappingBadgeClass}>
+      <Icon className="mt-px size-3 shrink-0" aria-hidden />
+      <span className="min-w-0">{label}</span>
     </Badge>
   );
 }
@@ -45,9 +48,9 @@ export function DeadlineBadge({ state, label }: { state: DeadlineState; label: s
   };
   const current = map[state];
   return (
-    <Badge variant={current.variant} className="gap-1">
-      <current.Icon className="size-3" aria-hidden />
-      <span>{label}</span>
+    <Badge variant={current.variant} className={wrappingBadgeClass}>
+      <current.Icon className="mt-px size-3 shrink-0" aria-hidden />
+      <span className="min-w-0">{label}</span>
     </Badge>
   );
 }

@@ -493,6 +493,52 @@ describe('proposal display', () => {
   });
 });
 
+describe('registry column text', () => {
+  it('wraps long status and deadline labels inside their columns', () => {
+    const notice = 'Указанный срок уже прошёл. Контроль сроков ещё не запущен.';
+    render(
+      <TooltipProvider>
+        <RegistryTable
+          rows={[
+            {
+              ...sampleRow,
+              actStatus: 'NEW',
+              actStatusLabel: 'Статус не установлен',
+              objectName: '7.11 «Монако»',
+              effectiveDeadline: '2023-04-12',
+              deadlineState: 'NORMAL',
+              deadlineStateLabel: notice,
+              deadlineNotice: notice,
+              fillLabel: 'Требует заполнения',
+              assignmentLabel: 'Требует назначения',
+            },
+          ]}
+          canViewBC={false}
+          expandBC={false}
+          onToggleBC={() => undefined}
+          onOpen={() => undefined}
+          sortBy="effectiveDeadline"
+          sortDirection="asc"
+          onSort={() => undefined}
+          loading={false}
+        />
+      </TooltipProvider>,
+    );
+
+    const status = screen.getByText('Статус не установлен').closest('[data-slot="badge"]');
+    expect(status?.className).toMatch(/whitespace-normal/);
+    expect(status?.className).not.toMatch(/whitespace-nowrap/);
+    expect(
+      screen.getByText('Статус не установлен').closest('[data-slot="registry-status-cell"]')
+        ?.className,
+    ).toMatch(/max-w-48/);
+    const deadline = screen.getByText(notice).closest('[data-slot="registry-deadline-cell"]');
+    expect(deadline?.className).toMatch(/max-w-64/);
+    expect(screen.getByText('7.11 «Монако»')).toBeInTheDocument();
+    expect(screen.getByText('12.04.2023')).toBeInTheDocument();
+  });
+});
+
 describe('states', () => {
   it('renders loading skeleton, empty and error', async () => {
     const retry = vi.fn();

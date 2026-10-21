@@ -85,15 +85,18 @@ export function RegistryTable({
         cell: ({ row }) => {
           const displayed = displayedRegistryStatus(row.original);
           return (
-            <span className="grid gap-1">
+            <span
+              data-slot="registry-status-cell"
+              className="grid w-48 max-w-48 min-w-0 gap-1 whitespace-normal"
+            >
               <StatusBadge status={displayed.status} label={displayed.label} />
               {row.original.actStatus === 'NEW' && row.original.fillLabel ? (
-                <span className="text-xs text-muted-foreground">
+                <span className="text-xs leading-snug whitespace-normal text-muted-foreground">
                   Заполнение: {row.original.fillLabel}
                 </span>
               ) : null}
               {row.original.actStatus === 'NEW' && row.original.assignmentLabel ? (
-                <span className="text-xs text-muted-foreground">
+                <span className="text-xs leading-snug whitespace-normal text-muted-foreground">
                   Назначение: {row.original.assignmentLabel}
                 </span>
               ) : null}
@@ -321,7 +324,7 @@ export function RegistryTable({
                       <td
                         key={cell.id}
                         className={cn(
-                          'border-b px-3 py-2 align-middle',
+                          'border-b px-3 py-2 align-top',
                           classNameOf(cell.column.columnDef.meta),
                         )}
                       >
@@ -364,13 +367,18 @@ function headerButton(
 
 function DeadlineCell({ row }: { row: RegistryDefectRow }) {
   return (
-    <span className="grid gap-1">
+    <span
+      data-slot="registry-deadline-cell"
+      className="grid w-64 max-w-64 min-w-0 gap-1 whitespace-normal"
+    >
       <span>
         {row.effectiveDeadline ? formatCalendarDate(row.effectiveDeadline) : 'Срок не установлен'}
       </span>
       <DeadlineBadge state={row.deadlineState} label={row.deadlineStateLabel} />
       {row.deadlineNotice && row.deadlineNotice !== row.deadlineStateLabel ? (
-        <span className="text-xs text-muted-foreground">{row.deadlineNotice}</span>
+        <span className="text-xs leading-snug whitespace-normal text-muted-foreground">
+          {row.deadlineNotice}
+        </span>
       ) : null}
     </span>
   );

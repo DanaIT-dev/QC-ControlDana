@@ -33,7 +33,7 @@ export function RegistryCards({
               deadlineToneClass(row.deadlineState),
             )}
           >
-            <CardContent className="grid gap-2 p-4">
+            <CardContent className="grid min-w-0 gap-2 p-4">
               <p className="text-[13px] text-muted-foreground">
                 {row.formLabel} · {row.actNumber}
               </p>
@@ -57,7 +57,9 @@ export function RegistryCards({
                   : 'Срок не установлен'}
               </p>
               <DeadlineBadge state={row.deadlineState} label={row.deadlineStateLabel} />
-              {row.deadlineNotice ? <p className="text-sm">{row.deadlineNotice}</p> : null}
+              {row.deadlineNotice && row.deadlineNotice !== row.deadlineStateLabel ? (
+                <p className="text-sm whitespace-normal">{row.deadlineNotice}</p>
+              ) : null}
               <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 text-sm text-muted-foreground">
                 <span className="shrink-0">Инженеры:</span>
                 {row.responsibleEngineers.length
