@@ -30,6 +30,7 @@ let prisma: PrismaClient;
 let redis: Redis;
 const createdUserIds: string[] = [];
 const createdActIds: string[] = [];
+const createdImportBatchIds: string[] = [];
 
 interface InjectResponse {
   statusCode: number;
@@ -224,6 +225,7 @@ describe('operations integration', () => {
       });
       await prisma.notificationEvent.deleteMany({ where: { actId: { in: actIds } } });
       await prisma.slaClock.deleteMany({ where: { defectItem: { actId: { in: actIds } } } });
+      await prisma.attachment.deleteMany({ where: { actId: { in: actIds } } });
       await prisma.proposal.deleteMany({
         where: { defectItem: { actId: { in: actIds } } },
       });
@@ -235,6 +237,9 @@ describe('operations integration', () => {
       });
       await prisma.defectItem.deleteMany({ where: { actId: { in: actIds } } });
       await prisma.act.deleteMany({ where: { id: { in: actIds } } });
+    }
+    if (createdImportBatchIds.length > 0) {
+      await prisma.importBatch.deleteMany({ where: { id: { in: createdImportBatchIds } } });
     }
     if (createdUserIds.length > 0) {
       await prisma.userOrganizationMembership.deleteMany({
@@ -2106,5 +2111,197 @@ describe('operations integration', () => {
       return payload?.defectItemId === afterStart.id;
     });
     expect(forDefect).toHaveLength(1);
+  });
+
+  it('clears an imported act document link without touching provenance or the file', async () => {
+    const admin = await createUser('ADMIN');
+    const outsider = await createUser('RESPONSIBLE_ENGINEER');
+    const pending = await createUser('PENDING_ROLE');
+    const adminSession = await login(admin.email);
+    const superAdmin = await ensureActiveSuperAdmin();
+    const superSession = await login(superAdmin.email);
+    const pendingSession = await login(pending.email);
+    const outsiderSession = await login(outsider.email);
+    const { object, customer, defectType } = await catalogs();
+    const stamp = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const provenance = `https://bitrix.bir.by/docs/${stamp}`;
+    const sourceImportKey = `LEGACY_DEFECT_ACT_REGISTRY:${provenance}`;
+    const batch = await prisma.importBatch.create({
+      data: {
+        sourceSystem: 'LEGACY_DEFECT_ACT_REGISTRY',
+        sourceFileName: `acts-${stamp}.xlsx`,
+        sourceFileSha256: 'a'.repeat(64),
+        sourceSheet: 'Реестр',
+        environment: 'test',
+        databaseName: 'sgr_registry_test',
+        status: 'COMPLETED',
+        startedAt: new Date(),
+        completedAt: new Date(),
+      },
+    });
+    createdImportBatchIds.push(batch.id);
+    const act = await prisma.act.create({
+      data: {
+        formCode: 'S23',
+        year: 2024,
+        sequence: 800000 + Math.floor(Math.random() * 100000),
+        officialNumber: null,
+        objectId: object.id,
+        customerOrganizationId: customer.id,
+        issuedOn: new Date('2024-04-12T12:00:00.000Z'),
+        status: 'IMPORTED_UNSPECIFIED',
+        signedDocumentRef: provenance,
+        sourceSystem: 'LEGACY_DEFECT_ACT_REGISTRY',
+        sourceExternalUrl: provenance,
+        sourceImportKey,
+        sourceActNumberRaw: '1',
+        importBatchId: batch.id,
+        importedAt: new Date(),
+        createdById: admin.id,
+        defectItems: {
+          create: {
+            location: '7.1 помещение',
+            claimDetails: 'Течь',
+            defectTypeId: defectType.id,
+            status: 'IN_PROGRESS',
+          },
+        },
+      },
+    });
+    createdActIds.push(act.id);
+
+    const boundary = `----SgrImported${stamp}`;
+    const file = Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\nstream\nscan\nendstream\n%%EOF\n');
+    const payload = Buffer.concat([
+      Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="category"\r\n\r\nACT_SCAN\r\n`,
+      ),
+      Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="scan.pdf"\r\nContent-Type: application/pdf\r\n\r\n`,
+      ),
+      file,
+      Buffer.from(`\r\n--${boundary}--\r\n`),
+    ]);
+    const uploaded = await inject({
+      method: 'POST',
+      url: `/api/acts/${act.id}/attachments`,
+      payload,
+      cookies: { [SESSION_COOKIE_NAME]: adminSession.cookie },
+      headers: {
+        'content-type': `multipart/form-data; boundary=${boundary}`,
+        [CSRF_HEADER_NAME]: adminSession.body.csrfToken,
+      },
+    });
+    expect(uploaded.statusCode).toBe(202);
+    const attachmentId = (uploaded.json() as { id: string }).id;
+
+    const cleared = await mutate(adminSession, {
+      method: 'PATCH',
+      url: `/api/acts/${act.id}/header`,
+      payload: {
+        expectedVersion: act.version,
+        objectId: object.id,
+        customerOrganizationId: customer.id,
+        issuedOn: '2024-04-12',
+        signedDocumentRef: '',
+      },
+    });
+    expect(cleared.statusCode).toBe(200);
+    const stored = await prisma.act.findUniqueOrThrow({ where: { id: act.id } });
+    expect(stored.signedDocumentRef).toBeNull();
+    expect(stored.sourceExternalUrl).toBe(provenance);
+    expect(stored.sourceImportKey).toBe(sourceImportKey);
+    expect(stored.importBatchId).toBe(batch.id);
+    expect(stored.status).toBe('IMPORTED_UNSPECIFIED');
+    expect(stored.officialNumber).toBeNull();
+    expect(stored.formCode).toBe('S23');
+    expect(stored.year).toBe(2024);
+    expect(await prisma.attachment.count({ where: { actId: act.id } })).toBe(1);
+    expect(await prisma.notificationEvent.count({ where: { actId: act.id } })).toBe(0);
+    const audit = await prisma.auditLog.findMany({
+      where: { entityId: act.id, action: 'ACT_HEADER_UPDATED' },
+    });
+    expect(audit).toHaveLength(1);
+    expect(JSON.stringify(audit[0]?.oldValue)).toContain(provenance);
+    expect(JSON.stringify(audit[0]?.newValue)).toContain('"signedDocumentRef":null');
+
+    const repeated = await mutate(adminSession, {
+      method: 'PATCH',
+      url: `/api/acts/${act.id}/header`,
+      payload: {
+        expectedVersion: stored.version,
+        signedDocumentRef: '   ',
+      },
+    });
+    expect(repeated.statusCode).toBe(200);
+    expect((repeated.json() as { version: number }).version).toBe(stored.version);
+    expect(
+      await prisma.auditLog.count({ where: { entityId: act.id, action: 'ACT_HEADER_UPDATED' } }),
+    ).toBe(1);
+    expect(await prisma.attachment.count({ where: { id: attachmentId } })).toBe(1);
+
+    const conflict = await mutate(adminSession, {
+      method: 'PATCH',
+      url: `/api/acts/${act.id}/header`,
+      payload: { expectedVersion: stored.version + 9, signedDocumentRef: null },
+    });
+    expect(conflict.statusCode).toBe(409);
+    expect(
+      (await prisma.act.findUniqueOrThrow({ where: { id: act.id } })).signedDocumentRef,
+    ).toBeNull();
+
+    const forbiddenScheme = await mutate(adminSession, {
+      method: 'PATCH',
+      url: `/api/acts/${act.id}/header`,
+      payload: { expectedVersion: stored.version, signedDocumentRef: 'javascript:alert(1)' },
+    });
+    expect(forbiddenScheme.statusCode).toBe(400);
+    expect(forbiddenScheme.json()).toMatchObject({
+      message: 'Не удалось сохранить ссылку. Проверьте адрес и повторите попытку.',
+    });
+    expect(JSON.stringify(forbiddenScheme.json())).not.toMatch(/stack|SELECT /i);
+    expect(await prisma.attachment.count({ where: { actId: act.id } })).toBe(1);
+
+    const missing = await read(adminSession, `/api/acts/${crypto.randomUUID()}`);
+    expect(missing.statusCode).toBe(404);
+    expect(JSON.stringify(missing.json())).not.toMatch(/stack|passwordHash|SELECT /i);
+
+    expect((await read(outsiderSession, `/api/acts/${act.id}`)).statusCode).toBe(404);
+    expect(
+      (
+        await mutate(outsiderSession, {
+          method: 'PATCH',
+          url: `/api/acts/${act.id}/header`,
+          payload: { expectedVersion: stored.version, signedDocumentRef: null },
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect((await read(pendingSession, `/api/acts/${act.id}`)).statusCode).not.toBe(200);
+
+    const superSaved = await mutate(superSession, {
+      method: 'PATCH',
+      url: `/api/acts/${act.id}/header`,
+      payload: {
+        expectedVersion: stored.version,
+        signedDocumentRef: 'https://files.example.sgr.local/replacement.pdf',
+      },
+    });
+    expect(superSaved.statusCode).toBe(200);
+    const afterSuper = await prisma.act.findUniqueOrThrow({ where: { id: act.id } });
+    expect(afterSuper.signedDocumentRef).toBe('https://files.example.sgr.local/replacement.pdf');
+    expect(afterSuper.sourceExternalUrl).toBe(provenance);
+    expect(afterSuper.sourceImportKey).toBe(sourceImportKey);
+
+    const locked = await mutate(superSession, {
+      method: 'PATCH',
+      url: `/api/acts/${act.id}/header`,
+      payload: { expectedVersion: afterSuper.version, formCode: 'S1' },
+    });
+    expect(locked.statusCode).toBe(409);
+    expect(locked.json()).toMatchObject({
+      error: 'ACT_NUMBER_IMMUTABLE',
+      requestId: expect.any(String),
+    });
+    expect((await prisma.act.findUniqueOrThrow({ where: { id: act.id } })).formCode).toBe('S23');
   });
 });

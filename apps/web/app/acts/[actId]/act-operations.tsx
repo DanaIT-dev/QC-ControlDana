@@ -72,7 +72,7 @@ export function ActOperations({
   async function run(path: string, method: 'POST' | 'PATCH' | 'PUT', body: unknown) {
     try {
       await commandFetch(path, { method, csrfToken: user.csrfToken, body });
-      toast.success('Изменения сохранены');
+      toast.success(path.endsWith('/header') ? 'Данные акта сохранены' : 'Изменения сохранены');
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.act(act.id) }),
         queryClient.invalidateQueries({ queryKey: historyKey(act.id) }),
@@ -270,7 +270,10 @@ function HeaderEditor({
 }) {
   const [open, setOpen] = useState(false);
   const [issuedOn, setIssuedOn] = useState(act.issuedOn ?? '');
-  const [signedDocumentRef, setSignedDocumentRef] = useState(act.signedDocumentRef ?? '');
+  const provenance = act.legacyImport?.sourceExternalUrl ?? null;
+  const [signedDocumentRef, setSignedDocumentRef] = useState(
+    act.signedDocumentRef && act.signedDocumentRef !== provenance ? act.signedDocumentRef : '',
+  );
   return (
     <>
       <Button type="button" variant="outline" onClick={() => setOpen(true)}>
@@ -305,7 +308,7 @@ function HeaderEditor({
               />
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="doc-ref">Документ</Label>
+              <Label htmlFor="doc-ref">Ссылка на документ</Label>
               <Input
                 id="doc-ref"
                 value={signedDocumentRef}

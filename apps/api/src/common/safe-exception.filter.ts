@@ -17,6 +17,24 @@ import {
 } from '@sgr-registry/domain';
 import { MissingConfigurationError } from '@sgr-registry/config';
 
+export function immutableActIdentityResponse(
+  exception: unknown,
+  requestId?: string,
+): ErrorBody | null {
+  if (
+    !(exception instanceof Error) ||
+    !exception.message.includes('Act official number and form identity cannot be changed')
+  ) {
+    return null;
+  }
+  return {
+    statusCode: HttpStatus.CONFLICT,
+    error: 'ACT_NUMBER_IMMUTABLE',
+    message: 'Номер и форма акта после создания не изменяются',
+    requestId,
+  };
+}
+
 interface ErrorBody {
   statusCode: number;
   error: string;
@@ -95,6 +113,11 @@ export class SafeExceptionFilter implements ExceptionFilter {
           ? { existing: exception.existing }
           : {}),
       };
+    }
+
+    const identityError = immutableActIdentityResponse(exception, requestId);
+    if (identityError) {
+      return identityError;
     }
 
     if (exception instanceof MissingConfigurationError) {

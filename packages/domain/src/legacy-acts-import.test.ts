@@ -6,6 +6,7 @@ import {
   foldMatchKey,
   parseLegacyActsSheetMatrix,
   planLegacyActsImport,
+  SOURCE_OWNED_ACT_COMPARE_FIELDS,
   buildLegacyActSourceImportKey,
   buildLegacyDefectSourceImportKey,
   parseLegacyActStatus,
@@ -259,6 +260,9 @@ describe('legacy acts import plan', () => {
     expect(repeat.actsUnchanged).toBe(1);
     expect(repeat.defectsUnchanged).toBe(1);
     expect(repeat.payloadConflicts).toHaveLength(0);
+    expect(SOURCE_OWNED_ACT_COMPARE_FIELDS).toContain('sourceExternalUrl');
+    expect(SOURCE_OWNED_ACT_COMPARE_FIELDS).not.toContain('signedDocumentRef');
+    expect(SOURCE_OWNED_ACT_COMPARE_FIELDS).not.toContain('sourceImportKey');
 
     const changed = parseLegacyActsSheetMatrix(sheet([row({ 1: 'С-1' })]));
     const conflict = planLegacyActsImport(changed, existingCatalog);

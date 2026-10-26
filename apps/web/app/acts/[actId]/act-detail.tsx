@@ -244,19 +244,19 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
             <Meta label="Строки Excel" value={act.legacyImport.sourceRows.join(', ') || '—'} />
             <Meta label="Дата импорта" value={formatTimestamp(act.legacyImport.importedAt)} />
             {isLegacyActDocumentHref(act.legacyImport.sourceExternalUrl) ? (
-              <div className="grid min-w-0 gap-1">
-                <span className="text-[13px] text-muted-foreground">Ссылка на документ</span>
+              <div className="grid min-w-0 gap-1" data-slot="import-provenance">
+                <span className="text-[13px] text-muted-foreground">Источник импорта</span>
                 <a
-                  className="break-all text-brand hover:underline"
+                  className="text-brand hover:underline"
                   href={act.legacyImport.sourceExternalUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  {act.legacyImport.sourceExternalUrl}
+                  Bitrix — Открыть исходный документ
                 </a>
               </div>
             ) : (
-              <Meta label="Ссылка на документ" value="—" />
+              <Meta label="Источник импорта" value="—" />
             )}
           </CardContent>
         </Card>

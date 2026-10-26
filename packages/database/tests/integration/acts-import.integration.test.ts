@@ -324,6 +324,30 @@ describe('legacy acts importer', () => {
       expect(repeat.created.acts).toBe(0);
       expect(repeat.created.defects).toBe(0);
       expect(repeat.unchanged.acts).toBe(2);
+      expect(imported.every((act) => act.signedDocumentRef === null)).toBe(true);
+      expect(imported.every((act) => act.sourceExternalUrl !== null)).toBe(true);
+      await prisma.act.update({
+        where: { id: multi!.id },
+        data: { signedDocumentRef: BITRIX_A },
+      });
+      await prisma.act.update({
+        where: { id: multi!.id },
+        data: { signedDocumentRef: null },
+      });
+      const afterClear = await importLegacyActs({
+        prisma,
+        workbook: valid,
+        apply: false,
+        databaseName: 'sgr_registry_test',
+        environment: 'test',
+      });
+      expect(afterClear.created.acts).toBe(0);
+      expect(afterClear.plan.payloadConflicts).toHaveLength(0);
+      const cleared = await prisma.act.findUniqueOrThrow({ where: { id: multi!.id } });
+      expect(cleared.signedDocumentRef).toBeNull();
+      expect(cleared.sourceExternalUrl).toBe(BITRIX_A);
+      expect(cleared.sourceImportKey).toBe(multi!.sourceImportKey);
+      expect(cleared.importBatchId).toBe(multi!.importBatchId);
 
       const started = imported.find((act) => act.status === 'IMPORTED_UNSPECIFIED');
       expect(started).toBeTruthy();

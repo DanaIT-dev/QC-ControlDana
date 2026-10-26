@@ -17,7 +17,7 @@ export class DefectItemCompletionError extends DomainError {
 
 export class ActNumberImmutableError extends DomainError {
   constructor() {
-    super('ACT_NUMBER_IMMUTABLE', 'Official act number cannot be changed after creation');
+    super('ACT_NUMBER_IMMUTABLE', 'Номер и форма акта после создания не изменяются');
     this.name = 'ActNumberImmutableError';
   }
 }

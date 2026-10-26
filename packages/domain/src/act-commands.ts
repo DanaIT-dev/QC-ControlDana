@@ -20,8 +20,29 @@ export function normalizeNotes(value: unknown): string | null {
   return normalizeOptionalText(value, 'notes', NOTES_MAX);
 }
 
+export const DOCUMENT_LINK_INVALID =
+  'Не удалось сохранить ссылку. Проверьте адрес и повторите попытку.';
+
+const DOCUMENT_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
+
 export function normalizeDocumentRef(value: unknown): string | null {
-  return normalizeOptionalText(value, 'signedDocumentRef', DOCUMENT_REF_MAX);
+  const text = normalizeOptionalText(value, 'signedDocumentRef', DOCUMENT_REF_MAX);
+  if (text === null) {
+    return null;
+  }
+  if (!DOCUMENT_SCHEME.test(text)) {
+    return text;
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(text);
+  } catch {
+    throw new ValidationError('signedDocumentRef', DOCUMENT_LINK_INVALID);
+  }
+  if (parsed.protocol !== 'https:' || parsed.username || parsed.password) {
+    throw new ValidationError('signedDocumentRef', DOCUMENT_LINK_INVALID);
+  }
+  return text;
 }
 
 export function parseActIssuedOn(value: unknown): string {

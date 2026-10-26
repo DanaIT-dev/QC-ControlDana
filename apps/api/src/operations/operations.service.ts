@@ -27,6 +27,7 @@ import {
   ASSIGNABLE_ENGINEER_ROLE,
   BUSINESS_TIME_ZONE,
   IdempotencyConflictError,
+  ActNumberImmutableError,
   ActCancellationError,
   InvalidTransitionError,
   StaleWriteError,
@@ -411,7 +412,29 @@ export class OperationsService {
         customerOrganizationId: nextCustomerId,
         fillingEngineerId: nextFillingEngineerId,
       });
-      if (!current.officialNumber && nextFormCode && nextIssuedOn) {
+      const identityLocked = actFormIdentityLocked(current);
+      if (identityLocked && input.formCode !== undefined && input.formCode !== current.formCode) {
+        throw new ActNumberImmutableError();
+      }
+      const nextDocumentRef =
+        input.signedDocumentRef === undefined
+          ? current.signedDocumentRef
+          : normalizeDocumentRef(input.signedDocumentRef);
+      const issuedUnchanged =
+        (current.issuedOn == null && nextIssuedOn == null) ||
+        (current.issuedOn != null &&
+          nextIssuedOn != null &&
+          current.issuedOn.getTime() === nextIssuedOn.getTime());
+      if (
+        nextObjectId === current.objectId &&
+        nextCustomerId === current.customerOrganizationId &&
+        nextFillingEngineerId === current.fillingEngineerId &&
+        nextDocumentRef === current.signedDocumentRef &&
+        issuedUnchanged
+      ) {
+        return { id: current.id, version: current.version };
+      }
+      if (!identityLocked && !current.officialNumber && nextFormCode && nextIssuedOn) {
         const number = await allocateActNumber(tx, nextFormCode, nextIssuedOn);
         await tx.act.update({
           where: { id: actId },
@@ -428,13 +451,12 @@ export class OperationsService {
         data: {
           objectId: nextObjectId,
           customerOrganizationId: nextCustomerId,
-          formCode: current.officialNumber ? current.formCode : nextFormCode,
+          ...(identityLocked
+            ? {}
+            : { formCode: current.officialNumber ? current.formCode : nextFormCode }),
           issuedOn: nextIssuedOn,
           fillingEngineerId: nextFillingEngineerId,
-          signedDocumentRef:
-            input.signedDocumentRef === undefined
-              ? current.signedDocumentRef
-              : normalizeDocumentRef(input.signedDocumentRef),
+          signedDocumentRef: nextDocumentRef,
           version: { increment: 1 },
         },
       });
@@ -1271,12 +1293,18 @@ export class OperationsService {
     }
     try {
       const outcome = await this.prisma.client.$transaction(async (tx) => {
-        if (!current.officialNumber && current.formCode && current.issuedOn) {
+        if (
+          !actFormIdentityLocked(current) &&
+          !current.officialNumber &&
+          current.formCode &&
+          current.issuedOn
+        ) {
           const number = await allocateActNumber(tx, current.formCode, current.issuedOn);
           await tx.act.update({
             where: { id: actId },
             data: {
               officialNumber: number.officialNumber,
+              formCode: number.formCode,
               year: number.year,
               sequence: number.sequence,
             },
@@ -2198,6 +2226,8 @@ export class OperationsService {
         customerOrganizationId: true,
         issuedOn: true,
         formCode: true,
+        year: true,
+        sequence: true,
         officialNumber: true,
       },
     });
@@ -2249,6 +2279,14 @@ export class OperationsService {
       data: { status },
     });
   }
+}
+
+function actFormIdentityLocked(act: {
+  formCode: string | null;
+  year: number | null;
+  sequence: number | null;
+}): boolean {
+  return act.formCode != null && act.year != null && act.sequence != null;
 }
 
 function prismaRawMessage(error: unknown): string {

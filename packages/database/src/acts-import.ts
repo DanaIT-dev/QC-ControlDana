@@ -542,7 +542,7 @@ export async function importLegacyActs(options: {
           customerOrganizationId: customerId,
           issuedOn: issuedAt,
           createdAt: issuedAt,
-          signedDocumentRef: actPlan.group.documentUrl,
+          signedDocumentRef: null,
           status: actPlan.group.status,
           sourceSystem: LEGACY_ACT_SOURCE_SYSTEM,
           sourceFileName: options.workbook.fileName,
