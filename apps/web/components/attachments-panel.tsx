@@ -94,72 +94,123 @@ export function AttachmentsPanel({
   const items = query.data?.items ?? [];
 
   return (
-    <section className="grid gap-2">
-      <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-medium">
+    <section className="@container/attachments grid min-w-0 gap-2">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+        <h3 className="min-w-0 text-sm font-medium">
           {title}{' '}
           <span className="text-muted-foreground">({query.data?.activeCount ?? items.length})</span>
         </h3>
         {canUpload ? (
-          <Button type="button" size="sm" onClick={() => setOpen(true)}>
+          <Button
+            type="button"
+            size="sm"
+            className="min-h-11 shrink-0 whitespace-nowrap @max-[28rem]/attachments:w-full"
+            onClick={() => setOpen(true)}
+          >
             {uploadLabel}
           </Button>
         ) : null}
       </div>
-      {items.length === 0 ? (
+      {query.isPending ? (
+        <p className="text-sm text-muted-foreground">Загрузка…</p>
+      ) : items.length === 0 ? (
         <p className="text-sm text-muted-foreground">{emptyLabel}</p>
       ) : (
-        <ul className={cn('grid gap-2', compact && 'sm:grid-cols-1')}>
-          {items.map((item) => (
-            <li
-              key={item.id}
-              className="flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-sm"
-            >
-              <span className="min-w-0 flex-1 break-all">{item.safeDisplayName}</span>
-              <span className="text-muted-foreground">{item.detectedMimeType ?? '—'}</span>
-              <span className="text-muted-foreground">{formatSize(item.sizeBytes)}</span>
-              <span className="text-muted-foreground">{formatUploadedAt(item.createdAt)}</span>
-              <span className="min-w-0 break-all text-muted-foreground">
-                {item.uploadedBy.fullName}
-              </span>
-              <Badge variant="secondary">{STATUS_LABELS[item.status] ?? item.status}</Badge>
-              {item.canPreview ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="min-h-11"
-                  onClick={() =>
-                    setPreview({
-                      src: `/api/attachments/${item.id}/content`,
-                      name: item.safeDisplayName,
-                      mime: item.detectedMimeType ?? '',
-                    })
-                  }
+        <ul className={cn('grid min-w-0 gap-2', compact && 'sm:grid-cols-1')}>
+          {items.map((item) => {
+            const author = displayAuthor(item.uploadedBy.fullName);
+            const metadata = [
+              formatFileType(item.detectedMimeType, item.safeDisplayName),
+              formatSize(item.sizeBytes),
+              formatUploadedAt(item.createdAt),
+              author,
+            ]
+              .filter((part) => part.length > 0)
+              .join(' · ');
+            const hasActions = item.canPreview || item.canDownload || item.canArchive;
+            return (
+              <li
+                key={item.id}
+                data-slot="attachment-row"
+                className="flex min-w-0 max-w-full flex-wrap items-start gap-3 rounded-lg border px-3 py-3 text-sm"
+              >
+                <div
+                  data-slot="attachment-info"
+                  className="min-w-0 w-full max-w-full flex-1 @min-[42rem]/attachments:w-auto"
                 >
-                  Открыть
-                </Button>
-              ) : null}
-              {item.canDownload ? (
-                <Button type="button" size="sm" variant="outline" className="min-h-11" asChild>
-                  <a href={`/api/attachments/${item.id}/content`} download={item.safeDisplayName}>
-                    Скачать
-                  </a>
-                </Button>
-              ) : null}
-              {item.canArchive ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="min-h-11"
-                  onClick={() => setArchiveId(item.id)}
-                >
-                  Архивировать
-                </Button>
-              ) : null}
-            </li>
-          ))}
+                  <p
+                    data-slot="attachment-name"
+                    title={item.safeDisplayName}
+                    className="max-w-full font-medium [overflow-wrap:break-word] [word-break:normal]"
+                  >
+                    {item.safeDisplayName}
+                  </p>
+                  <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                    <p
+                      data-slot="attachment-meta"
+                      className="min-w-0 max-w-full text-muted-foreground [overflow-wrap:break-word] [word-break:normal]"
+                    >
+                      {metadata}
+                    </p>
+                    <Badge variant="secondary" className="shrink-0">
+                      {STATUS_LABELS[item.status] ?? item.status}
+                    </Badge>
+                  </div>
+                </div>
+                {hasActions ? (
+                  <div
+                    data-slot="attachment-actions"
+                    className="flex w-full max-w-full flex-wrap gap-2 @min-[42rem]/attachments:ml-auto @min-[42rem]/attachments:w-auto"
+                  >
+                    {item.canPreview ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="min-h-11 max-w-full flex-1 whitespace-nowrap @min-[42rem]/attachments:flex-none"
+                        onClick={() =>
+                          setPreview({
+                            src: `/api/attachments/${item.id}/content`,
+                            name: item.safeDisplayName,
+                            mime: item.detectedMimeType ?? '',
+                          })
+                        }
+                      >
+                        Открыть
+                      </Button>
+                    ) : null}
+                    {item.canDownload ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="min-h-11 max-w-full flex-1 whitespace-nowrap @min-[42rem]/attachments:flex-none"
+                        asChild
+                      >
+                        <a
+                          href={`/api/attachments/${item.id}/content`}
+                          download={item.safeDisplayName}
+                        >
+                          Скачать
+                        </a>
+                      </Button>
+                    ) : null}
+                    {item.canArchive ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="min-h-11 max-w-full flex-1 whitespace-nowrap @max-[41.99rem]/attachments:basis-full @min-[42rem]/attachments:flex-none"
+                        onClick={() => setArchiveId(item.id)}
+                      >
+                        Архивировать
+                      </Button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </li>
+            );
+          })}
         </ul>
       )}
       <UploadSheet
@@ -185,7 +236,9 @@ export function AttachmentsPanel({
       <Dialog open={Boolean(preview)} onOpenChange={(next) => !next && setPreview(null)}>
         <DialogContent className="max-h-[90dvh] overflow-hidden sm:max-w-4xl">
           <DialogHeader>
-            <DialogTitle className="break-all">{preview?.name}</DialogTitle>
+            <DialogTitle className="[overflow-wrap:break-word] [word-break:normal]">
+              {preview?.name}
+            </DialogTitle>
           </DialogHeader>
           {preview?.mime.startsWith('image/') ? (
             <img
@@ -321,7 +374,7 @@ function UploadSheet({
           />
           {progress !== null ? (
             <div className="grid gap-1">
-              <p className="break-all text-sm">{filename}</p>
+              <p className="text-sm [overflow-wrap:break-word] [word-break:normal]">{filename}</p>
               <div
                 role="progressbar"
                 aria-valuenow={progress}
@@ -414,6 +467,32 @@ function uploadErrorMessage(responseText: string): string {
   return 'Не удалось загрузить файл';
 }
 
+const MIME_LABELS: Record<string, string> = {
+  'application/pdf': 'PDF',
+  'application/msword': 'DOC',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'DOCX',
+  'application/vnd.ms-excel': 'XLS',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'XLSX',
+  'image/jpeg': 'JPEG',
+  'image/png': 'PNG',
+  'image/webp': 'WebP',
+};
+
+function displayAuthor(fullName: string | null | undefined): string {
+  if (typeof fullName !== 'string') return '';
+  const trimmed = fullName.trim();
+  if (!trimmed || trimmed === 'null' || trimmed === 'undefined' || trimmed.includes('@')) {
+    return '';
+  }
+  return trimmed;
+}
+
+function formatFileType(mime: string | null, filename: string): string {
+  if (mime && MIME_LABELS[mime]) return MIME_LABELS[mime];
+  const extension = /\.([A-Za-z0-9]{1,5})$/.exec(filename)?.[1];
+  return extension ? extension.toUpperCase() : 'Файл';
+}
+
 function formatUploadedAt(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
@@ -422,8 +501,9 @@ function formatUploadedAt(value: string): string {
 
 function formatSize(value: string): string {
   const bytes = Number(value);
-  if (!Number.isFinite(bytes)) return '—';
-  if (bytes < 1024) return `${bytes} Б`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} КБ`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} МБ`;
+  if (!Number.isFinite(bytes) || bytes < 0) return '—';
+  const format = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 1 });
+  if (bytes < 1024) return `${Math.round(bytes)} Б`;
+  if (bytes < 1024 * 1024) return `${format.format(bytes / 1024)} КБ`;
+  return `${format.format(bytes / (1024 * 1024))} МБ`;
 }
