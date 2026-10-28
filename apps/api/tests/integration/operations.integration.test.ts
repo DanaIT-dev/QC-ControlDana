@@ -793,13 +793,13 @@ describe('operations integration', () => {
     const header = await mutate(adminSession, {
       method: 'PATCH',
       url: `/api/acts/${firstBody.id}/header`,
-      payload: { expectedVersion: 2, signedDocumentRef: 'док-1' },
+      payload: { expectedVersion: 2, issuedOn: '2026-02-02' },
     });
     expect(header.statusCode).toBe(200);
     const stale = await mutate(adminSession, {
       method: 'PATCH',
       url: `/api/acts/${firstBody.id}/header`,
-      payload: { expectedVersion: 2, signedDocumentRef: 'stale' },
+      payload: { expectedVersion: 2, issuedOn: '2026-02-03' },
     });
     expect(stale.statusCode).toBe(409);
   });
@@ -2195,20 +2195,39 @@ describe('operations integration', () => {
     expect(uploaded.statusCode).toBe(202);
     const attachmentId = (uploaded.json() as { id: string }).id;
 
-    const cleared = await mutate(adminSession, {
+    const detail = await read(adminSession, `/api/acts/${act.id}`);
+    expect(detail.statusCode).toBe(200);
+    expect(JSON.stringify(detail.json())).not.toMatch(/bitrix\.bir\.by/);
+
+    const rejected = await mutate(adminSession, {
+      method: 'PATCH',
+      url: `/api/acts/${act.id}/header`,
+      payload: {
+        expectedVersion: act.version,
+        signedDocumentRef: '',
+        sourceDocumentUrl: provenance,
+        sourceImportKey,
+      },
+    });
+    expect(rejected.statusCode).toBe(400);
+    expect(JSON.stringify(rejected.json())).not.toMatch(/stack|SELECT |prisma/i);
+    expect((await prisma.act.findUniqueOrThrow({ where: { id: act.id } })).signedDocumentRef).toBe(
+      provenance,
+    );
+
+    const saved = await mutate(adminSession, {
       method: 'PATCH',
       url: `/api/acts/${act.id}/header`,
       payload: {
         expectedVersion: act.version,
         objectId: object.id,
         customerOrganizationId: customer.id,
-        issuedOn: '2024-04-12',
-        signedDocumentRef: '',
+        issuedOn: '2024-04-13',
       },
     });
-    expect(cleared.statusCode).toBe(200);
+    expect(saved.statusCode).toBe(200);
     const stored = await prisma.act.findUniqueOrThrow({ where: { id: act.id } });
-    expect(stored.signedDocumentRef).toBeNull();
+    expect(stored.signedDocumentRef).toBe(provenance);
     expect(stored.sourceExternalUrl).toBe(provenance);
     expect(stored.sourceImportKey).toBe(sourceImportKey);
     expect(stored.importBatchId).toBe(batch.id);
@@ -2216,21 +2235,22 @@ describe('operations integration', () => {
     expect(stored.officialNumber).toBeNull();
     expect(stored.formCode).toBe('S23');
     expect(stored.year).toBe(2024);
+    expect(stored.issuedOn?.toISOString().slice(0, 10)).toBe('2024-04-13');
     expect(await prisma.attachment.count({ where: { actId: act.id } })).toBe(1);
     expect(await prisma.notificationEvent.count({ where: { actId: act.id } })).toBe(0);
     const audit = await prisma.auditLog.findMany({
       where: { entityId: act.id, action: 'ACT_HEADER_UPDATED' },
     });
     expect(audit).toHaveLength(1);
-    expect(JSON.stringify(audit[0]?.oldValue)).toContain(provenance);
-    expect(JSON.stringify(audit[0]?.newValue)).toContain('"signedDocumentRef":null');
+    expect(JSON.stringify(audit[0]?.newValue)).toContain('2024-04-13');
+    expect(JSON.stringify(audit)).not.toMatch(/bitrix\.bir\.by/);
 
     const repeated = await mutate(adminSession, {
       method: 'PATCH',
       url: `/api/acts/${act.id}/header`,
       payload: {
         expectedVersion: stored.version,
-        signedDocumentRef: '   ',
+        issuedOn: '2024-04-13',
       },
     });
     expect(repeated.statusCode).toBe(200);
@@ -2243,24 +2263,42 @@ describe('operations integration', () => {
     const conflict = await mutate(adminSession, {
       method: 'PATCH',
       url: `/api/acts/${act.id}/header`,
-      payload: { expectedVersion: stored.version + 9, signedDocumentRef: null },
+      payload: { expectedVersion: stored.version + 9, issuedOn: '2024-04-14' },
     });
     expect(conflict.statusCode).toBe(409);
-    expect(
-      (await prisma.act.findUniqueOrThrow({ where: { id: act.id } })).signedDocumentRef,
-    ).toBeNull();
+    expect((await prisma.act.findUniqueOrThrow({ where: { id: act.id } })).sourceExternalUrl).toBe(
+      provenance,
+    );
 
-    const forbiddenScheme = await mutate(adminSession, {
-      method: 'PATCH',
-      url: `/api/acts/${act.id}/header`,
-      payload: { expectedVersion: stored.version, signedDocumentRef: 'javascript:alert(1)' },
+    const badFile = Buffer.from('not a pdf');
+    const badPayload = Buffer.concat([
+      Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="category"\r\n\r\nACT_SCAN\r\n`,
+      ),
+      Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="note.txt"\r\nContent-Type: text/plain\r\n\r\n`,
+      ),
+      badFile,
+      Buffer.from(`\r\n--${boundary}--\r\n`),
+    ]);
+    const failedUpload = await inject({
+      method: 'POST',
+      url: `/api/acts/${act.id}/attachments`,
+      payload: badPayload,
+      cookies: { [SESSION_COOKIE_NAME]: adminSession.cookie },
+      headers: {
+        'content-type': `multipart/form-data; boundary=${boundary}`,
+        [CSRF_HEADER_NAME]: adminSession.body.csrfToken,
+      },
     });
-    expect(forbiddenScheme.statusCode).toBe(400);
-    expect(forbiddenScheme.json()).toMatchObject({
-      message: 'Не удалось сохранить ссылку. Проверьте адрес и повторите попытку.',
-    });
-    expect(JSON.stringify(forbiddenScheme.json())).not.toMatch(/stack|SELECT /i);
-    expect(await prisma.attachment.count({ where: { actId: act.id } })).toBe(1);
+    expect(failedUpload.statusCode).toBeGreaterThanOrEqual(400);
+    expect(failedUpload.statusCode).toBeLessThan(500);
+    expect(
+      await prisma.attachment.count({ where: { actId: act.id, status: { not: 'ARCHIVED' } } }),
+    ).toBe(1);
+    expect((await prisma.act.findUniqueOrThrow({ where: { id: act.id } })).sourceImportKey).toBe(
+      sourceImportKey,
+    );
 
     const missing = await read(adminSession, `/api/acts/${crypto.randomUUID()}`);
     expect(missing.statusCode).toBe(404);
@@ -2272,7 +2310,7 @@ describe('operations integration', () => {
         await mutate(outsiderSession, {
           method: 'PATCH',
           url: `/api/acts/${act.id}/header`,
-          payload: { expectedVersion: stored.version, signedDocumentRef: null },
+          payload: { expectedVersion: stored.version, issuedOn: '2024-04-15' },
         })
       ).statusCode,
     ).toBe(404);
@@ -2283,14 +2321,29 @@ describe('operations integration', () => {
       url: `/api/acts/${act.id}/header`,
       payload: {
         expectedVersion: stored.version,
-        signedDocumentRef: 'https://files.example.sgr.local/replacement.pdf',
+        issuedOn: '2024-04-20',
       },
     });
     expect(superSaved.statusCode).toBe(200);
     const afterSuper = await prisma.act.findUniqueOrThrow({ where: { id: act.id } });
-    expect(afterSuper.signedDocumentRef).toBe('https://files.example.sgr.local/replacement.pdf');
+    expect(afterSuper.signedDocumentRef).toBe(provenance);
+    expect(afterSuper.issuedOn?.toISOString().slice(0, 10)).toBe('2024-04-20');
     expect(afterSuper.sourceExternalUrl).toBe(provenance);
     expect(afterSuper.sourceImportKey).toBe(sourceImportKey);
+
+    const fileRow = await prisma.attachment.findUniqueOrThrow({ where: { id: attachmentId } });
+    const archived = await mutate(adminSession, {
+      method: 'POST',
+      url: `/api/attachments/${attachmentId}/archive`,
+      payload: { expectedVersion: fileRow.version, reason: 'Проверка сохранения provenance' },
+    });
+    expect(archived.statusCode).toBe(200);
+    expect((await prisma.act.findUniqueOrThrow({ where: { id: act.id } })).sourceExternalUrl).toBe(
+      provenance,
+    );
+    expect(
+      (await prisma.attachment.findUniqueOrThrow({ where: { id: attachmentId } })).status,
+    ).toBe('ARCHIVED');
 
     const locked = await mutate(superSession, {
       method: 'PATCH',

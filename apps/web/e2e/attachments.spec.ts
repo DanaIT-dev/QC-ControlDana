@@ -40,7 +40,7 @@ test.describe('attachments', () => {
     await openFirstAct(page);
     const readyBadges = page.getByText('Готово');
     const readyBefore = await readyBadges.count();
-    await page.getByRole('button', { name: 'Загрузить' }).first().click();
+    await page.getByRole('button', { name: 'Добавить файлы' }).first().click();
     await expect(page.getByRole('heading', { name: 'Загрузка файла' })).toBeVisible();
     await page.locator('#attachment-file').setInputFiles({
       name: 'act-scan.pdf',
@@ -119,7 +119,7 @@ test.describe('attachments', () => {
     });
     await login(page, ACCOUNTS.admin.email);
     await openFirstAct(page);
-    await page.getByRole('button', { name: 'Загрузить' }).first().click();
+    await page.getByRole('button', { name: 'Добавить файлы' }).first().click();
     await page.locator('#attachment-file').setInputFiles({
       name: 'download-check.pdf',
       mimeType: 'application/pdf',
@@ -131,7 +131,7 @@ test.describe('attachments', () => {
     await page.getByRole('link', { name: 'Скачать' }).first().click();
     const download = await downloadPromise;
     expect(download.suggestedFilename().length).toBeGreaterThan(0);
-    await page.getByRole('button', { name: 'Загрузить' }).first().click();
+    await page.getByRole('button', { name: 'Добавить файлы' }).first().click();
     await page.locator('#attachment-file').setInputFiles({
       name: 'threat.pdf',
       mimeType: 'application/pdf',
@@ -150,7 +150,7 @@ test.describe('attachments', () => {
     await openFirstAct(page);
     execFileSync('docker', ['stop', 'sgr-registry-object-storage']);
     try {
-      await page.getByRole('button', { name: 'Загрузить' }).first().click();
+      await page.getByRole('button', { name: 'Добавить файлы' }).first().click();
       await page.locator('#attachment-file').setInputFiles({
         name: 'offline.pdf',
         mimeType: 'application/pdf',
@@ -172,7 +172,7 @@ test.describe('attachments', () => {
         { timeout: 30_000 },
       )
       .toBe('healthy');
-    await page.getByRole('button', { name: 'Загрузить' }).first().click();
+    await page.getByRole('button', { name: 'Добавить файлы' }).first().click();
     await page.locator('#attachment-file').setInputFiles({
       name: 'recovered.pdf',
       mimeType: 'application/pdf',

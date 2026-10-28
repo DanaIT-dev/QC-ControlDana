@@ -7,7 +7,7 @@ import {
   displayedRegistryStatus,
 } from '@sgr-registry/domain';
 import { flexRender, getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table';
-import { ArrowDown, ArrowUp, FileText } from 'lucide-react';
+import { ArrowDown, ArrowUp } from 'lucide-react';
 import { useMemo } from 'react';
 import {
   DeadlineBadge,
@@ -18,7 +18,7 @@ import {
 import { ProposalValue, proposalSlotOf } from '@/components/proposal-value';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { formatCalendarDate, formatTimestamp, isSafeDocumentHref } from '../../lib/registry-url';
+import { formatCalendarDate, formatTimestamp } from '../../lib/registry-url';
 import { PersonName } from '@/components/person-name';
 import { cn } from '@/lib/utils';
 
@@ -203,26 +203,6 @@ export function RegistryTable({
         meta: { className: 'col-bc min-w-0' },
       });
     }
-    base.push({
-      id: 'document',
-      header: 'Документ',
-      cell: ({ row }) =>
-        isSafeDocumentHref(row.original.documentRef) ? (
-          <a
-            className="inline-flex items-center gap-1 text-brand hover:underline"
-            href={row.original.documentRef}
-            target="_blank"
-            rel="noreferrer"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <FileText className="size-4" aria-hidden />
-            Документ
-          </a>
-        ) : (
-          '—'
-        ),
-      meta: { className: 'col-secondary hidden xl:table-cell' },
-    });
     return base;
 
     function column(

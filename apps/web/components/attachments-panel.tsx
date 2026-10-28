@@ -56,6 +56,8 @@ export function AttachmentsPanel({
   canUpload,
   csrfToken,
   compact = false,
+  uploadLabel = 'Загрузить',
+  emptyLabel = 'Файлов пока нет.',
 }: {
   title: string;
   listPath: string;
@@ -64,6 +66,8 @@ export function AttachmentsPanel({
   canUpload: boolean;
   csrfToken: string;
   compact?: boolean;
+  uploadLabel?: string;
+  emptyLabel?: string;
 }) {
   const queryClient = useQueryClient();
   const query = useQuery({
@@ -98,12 +102,12 @@ export function AttachmentsPanel({
         </h3>
         {canUpload ? (
           <Button type="button" size="sm" onClick={() => setOpen(true)}>
-            Загрузить
+            {uploadLabel}
           </Button>
         ) : null}
       </div>
       {items.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Файлов пока нет.</p>
+        <p className="text-sm text-muted-foreground">{emptyLabel}</p>
       ) : (
         <ul className={cn('grid gap-2', compact && 'sm:grid-cols-1')}>
           {items.map((item) => (
@@ -112,8 +116,13 @@ export function AttachmentsPanel({
               className="flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-sm"
             >
               <span className="min-w-0 flex-1 break-all">{item.safeDisplayName}</span>
-              <Badge variant="secondary">{STATUS_LABELS[item.status] ?? item.status}</Badge>
+              <span className="text-muted-foreground">{item.detectedMimeType ?? '—'}</span>
               <span className="text-muted-foreground">{formatSize(item.sizeBytes)}</span>
+              <span className="text-muted-foreground">{formatUploadedAt(item.createdAt)}</span>
+              <span className="min-w-0 break-all text-muted-foreground">
+                {item.uploadedBy.fullName}
+              </span>
+              <Badge variant="secondary">{STATUS_LABELS[item.status] ?? item.status}</Badge>
               {item.canPreview ? (
                 <Button
                   type="button"
@@ -403,6 +412,12 @@ function uploadErrorMessage(responseText: string): string {
     return 'Не удалось загрузить файл';
   }
   return 'Не удалось загрузить файл';
+}
+
+function formatUploadedAt(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return new Intl.DateTimeFormat('ru-RU', { dateStyle: 'short', timeStyle: 'short' }).format(date);
 }
 
 function formatSize(value: string): string {

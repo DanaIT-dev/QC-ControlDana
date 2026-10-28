@@ -209,9 +209,10 @@ test.describe('legacy imported acts', () => {
     });
     await openFirstVisibleAct(page);
     await expect(page.getByText('Источник: импортированный реестр')).toBeVisible();
-    const provenance = page.getByRole('link', { name: 'Bitrix — Открыть исходный документ' });
-    await expect(provenance).toBeVisible();
-    await expect(provenance).toHaveAttribute('href', /https:\/\/bitrix\.bir\.by\//);
+    await expect(
+      page.getByRole('link', { name: 'Bitrix — Открыть исходный документ' }),
+    ).toHaveCount(0);
+    await expect(page.locator('body')).not.toContainText(/bitrix\.bir\.by/);
     await expect(page.getByRole('button', { name: 'Сопоставить инженера' })).toBeVisible();
     await page.screenshot({
       path: resolve(SCREENSHOT_DIR, 'act-unmatched-engineer.png'),

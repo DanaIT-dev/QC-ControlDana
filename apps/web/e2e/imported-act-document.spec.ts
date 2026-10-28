@@ -11,6 +11,7 @@ const VIEWPORTS = [
   { width: 700, height: 900, zoom: 1 },
   { width: 640, height: 900, zoom: 1 },
   { width: 390, height: 844, zoom: 1 },
+  { width: 375, height: 812, zoom: 1 },
   { width: 360, height: 800, zoom: 1 },
   { width: 1440, height: 900, zoom: 1.25 },
   { width: 1440, height: 900, zoom: 1.5 },
@@ -111,7 +112,9 @@ test.describe('imported act document link', () => {
     deleteImportedAct(createdActId);
   });
 
-  test('clears the editable link and keeps the Bitrix source and the scan', async ({ page }) => {
+  test('keeps imported provenance hidden and stores a new scan as an attachment', async ({
+    page,
+  }) => {
     test.setTimeout(180_000);
     const errors = attachConsole(page);
     const actId = importedActId();
@@ -120,9 +123,14 @@ test.describe('imported act document link', () => {
     await login(page);
     await page.goto(`/acts/${actId}`);
     await expect(page.getByText('7.1').first()).toBeVisible();
+    await expect(page.getByText('Вложения акта')).toBeVisible();
+    await expect(page.getByText('Вложения отсутствуют')).toBeVisible();
+    await expect(page.getByLabel('Ссылка на документ')).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Документ', exact: true })).toHaveCount(0);
+    await expect(page.locator('body')).not.toContainText(/bitrix/i);
     await expect(page.getByText('Internal server error')).toHaveCount(0);
 
-    await page.getByRole('button', { name: 'Загрузить' }).first().click();
+    await page.getByRole('button', { name: 'Добавить файлы' }).click();
     await page.locator('#attachment-file').setInputFiles({
       name: 'imported-scan.pdf',
       mimeType: 'application/pdf',
@@ -132,21 +140,17 @@ test.describe('imported act document link', () => {
     await expect(page.getByText('imported-scan.pdf').first()).toBeVisible();
 
     await page.getByRole('button', { name: 'Изменить данные акта' }).click();
-    const link = page.getByLabel('Ссылка на документ');
-    await expect(link).toHaveValue('');
-    await link.fill('https://files.example.sgr.local/temporary.pdf');
-    await link.fill('');
+    await expect(page.getByLabel('Ссылка на документ')).toHaveCount(0);
+    await page.getByLabel('Дата акта').fill('2024-04-13');
     await page.getByRole('button', { name: 'Сохранить' }).click();
     await expect(page.getByText('Данные акта сохранены')).toBeVisible();
     await expect(page.getByText('Internal server error')).toHaveCount(0);
 
     await page.reload();
-    await expect(
-      page.getByRole('link', { name: 'Bitrix — Открыть исходный документ' }),
-    ).toBeVisible();
     await expect(page.getByText('imported-scan.pdf').first()).toBeVisible();
+    await expect(page.locator('body')).not.toContainText(/bitrix/i);
     await page.getByRole('button', { name: 'Изменить данные акта' }).click();
-    await expect(page.getByLabel('Ссылка на документ')).toHaveValue('');
+    await expect(page.getByLabel('Дата акта')).toHaveValue('2024-04-13');
     await expect(page.getByText('undefined')).toHaveCount(0);
     await expect(page.getByText('null', { exact: true })).toHaveCount(0);
 

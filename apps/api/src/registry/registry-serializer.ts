@@ -190,7 +190,7 @@ export function toRegistryRow(
     fillLabel: actFillLabel(fillState),
     assignmentLabel: assignmentLabel(item.responsibleEngineers.length),
     readyAt: timestampField(item.readyAt),
-    documentRef: item.act.signedDocumentRef,
+    documentRef: null,
     ...proposals,
   };
 }
@@ -262,7 +262,7 @@ export function toEmptyRegistryRow(act: EmptyActRecord, role: UserRole) {
     fillLabel: actFillLabel(fillState),
     assignmentLabel: assignmentLabel(0),
     readyAt: null,
-    documentRef: act.signedDocumentRef,
+    documentRef: null,
     ...proposals,
   };
 }
@@ -338,7 +338,7 @@ export function toActHeader(act: {
     customerOrganizationId: act.customerOrganizationId ?? null,
     customerName: act.customer?.officialName ?? null,
     issuedOn: act.issuedOn ? calendarField(act.issuedOn) : null,
-    signedDocumentRef: act.signedDocumentRef,
+    signedDocumentRef: null,
     createdAt: act.createdAt.toISOString(),
     startedAt: timestampField(act.startedAt ?? null),
     startedBy: act.startedBy
@@ -357,7 +357,7 @@ export function toActHeader(act: {
           sourceActNumberRaw: act.sourceActNumberRaw ?? null,
           sourceStatusRaw: act.sourceStatusRaw ?? null,
           sourceDeadlineRaws: act.sourceDeadlineRaws ?? [],
-          sourceExternalUrl: act.sourceExternalUrl ?? null,
+          sourceExternalUrl: null,
           sourceRows: act.sourceRows ?? [],
           importedAt: act.importedAt.toISOString(),
         }

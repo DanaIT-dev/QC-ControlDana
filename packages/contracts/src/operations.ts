@@ -158,7 +158,6 @@ export const createActRequestSchema = z
     objectId: optionalUuid,
     customerOrganizationId: optionalUuid,
     issuedOn: optionalCalendarDate,
-    signedDocumentRef: z.union([z.string(), z.null()]).optional(),
     fillingEngineerId: optionalUuid,
     defectItems: z.array(createActDefectItemSchema).optional(),
   })
@@ -171,7 +170,6 @@ export const patchActHeaderRequestSchema = z
     objectId: optionalUuid,
     customerOrganizationId: optionalUuid,
     issuedOn: optionalCalendarDate,
-    signedDocumentRef: z.union([z.string(), z.null()]).optional(),
     fillingEngineerId: optionalUuid,
   })
   .strict();

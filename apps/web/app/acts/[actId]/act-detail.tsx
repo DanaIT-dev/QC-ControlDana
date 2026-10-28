@@ -11,7 +11,6 @@ import {
   canStartAct,
   hasCapability,
   importedDescriptionLabel,
-  isLegacyActDocumentHref,
   isStartableActStatus,
   canResolveImportedEngineer,
   formatPersonShort,
@@ -42,7 +41,7 @@ import { UserAvatar } from '@/components/user-avatar';
 import { PersonName } from '@/components/person-name';
 import { fetchActDetail } from '../../../lib/registry-api';
 import { commandFetch } from '../../../lib/command-api';
-import { formatCalendarDate, formatTimestamp, isSafeDocumentHref } from '../../../lib/registry-url';
+import { formatCalendarDate, formatTimestamp } from '../../../lib/registry-url';
 import { queryKeys } from '../../../lib/query-keys';
 import { ActHistory, ActOperations } from './act-operations';
 import { ActDiscussion } from './act-discussion';
@@ -214,19 +213,6 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
               value={`${formatTimestamp(act.cancelledAt)}${act.cancellationReason ? ` · ${act.cancellationReason}` : ''}`}
             />
           ) : null}
-          {isSafeDocumentHref(act.signedDocumentRef) ? (
-            <div className="grid gap-1">
-              <span className="text-[13px] text-muted-foreground">Документ</span>
-              <a
-                className="text-brand hover:underline"
-                href={act.signedDocumentRef}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Документ
-              </a>
-            </div>
-          ) : null}
         </CardContent>
       </Card>
       {act.legacyImport ? (
@@ -243,21 +229,6 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
             />
             <Meta label="Строки Excel" value={act.legacyImport.sourceRows.join(', ') || '—'} />
             <Meta label="Дата импорта" value={formatTimestamp(act.legacyImport.importedAt)} />
-            {isLegacyActDocumentHref(act.legacyImport.sourceExternalUrl) ? (
-              <div className="grid min-w-0 gap-1" data-slot="import-provenance">
-                <span className="text-[13px] text-muted-foreground">Источник импорта</span>
-                <a
-                  className="text-brand hover:underline"
-                  href={act.legacyImport.sourceExternalUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  Bitrix — Открыть исходный документ
-                </a>
-              </div>
-            ) : (
-              <Meta label="Источник импорта" value="—" />
-            )}
           </CardContent>
         </Card>
       ) : null}
@@ -268,6 +239,8 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
         categories={['ACT_DOCUMENT', 'ACT_SCAN', 'OTHER']}
         canUpload={canUploadCategory(user.role, 'ACT', 'ACT_DOCUMENT')}
         csrfToken={user.csrfToken}
+        uploadLabel="Добавить файлы"
+        emptyLabel="Вложения отсутствуют"
       />
       <Tabs value={tab} onValueChange={setTab} className="min-w-0 max-w-full">
         <TabsList className="h-auto min-h-8 w-full max-w-full flex-wrap justify-start">

@@ -147,6 +147,10 @@ describe('filename and content policy', () => {
       '7.1_дефектный_акт_от_06.10.2026.pdf',
     );
     expect(() => assertSafeFilename('..\\secret.pdf')).toThrow(/путь/);
+    const scriptName = assertSafeFilename('<script>alert(1)</script>.pdf');
+    expect(scriptName).toBe('<script>alert(1)<_script>.pdf');
+    expect(scriptName).not.toMatch(/javascript:/);
+    expect(scriptName).not.toContain('</');
     expect(extensionOf('scan.PDF')).toBe('.pdf');
   });
 

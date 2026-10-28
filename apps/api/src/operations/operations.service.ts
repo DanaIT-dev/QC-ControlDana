@@ -68,7 +68,6 @@ import {
   isObjectScopedRole,
   isOversightRole,
   isProposalBcEvent,
-  normalizeDocumentRef,
   normalizeLocation,
   normalizeNotes,
   normalizeRequiredReason,
@@ -300,7 +299,6 @@ export class OperationsService {
             issuedOn: issuedAt,
             createdById: user.id,
             fillingEngineerId: input.fillingEngineerId ?? null,
-            signedDocumentRef: normalizeDocumentRef(input.signedDocumentRef),
             status: 'NEW',
           },
         });
@@ -416,10 +414,6 @@ export class OperationsService {
       if (identityLocked && input.formCode !== undefined && input.formCode !== current.formCode) {
         throw new ActNumberImmutableError();
       }
-      const nextDocumentRef =
-        input.signedDocumentRef === undefined
-          ? current.signedDocumentRef
-          : normalizeDocumentRef(input.signedDocumentRef);
       const issuedUnchanged =
         (current.issuedOn == null && nextIssuedOn == null) ||
         (current.issuedOn != null &&
@@ -429,7 +423,6 @@ export class OperationsService {
         nextObjectId === current.objectId &&
         nextCustomerId === current.customerOrganizationId &&
         nextFillingEngineerId === current.fillingEngineerId &&
-        nextDocumentRef === current.signedDocumentRef &&
         issuedUnchanged
       ) {
         return { id: current.id, version: current.version };
@@ -456,7 +449,6 @@ export class OperationsService {
             : { formCode: current.officialNumber ? current.formCode : nextFormCode }),
           issuedOn: nextIssuedOn,
           fillingEngineerId: nextFillingEngineerId,
-          signedDocumentRef: nextDocumentRef,
           version: { increment: 1 },
         },
       });
@@ -474,14 +466,12 @@ export class OperationsService {
           customerOrganizationId: current.customerOrganizationId,
           issuedOn: current.issuedOn ? calendarDateInTimeZone(current.issuedOn) : null,
           fillingEngineerId: current.fillingEngineerId,
-          signedDocumentRef: current.signedDocumentRef,
         }),
         newValue: toJsonValue({
           objectId: fresh.objectId,
           customerOrganizationId: fresh.customerOrganizationId,
           issuedOn: fresh.issuedOn ? calendarDateInTimeZone(fresh.issuedOn) : null,
           fillingEngineerId: fresh.fillingEngineerId,
-          signedDocumentRef: fresh.signedDocumentRef,
         }),
       });
       return { id: fresh.id, version: fresh.version };

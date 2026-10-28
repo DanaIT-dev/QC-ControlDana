@@ -270,10 +270,6 @@ function HeaderEditor({
 }) {
   const [open, setOpen] = useState(false);
   const [issuedOn, setIssuedOn] = useState(act.issuedOn ?? '');
-  const provenance = act.legacyImport?.sourceExternalUrl ?? null;
-  const [signedDocumentRef, setSignedDocumentRef] = useState(
-    act.signedDocumentRef && act.signedDocumentRef !== provenance ? act.signedDocumentRef : '',
-  );
   return (
     <>
       <Button type="button" variant="outline" onClick={() => setOpen(true)}>
@@ -293,7 +289,6 @@ function HeaderEditor({
                 objectId: act.objectId,
                 customerOrganizationId: act.customerOrganizationId,
                 issuedOn,
-                signedDocumentRef,
               });
               setOpen(false);
             }}
@@ -305,14 +300,6 @@ function HeaderEditor({
                 type="date"
                 value={issuedOn}
                 onChange={(event) => setIssuedOn(event.target.value)}
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="doc-ref">Ссылка на документ</Label>
-              <Input
-                id="doc-ref"
-                value={signedDocumentRef}
-                onChange={(event) => setSignedDocumentRef(event.target.value)}
               />
             </div>
             <DialogFooter>
