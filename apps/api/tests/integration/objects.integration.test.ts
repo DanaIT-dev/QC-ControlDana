@@ -847,4 +847,270 @@ describe('objects directory API', () => {
     expect(restored.statusCode).toBe(200);
     expect((restored.json() as { active: boolean }).active).toBe(true);
   });
+
+  it('edits commissioning and warranty dates without shifting the calendar day', async () => {
+    const admin = await createUser('ADMIN');
+    const engineer = await createUser('RESPONSIBLE_ENGINEER');
+    const session = await login(admin.email);
+    const engineerSession = await login(engineer.email);
+    const stamp = Date.now();
+    const name = `Dates ${stamp}`;
+    const created = await inject({
+      method: 'POST',
+      url: '/api/objects',
+      cookies: { [SESSION_COOKIE_NAME]: session.cookie },
+      headers: { [CSRF_HEADER_NAME]: session.csrfToken },
+      payload: {
+        name,
+        address: 'ул. Календарная, 1',
+        commissionedAt: '2024-05-01',
+        warrantyEndsAt: '2029-05-01',
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    const createdBody = created.json() as {
+      id: string;
+      commissionedAt: string | null;
+      warrantyEndsAt: string | null;
+    };
+    createdObjectIds.push(createdBody.id);
+    expect(createdBody).toMatchObject({
+      commissionedAt: '2024-05-01',
+      warrantyEndsAt: '2029-05-01',
+    });
+    const storedNoon = await prisma.propertyObject.findUniqueOrThrow({
+      where: { id: createdBody.id },
+    });
+    expect(storedNoon.commissionedAt?.toISOString()).toBe('2024-05-01T12:00:00.000Z');
+    expect(storedNoon.warrantyEndsAt?.toISOString()).toBe('2029-05-01T12:00:00.000Z');
+
+    const denied = await inject({
+      method: 'PATCH',
+      url: `/api/objects/${createdBody.id}`,
+      cookies: { [SESSION_COOKIE_NAME]: engineerSession.cookie },
+      headers: { [CSRF_HEADER_NAME]: engineerSession.csrfToken },
+      payload: {
+        expectedVersion: storedNoon.version,
+        name,
+        commissionedAt: '2024-05-02',
+      },
+    });
+    expect(denied.statusCode).toBe(403);
+
+    const unchanged = await inject({
+      method: 'PATCH',
+      url: `/api/objects/${createdBody.id}`,
+      cookies: { [SESSION_COOKIE_NAME]: session.cookie },
+      headers: { [CSRF_HEADER_NAME]: session.csrfToken },
+      payload: {
+        expectedVersion: storedNoon.version,
+        name: `${name} renamed`,
+        address: 'ул. Календарная, 1',
+      },
+    });
+    expect(unchanged.statusCode).toBe(200);
+    let version = (unchanged.json() as { version: number }).version;
+    const afterName = await prisma.propertyObject.findUniqueOrThrow({
+      where: { id: createdBody.id },
+    });
+    expect(afterName.commissionedAt?.toISOString()).toBe('2024-05-01T12:00:00.000Z');
+    expect(afterName.warrantyEndsAt?.toISOString()).toBe('2029-05-01T12:00:00.000Z');
+    expect(afterName.sourceSystem).toBe('MANUAL');
+
+    const onlyCommissioned = await inject({
+      method: 'PATCH',
+      url: `/api/objects/${createdBody.id}`,
+      cookies: { [SESSION_COOKIE_NAME]: session.cookie },
+      headers: { [CSRF_HEADER_NAME]: session.csrfToken },
+      payload: {
+        expectedVersion: version,
+        name: `${name} renamed`,
+        commissionedAt: '2024-06-01',
+      },
+    });
+    expect(onlyCommissioned.statusCode).toBe(200);
+    expect(onlyCommissioned.json()).toMatchObject({
+      commissionedAt: '2024-06-01',
+      warrantyEndsAt: '2029-05-01',
+    });
+    version = (onlyCommissioned.json() as { version: number }).version;
+
+    const onlyWarranty = await inject({
+      method: 'PATCH',
+      url: `/api/objects/${createdBody.id}`,
+      cookies: { [SESSION_COOKIE_NAME]: session.cookie },
+      headers: { [CSRF_HEADER_NAME]: session.csrfToken },
+      payload: {
+        expectedVersion: version,
+        name: `${name} renamed`,
+        warrantyEndsAt: '2030-06-01',
+      },
+    });
+    expect(onlyWarranty.statusCode).toBe(200);
+    expect(onlyWarranty.json()).toMatchObject({
+      commissionedAt: '2024-06-01',
+      warrantyEndsAt: '2030-06-01',
+    });
+    version = (onlyWarranty.json() as { version: number }).version;
+
+    const clearCommissioned = await inject({
+      method: 'PATCH',
+      url: `/api/objects/${createdBody.id}`,
+      cookies: { [SESSION_COOKIE_NAME]: session.cookie },
+      headers: { [CSRF_HEADER_NAME]: session.csrfToken },
+      payload: {
+        expectedVersion: version,
+        name: `${name} renamed`,
+        commissionedAt: null,
+      },
+    });
+    expect(clearCommissioned.statusCode).toBe(200);
+    expect(clearCommissioned.json()).toMatchObject({
+      commissionedAt: null,
+      warrantyEndsAt: '2030-06-01',
+    });
+    version = (clearCommissioned.json() as { version: number }).version;
+
+    const clearWarranty = await inject({
+      method: 'PATCH',
+      url: `/api/objects/${createdBody.id}`,
+      cookies: { [SESSION_COOKIE_NAME]: session.cookie },
+      headers: { [CSRF_HEADER_NAME]: session.csrfToken },
+      payload: {
+        expectedVersion: version,
+        name: `${name} renamed`,
+        warrantyEndsAt: null,
+      },
+    });
+    expect(clearWarranty.statusCode).toBe(200);
+    expect(clearWarranty.json()).toMatchObject({
+      commissionedAt: null,
+      warrantyEndsAt: null,
+    });
+    version = (clearWarranty.json() as { version: number }).version;
+
+    const both = await inject({
+      method: 'PATCH',
+      url: `/api/objects/${createdBody.id}`,
+      cookies: { [SESSION_COOKIE_NAME]: session.cookie },
+      headers: { [CSRF_HEADER_NAME]: session.csrfToken },
+      payload: {
+        expectedVersion: version,
+        name: `${name} renamed`,
+        address: 'ул. Календарная, 2',
+        commissionedAt: '2024-07-15',
+        warrantyEndsAt: '2029-07-15',
+      },
+    });
+    expect(both.statusCode).toBe(200);
+    version = (both.json() as { version: number }).version;
+    const audit = await prisma.auditLog.findFirst({
+      where: { entityId: createdBody.id, action: 'PROPERTY_OBJECT_UPDATED' },
+      orderBy: { occurredAt: 'desc' },
+    });
+    expect(audit?.actorUserId).toBe(admin.id);
+    expect(audit?.occurredAt).toBeInstanceOf(Date);
+    expect(audit?.oldValue).toMatchObject({ commissionedAt: null, warrantyEndsAt: null });
+    expect(audit?.newValue).toMatchObject({
+      commissionedAt: '2024-07-15',
+      warrantyEndsAt: '2029-07-15',
+      address: 'ул. Календарная, 2',
+    });
+
+    const listed = await inject({
+      method: 'GET',
+      url: `/api/objects?search=${encodeURIComponent(`${name} renamed`)}&pageSize=50`,
+      cookies: { [SESSION_COOKIE_NAME]: session.cookie },
+    });
+    const listedItem = (
+      listed.json() as {
+        items: Array<{ id: string; commissionedAt: string | null; warrantyEndsAt: string | null }>;
+      }
+    ).items.find((item) => item.id === createdBody.id);
+    expect(listedItem).toMatchObject({
+      commissionedAt: '2024-07-15',
+      warrantyEndsAt: '2029-07-15',
+    });
+
+    for (const payload of [
+      { commissionedAt: '2024-02-31' },
+      { commissionedAt: '31.12.2024' },
+      { warrantyEndsAt: 'not-a-date' },
+      { commissionedAt: '2024-08-02', warrantyEndsAt: '2024-08-01' },
+    ]) {
+      const rejected = await inject({
+        method: 'PATCH',
+        url: `/api/objects/${createdBody.id}`,
+        cookies: { [SESSION_COOKIE_NAME]: session.cookie },
+        headers: { [CSRF_HEADER_NAME]: session.csrfToken },
+        payload: { expectedVersion: version, name: `${name} renamed`, ...payload },
+      });
+      expect(rejected.statusCode).toBe(400);
+      const rejectedBody = rejected.json() as { error?: string; message?: string };
+      expect(rejectedBody.error).not.toBe('INTERNAL_SERVER_ERROR');
+      expect(rejectedBody.message ?? '').toMatch(/Некорректная дата|раньше даты приёмки/);
+    }
+    const afterReject = await prisma.propertyObject.findUniqueOrThrow({
+      where: { id: createdBody.id },
+    });
+    expect(afterReject.commissionedAt?.toISOString()).toBe('2024-07-15T12:00:00.000Z');
+    expect(afterReject.warrantyEndsAt?.toISOString()).toBe('2029-07-15T12:00:00.000Z');
+    expect(afterReject.address).toBe('ул. Календарная, 2');
+    expect(await prisma.act.count({ where: { objectId: createdBody.id } })).toBe(0);
+
+    const stale = await inject({
+      method: 'PATCH',
+      url: `/api/objects/${createdBody.id}`,
+      cookies: { [SESSION_COOKIE_NAME]: session.cookie },
+      headers: { [CSRF_HEADER_NAME]: session.csrfToken },
+      payload: {
+        expectedVersion: version - 1,
+        name: `${name} renamed`,
+        commissionedAt: '2021-01-01',
+      },
+    });
+    expect(stale.statusCode).toBe(409);
+
+    const mismatched = await prisma.propertyObject.create({
+      data: {
+        name: `Mismatch ${stamp}`,
+        address: 'ул. Историческая, 1',
+        sourceSystem: 'MANUAL',
+        commissionedAt: new Date('2024-06-02T00:00:00.000Z'),
+        warrantyEndsAt: new Date('2024-06-01T00:00:00.000Z'),
+      },
+    });
+    createdObjectIds.push(mismatched.id);
+    const kept = await inject({
+      method: 'PATCH',
+      url: `/api/objects/${mismatched.id}`,
+      cookies: { [SESSION_COOKIE_NAME]: session.cookie },
+      headers: { [CSRF_HEADER_NAME]: session.csrfToken },
+      payload: {
+        expectedVersion: mismatched.version,
+        name: `Mismatch ${stamp} renamed`,
+        address: 'ул. Историческая, 1',
+        commissionedAt: '2024-06-02',
+        warrantyEndsAt: '2024-06-01',
+      },
+    });
+    expect(kept.statusCode).toBe(200);
+    const keptRow = await prisma.propertyObject.findUniqueOrThrow({ where: { id: mismatched.id } });
+    expect(keptRow.commissionedAt?.toISOString()).toBe('2024-06-02T00:00:00.000Z');
+    expect(keptRow.warrantyEndsAt?.toISOString()).toBe('2024-06-01T00:00:00.000Z');
+    expect(keptRow.name).toBe(`Mismatch ${stamp} renamed`);
+
+    const outbox = await prisma.$queryRaw<Array<{ count: number }>>`
+      SELECT count(*)::int AS count
+      FROM outbox_events
+      WHERE payload::text LIKE ${'%' + createdBody.id + '%'}
+    `;
+    const notifications = await prisma.$queryRaw<Array<{ count: number }>>`
+      SELECT count(*)::int AS count
+      FROM notification_events
+      WHERE payload::text LIKE ${'%' + createdBody.id + '%'}
+    `;
+    expect(Number(outbox[0]?.count ?? 0)).toBe(0);
+    expect(Number(notifications[0]?.count ?? 0)).toBe(0);
+  });
 });

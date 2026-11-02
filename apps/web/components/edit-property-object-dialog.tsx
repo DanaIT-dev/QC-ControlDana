@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -29,6 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { CalendarDateField } from '@/components/calendar-date-field';
 import { DirectoryCombobox } from '@/components/directory-combobox';
 import { ApiError } from '@/lib/command-api';
 import { personOption } from '@/lib/lookups';
@@ -48,6 +49,8 @@ export function EditPropertyObjectDialog({
     name: string;
     address: string | null;
     active: boolean;
+    commissionedAt?: string | null;
+    warrantyEndsAt?: string | null;
     responsibleEngineerIds?: string[];
   };
   engineers?: Array<{
@@ -63,12 +66,41 @@ export function EditPropertyObjectDialog({
   const [name, setName] = useState(target.name);
   const [address, setAddress] = useState(target.address ?? '');
   const [active, setActive] = useState(target.active);
+  const [commissionedAt, setCommissionedAt] = useState(target.commissionedAt ?? '');
+  const [warrantyEndsAt, setWarrantyEndsAt] = useState(target.warrantyEndsAt ?? '');
+  const [commissionedInvalid, setCommissionedInvalid] = useState(false);
+  const [warrantyInvalid, setWarrantyInvalid] = useState(false);
+  const commissionedRef = useRef(commissionedAt);
+  const warrantyRef = useRef(warrantyEndsAt);
+  const commissionedInvalidRef = useRef(false);
+  const warrantyInvalidRef = useRef(false);
   const [engineerIds, setEngineerIds] = useState(target.responsibleEngineerIds ?? []);
   const [pending, setPending] = useState(false);
   const [confirmStatus, setConfirmStatus] = useState(false);
+  const originalCommissioned = target.commissionedAt ?? '';
+  const originalWarranty = target.warrantyEndsAt ?? '';
+
+  function dateOrderError(commissioned = commissionedAt, warranty = warrantyEndsAt): string | null {
+    const datesChanged = commissioned !== originalCommissioned || warranty !== originalWarranty;
+    if (datesChanged && commissioned && warranty && warranty < commissioned) {
+      return 'Дата окончания гарантии не может быть раньше даты приёмки';
+    }
+    return null;
+  }
 
   async function save() {
     if (pending) {
+      return;
+    }
+    const commissioned = commissionedRef.current;
+    const warranty = warrantyRef.current;
+    if (commissionedInvalidRef.current || warrantyInvalidRef.current) {
+      toast.error('Некорректная дата. Укажите её в формате ДД.ММ.ГГГГ.');
+      return;
+    }
+    const orderError = dateOrderError(commissioned, warranty);
+    if (orderError) {
+      toast.error(orderError);
       return;
     }
     setPending(true);
@@ -78,7 +110,9 @@ export function EditPropertyObjectDialog({
         name,
         address: address.trim() ? address : null,
         active,
-        responsibleEngineerIds: engineerIds,
+        commissionedAt: commissioned || null,
+        warrantyEndsAt: warranty || null,
+        ...(target.responsibleEngineerIds ? { responsibleEngineerIds: engineerIds } : {}),
       });
       toast.success('Объект сохранён');
       await onSaved();
@@ -101,7 +135,15 @@ export function EditPropertyObjectDialog({
   return (
     <>
       <Dialog open onOpenChange={(open) => (!open && !pending ? onClose() : undefined)}>
-        <DialogContent>
+        <DialogContent
+          className="max-h-[90vh] overflow-y-auto sm:max-w-md"
+          onInteractOutside={(event) => {
+            const targetNode = event.target;
+            if (targetNode instanceof Element && targetNode.closest('[data-calendar-popover]')) {
+              event.preventDefault();
+            }
+          }}
+        >
           <form
             className="grid gap-3"
             onSubmit={(event) => {
@@ -131,6 +173,39 @@ export function EditPropertyObjectDialog({
                 className="min-h-11"
               />
             </div>
+            <CalendarDateField
+              id="edit-object-commissioned"
+              label="Дата приёмки в эксплуатацию"
+              value={commissionedAt}
+              onChange={(value) => {
+                commissionedRef.current = value;
+                setCommissionedAt(value);
+              }}
+              onInvalidChange={(invalid) => {
+                commissionedInvalidRef.current = invalid;
+                setCommissionedInvalid(invalid);
+              }}
+              disabled={pending}
+            />
+            <CalendarDateField
+              id="edit-object-warranty"
+              label="Дата окончания гарантийного срока"
+              value={warrantyEndsAt}
+              onChange={(value) => {
+                warrantyRef.current = value;
+                setWarrantyEndsAt(value);
+              }}
+              onInvalidChange={(invalid) => {
+                warrantyInvalidRef.current = invalid;
+                setWarrantyInvalid(invalid);
+              }}
+              disabled={pending}
+            />
+            {dateOrderError() ? (
+              <p className="text-sm text-destructive" role="alert">
+                {dateOrderError()}
+              </p>
+            ) : null}
             <div className="grid gap-1.5">
               <Label htmlFor="edit-object-status">Статус объекта</Label>
               <Select
@@ -157,7 +232,10 @@ export function EditPropertyObjectDialog({
               <Button type="button" variant="outline" onClick={onClose} disabled={pending}>
                 Отмена
               </Button>
-              <Button type="submit" disabled={pending || !name.trim()}>
+              <Button
+                type="submit"
+                disabled={pending || !name.trim() || commissionedInvalid || warrantyInvalid}
+              >
                 {pending ? 'Сохранение…' : 'Сохранить'}
               </Button>
             </DialogFooter>

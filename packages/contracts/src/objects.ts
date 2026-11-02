@@ -1,7 +1,9 @@
 import { z } from 'zod';
 
 const uuid = z.uuid();
-const calendarDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const calendarDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, {
+  error: 'Некорректная дата',
+});
 
 export const objectsListQuerySchema = z
   .object({
@@ -47,6 +49,8 @@ export const updatePropertyObjectRequestSchema = z
     name: z.string(),
     address: z.union([z.string(), z.null()]).optional(),
     active: z.boolean().optional(),
+    commissionedAt: z.union([calendarDate, z.null()]).optional(),
+    warrantyEndsAt: z.union([calendarDate, z.null()]).optional(),
     responsibleEngineerIds: z.array(uuid).optional(),
   })
   .strict();

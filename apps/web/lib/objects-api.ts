@@ -79,6 +79,8 @@ export function updatePropertyObject(
     name: string;
     address?: string | null;
     active?: boolean;
+    commissionedAt?: string | null;
+    warrantyEndsAt?: string | null;
     responsibleEngineerIds?: string[];
   },
 ): Promise<{

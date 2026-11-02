@@ -24,6 +24,7 @@ import {
   normalizeOrganizationUnp,
   normalizeReferenceName,
   parseOptionalCalendarDate,
+  resolvePropertyObjectDateUpdate,
   ValidationError,
   assertOrganizationNotDuplicate,
   canManageConstructionWorkDirectory,
@@ -638,12 +639,32 @@ export class ReferenceDataService {
           throw new NotFoundException('Запись не найдена');
         }
         const ctx = actorContext(actor, request);
+        const dates = resolvePropertyObjectDateUpdate({
+          currentCommissionedAt: current.commissionedAt
+            ? calendarDateInTimeZone(current.commissionedAt, BUSINESS_TIME_ZONE)
+            : null,
+          currentWarrantyEndsAt: current.warrantyEndsAt
+            ? calendarDateInTimeZone(current.warrantyEndsAt, BUSINESS_TIME_ZONE)
+            : null,
+          commissionedAt: input.commissionedAt,
+          warrantyEndsAt: input.warrantyEndsAt,
+        });
         const updated = await updatePropertyObjectViaDefiner(tx, {
           id,
           expectedVersion,
           name,
           address,
           active: null,
+          commissionedAt:
+            dates.setCommissionedAt && dates.commissionedAt
+              ? calendarDateToUtcNoon(dates.commissionedAt)
+              : null,
+          setCommissionedAt: dates.setCommissionedAt,
+          warrantyEndsAt:
+            dates.setWarrantyEndsAt && dates.warrantyEndsAt
+              ? calendarDateToUtcNoon(dates.warrantyEndsAt)
+              : null,
+          setWarrantyEndsAt: dates.setWarrantyEndsAt,
           actorUserId: actor.id,
           actorName: actor.fullName,
           requestId: ctx.requestId,
@@ -1189,6 +1210,12 @@ function mapPropertyObjectWriteError(error: unknown): never {
   }
   if (/42501|Недостаточно прав/.test(message)) {
     throw new ForbiddenException('Недостаточно прав');
+  }
+  if (/гарантии/.test(message)) {
+    throw new ValidationError(
+      'warrantyEndsAt',
+      'Дата окончания гарантии не может быть раньше даты приёмки',
+    );
   }
   throw error instanceof Error ? error : new Error(String(error));
 }

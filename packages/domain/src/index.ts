@@ -32,6 +32,7 @@ export * from './legacy-acts-import';
 export * from './approved-defect-types';
 export * from './directories-import';
 export * from './manual-object';
+export * from './property-object-dates';
 export * from './engineer-name';
 export * from './objects-directory';
 export * from './act-commands';

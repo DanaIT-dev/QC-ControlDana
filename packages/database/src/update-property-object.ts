@@ -26,6 +26,10 @@ export async function updatePropertyObjectViaDefiner(
     actorUserId: string;
     actorName: string;
     requestId: string | null;
+    commissionedAt?: Date | null;
+    setCommissionedAt?: boolean;
+    warrantyEndsAt?: Date | null;
+    setWarrantyEndsAt?: boolean;
   },
 ): Promise<UpdatedPropertyObjectRow> {
   const rows = await tx.$queryRaw<
@@ -65,7 +69,11 @@ export async function updatePropertyObjectViaDefiner(
       ${input.active}::boolean,
       ${input.actorUserId}::uuid,
       ${input.actorName},
-      ${input.requestId}
+      ${input.requestId},
+      ${(input.setCommissionedAt ? input.commissionedAt : null) ?? null}::timestamptz,
+      ${input.setCommissionedAt ?? false}::boolean,
+      ${(input.setWarrantyEndsAt ? input.warrantyEndsAt : null) ?? null}::timestamptz,
+      ${input.setWarrantyEndsAt ?? false}::boolean
     )
   `;
   const row = rows[0];

@@ -106,6 +106,9 @@ export function ReferenceDataView({
     name: string;
     address: string;
     active: boolean;
+    commissionedAt: string | null;
+    warrantyEndsAt: string | null;
+    responsibleEngineerIds: string[];
   } | null>(null);
   const [orgEditTarget, setOrgEditTarget] = useState<{
     id: string;
@@ -222,6 +225,9 @@ export function ReferenceDataView({
         name: String(match.name ?? ''),
         address: String(match.address ?? ''),
         active: Boolean(match.active),
+        commissionedAt: calendarOrNull(match.commissionedAt),
+        warrantyEndsAt: calendarOrNull(match.warrantyEndsAt),
+        responsibleEngineerIds: engineerIdsOf(match),
       });
     }
     if (tab === 'organizations') {
@@ -400,6 +406,9 @@ export function ReferenceDataView({
                                 name: title,
                                 address,
                                 active,
+                                commissionedAt: calendarOrNull(item.commissionedAt),
+                                warrantyEndsAt: calendarOrNull(item.warrantyEndsAt),
+                                responsibleEngineerIds: engineerIdsOf(item),
                               })
                             }
                           >
@@ -528,6 +537,9 @@ export function ReferenceDataView({
                             name: title,
                             address,
                             active,
+                            commissionedAt: calendarOrNull(item.commissionedAt),
+                            warrantyEndsAt: calendarOrNull(item.warrantyEndsAt),
+                            responsibleEngineerIds: engineerIdsOf(item),
                           })
                         }
                       >
@@ -598,6 +610,7 @@ export function ReferenceDataView({
       {editTarget ? (
         <EditPropertyObjectDialog
           csrfToken={csrfToken}
+          engineers={lookups.data?.responsibleEngineers ?? []}
           target={editTarget}
           onClose={() => setEditTarget(null)}
           onSaved={async () => {
@@ -1134,6 +1147,22 @@ function OrganizationRoleFields({
       ))}
     </fieldset>
   );
+}
+
+function calendarOrNull(value: unknown): string | null {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+}
+
+function engineerIdsOf(item: Record<string, unknown>): string[] {
+  if (!Array.isArray(item.responsibleEngineers)) {
+    return [];
+  }
+  return item.responsibleEngineers.flatMap((row) => {
+    if (!row || typeof row !== 'object' || !('id' in row) || typeof row.id !== 'string') {
+      return [];
+    }
+    return [row.id];
+  });
 }
 
 function engineerNames(item: Record<string, unknown>): string {

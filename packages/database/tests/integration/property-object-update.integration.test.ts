@@ -1,7 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Pool } from 'pg';
-import { CONFIRMED_LAST_FIRST_TOKEN_ORDER, personNameWriteFields } from '@sgr-registry/domain';
+import {
+  calendarDateToUtcNoon,
+  CONFIRMED_LAST_FIRST_TOKEN_ORDER,
+  personNameWriteFields,
+} from '@sgr-registry/domain';
 import {
   createOwnerPrismaClient,
   createPrismaClient,
@@ -161,5 +165,171 @@ describe('property object protected update', () => {
     });
     expect(audits.some((row) => row.action === 'PROPERTY_OBJECT_UPDATED')).toBe(true);
     expect(audits.some((row) => row.action === 'PROPERTY_OBJECT_STATUS_CHANGED')).toBe(true);
+  });
+
+  it('updates calendar dates atomically and keeps an unchanged historical mismatch', async () => {
+    const dated = await owner.propertyObject.create({
+      data: {
+        name: `${MARKER} dates`,
+        address: `${MARKER} dates-address`,
+        sourceSystem: 'excel',
+        sourceRow: 7,
+        sourceImportKey: `${MARKER}-dates`,
+        commissionedAt: calendarDateToUtcNoon('2024-01-15'),
+        warrantyEndsAt: calendarDateToUtcNoon('2029-01-15'),
+      },
+    });
+    const mismatched = await owner.propertyObject.create({
+      data: {
+        name: `${MARKER} mismatch`,
+        address: `${MARKER} mismatch-address`,
+        commissionedAt: calendarDateToUtcNoon('2024-06-02'),
+        warrantyEndsAt: calendarDateToUtcNoon('2024-06-01'),
+      },
+    });
+    try {
+      const both = await withAuthenticatedDbContext({
+        prisma: appPrisma,
+        secret,
+        user: { id: adminId, sessionVersion: 1 },
+        callback: (tx) =>
+          updatePropertyObjectViaDefiner(tx, {
+            id: dated.id,
+            expectedVersion: 1,
+            name: dated.name,
+            address: dated.address,
+            active: true,
+            setCommissionedAt: true,
+            commissionedAt: calendarDateToUtcNoon('2024-02-01'),
+            setWarrantyEndsAt: true,
+            warrantyEndsAt: calendarDateToUtcNoon('2029-02-01'),
+            actorUserId: adminId,
+            actorName: `${MARKER} admin`,
+            requestId: `${MARKER}-dates`,
+          }),
+      });
+      expect(both.commissionedAt?.toISOString()).toBe('2024-02-01T12:00:00.000Z');
+      expect(both.warrantyEndsAt?.toISOString()).toBe('2029-02-01T12:00:00.000Z');
+      expect(both.sourceImportKey).toBe(`${MARKER}-dates`);
+      const audit = await owner.auditLog.findFirst({
+        where: { entityId: dated.id, action: 'PROPERTY_OBJECT_UPDATED' },
+        orderBy: { occurredAt: 'desc' },
+      });
+      expect(audit?.actorUserId).toBe(adminId);
+      expect(audit?.occurredAt).toBeInstanceOf(Date);
+      expect(audit?.oldValue).toMatchObject({
+        commissionedAt: '2024-01-15',
+        warrantyEndsAt: '2029-01-15',
+      });
+      expect(audit?.newValue).toMatchObject({
+        commissionedAt: '2024-02-01',
+        warrantyEndsAt: '2029-02-01',
+      });
+
+      const cleared = await withAuthenticatedDbContext({
+        prisma: appPrisma,
+        secret,
+        user: { id: adminId, sessionVersion: 1 },
+        callback: (tx) =>
+          updatePropertyObjectViaDefiner(tx, {
+            id: dated.id,
+            expectedVersion: both.version,
+            name: dated.name,
+            address: dated.address,
+            active: true,
+            setCommissionedAt: true,
+            commissionedAt: null,
+            actorUserId: adminId,
+            actorName: `${MARKER} admin`,
+            requestId: `${MARKER}-clear`,
+          }),
+      });
+      expect(cleared.commissionedAt).toBeNull();
+      expect(cleared.warrantyEndsAt?.toISOString()).toBe('2029-02-01T12:00:00.000Z');
+
+      await expect(
+        withAuthenticatedDbContext({
+          prisma: appPrisma,
+          secret,
+          user: { id: adminId, sessionVersion: 1 },
+          callback: (tx) =>
+            updatePropertyObjectViaDefiner(tx, {
+              id: dated.id,
+              expectedVersion: 1,
+              name: `${MARKER} stale-dates`,
+              address: dated.address,
+              active: true,
+              setWarrantyEndsAt: true,
+              warrantyEndsAt: calendarDateToUtcNoon('2020-01-01'),
+              actorUserId: adminId,
+              actorName: `${MARKER} admin`,
+              requestId: `${MARKER}-stale`,
+            }),
+        }),
+      ).rejects.toThrow(/изменена другим|40001/);
+      const afterStale = await owner.propertyObject.findUniqueOrThrow({ where: { id: dated.id } });
+      expect(afterStale.warrantyEndsAt?.toISOString()).toBe('2029-02-01T12:00:00.000Z');
+      expect(afterStale.name).toBe(dated.name);
+
+      await expect(
+        withAuthenticatedDbContext({
+          prisma: appPrisma,
+          secret,
+          user: { id: adminId, sessionVersion: 1 },
+          callback: (tx) =>
+            updatePropertyObjectViaDefiner(tx, {
+              id: mismatched.id,
+              expectedVersion: 1,
+              name: mismatched.name,
+              address: mismatched.address,
+              active: true,
+              setCommissionedAt: true,
+              commissionedAt: calendarDateToUtcNoon('2024-08-01'),
+              actorUserId: adminId,
+              actorName: `${MARKER} admin`,
+              requestId: `${MARKER}-inverted`,
+            }),
+        }),
+      ).rejects.toThrow(/гарантии/);
+      const mismatchUntouched = await owner.propertyObject.findUniqueOrThrow({
+        where: { id: mismatched.id },
+      });
+      expect(mismatchUntouched.version).toBe(1);
+      expect(mismatchUntouched.commissionedAt?.toISOString()).toBe('2024-06-02T12:00:00.000Z');
+
+      const renamedMismatch = await withAuthenticatedDbContext({
+        prisma: appPrisma,
+        secret,
+        user: { id: adminId, sessionVersion: 1 },
+        callback: (tx) =>
+          updatePropertyObjectViaDefiner(tx, {
+            id: mismatched.id,
+            expectedVersion: 1,
+            name: `${MARKER} mismatch renamed`,
+            address: mismatched.address,
+            active: true,
+            actorUserId: adminId,
+            actorName: `${MARKER} admin`,
+            requestId: `${MARKER}-keep`,
+          }),
+      });
+      expect(renamedMismatch.name).toBe(`${MARKER} mismatch renamed`);
+      expect(renamedMismatch.commissionedAt?.toISOString()).toBe('2024-06-02T12:00:00.000Z');
+      expect(renamedMismatch.warrantyEndsAt?.toISOString()).toBe('2024-06-01T12:00:00.000Z');
+    } finally {
+      await owner.$executeRawUnsafe(
+        'ALTER TABLE audit_logs DISABLE TRIGGER trg_audit_logs_append_only',
+      );
+      try {
+        await owner.auditLog.deleteMany({
+          where: { entityId: { in: [dated.id, mismatched.id] } },
+        });
+      } finally {
+        await owner.$executeRawUnsafe(
+          'ALTER TABLE audit_logs ENABLE TRIGGER trg_audit_logs_append_only',
+        );
+      }
+      await owner.propertyObject.deleteMany({ where: { id: { in: [dated.id, mismatched.id] } } });
+    }
   });
 });

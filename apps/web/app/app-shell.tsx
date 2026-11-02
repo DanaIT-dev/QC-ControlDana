@@ -25,7 +25,7 @@ export function AppShell({ user, children }: { user: SafeUserProfile; children: 
   const readOnly = isReadOnlyRole(user.role);
   return (
     <div className="flex min-h-dvh flex-col bg-background">
-      <header className="sticky top-0 z-40 overflow-visible border-b bg-white">
+      <header className="fixed inset-x-0 top-0 z-40 overflow-visible border-b bg-white">
         <div
           data-slot="app-header"
           className="mx-auto flex h-16 w-full min-w-0 max-w-[1600px] flex-nowrap items-center gap-2 px-3 xl:gap-2 xl:px-4 2xl:gap-3 2xl:px-6"
@@ -98,6 +98,7 @@ export function AppShell({ user, children }: { user: SafeUserProfile; children: 
           </div>
         </div>
       </header>
+      <div aria-hidden="true" className="h-16 shrink-0" />
       <main className="mx-auto w-full min-w-0 flex-1 max-w-[1600px] px-3 py-6 md:px-6 md:py-6 lg:px-8 xl:px-4 2xl:px-6">
         {children}
       </main>

@@ -1,5 +1,6 @@
 import { expect, test, type ConsoleMessage, type Page } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
+import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { clickAdminNavItem, clickPrimaryNavItem } from './nav';
 
@@ -409,6 +410,250 @@ test.describe('objects directory', () => {
     await expect(
       page.getByText('Требуется подтверждение администратора').filter({ visible: true }),
     ).toHaveCount(0);
+    expect(applicationErrors(errors)).toEqual([]);
+  });
+
+  test('edits object dates and keeps the directory usable while scrolling', async ({ page }) => {
+    test.setTimeout(120_000);
+    mkdirSync(resolve(process.cwd(), 'test-results/objects-ui'), { recursive: true });
+    const errors = attachConsole(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await login(page, ACCOUNTS.admin);
+    await page.goto('/objects');
+    const stamp = Date.now();
+    const name = `E2E даты ${stamp}`;
+    const address =
+      'г. Минск, проспект Независимости, дом 123, корпус 4, ориентир у пересечения с улицей длинного названия для полного адреса';
+    await page.getByRole('button', { name: 'Добавить объект' }).click();
+    await page.getByLabel('Название объекта').fill(name);
+    await page.getByLabel('Адрес').fill(address);
+    await page.getByRole('button', { name: 'Создать' }).click();
+    await expect(page.getByText('Объект создан')).toBeVisible();
+    await page.getByLabel('Поиск по объектам').fill(name);
+    const createdRow = page.locator('tbody tr').filter({ hasText: name });
+    await expect(createdRow).toHaveCount(1);
+    await expect(createdRow.getByText(name)).toBeVisible();
+
+    await createdRow.getByRole('button', { name: 'Редактировать' }).click();
+    const editDialog = page.getByRole('dialog', { name: 'Редактировать объект' });
+    await editDialog
+      .getByRole('textbox', { name: 'Дата приёмки в эксплуатацию', exact: true })
+      .fill('15.03.2024');
+    await editDialog
+      .getByRole('textbox', { name: 'Дата окончания гарантийного срока', exact: true })
+      .fill('15.03.2029');
+    await page.getByRole('button', { name: 'Календарь: Дата приёмки в эксплуатацию' }).click();
+    const calendar = page.locator('[data-calendar-popover]');
+    await expect(calendar).toBeVisible();
+    const day = calendar.getByRole('button', { name: '15', exact: true });
+    await expect(day).toBeVisible();
+    const dayBox = await day.boundingBox();
+    expect(dayBox).not.toBeNull();
+    const covered = await page.evaluate(
+      ({ x, y }) => {
+        const target = document.elementFromPoint(x, y);
+        return target?.closest('[data-calendar-popover]') ? 'calendar' : target?.tagName;
+      },
+      { x: (dayBox?.x ?? 0) + 8, y: (dayBox?.y ?? 0) + 8 },
+    );
+    expect(covered).toBe('calendar');
+    await day.click();
+    await page.getByRole('button', { name: 'Сохранить' }).click();
+    await expect(page.getByText('Объект сохранён')).toBeVisible();
+    await page.reload();
+    await expect(page.getByText('15.03.2024').filter({ visible: true })).toBeVisible();
+    await expect(page.getByText('15.03.2029').filter({ visible: true })).toBeVisible();
+
+    await createdRow.getByRole('button', { name: 'Редактировать' }).click();
+    const clearDialog = page.getByRole('dialog', { name: 'Редактировать объект' });
+    await clearDialog
+      .getByRole('textbox', { name: 'Дата приёмки в эксплуатацию', exact: true })
+      .fill('20.04.2024');
+    await clearDialog
+      .getByRole('textbox', { name: 'Дата окончания гарантийного срока', exact: true })
+      .fill('');
+    await page.getByRole('button', { name: 'Сохранить' }).click();
+    await expect(page.getByText('Объект сохранён')).toBeVisible();
+    await page.reload();
+    await expect(page.getByText('20.04.2024').filter({ visible: true })).toBeVisible();
+    await expect(page.getByText('15.03.2029')).toHaveCount(0);
+    await expect(page.getByText(address).filter({ visible: true })).toBeVisible();
+
+    await page.goto('/objects?pageSize=50');
+    await expect(page.locator('tbody tr').nth(15)).toBeVisible();
+    await page.evaluate(() => window.scrollTo(0, 1400));
+    await expect(page.getByRole('button', { name: 'Добавить объект' })).toBeInViewport();
+    await expect(page.getByRole('columnheader', { name: 'Объект' })).toBeInViewport();
+    const stuck = await page.evaluate(() => {
+      const appHeader = document.querySelector('header')?.getBoundingClientRect();
+      const toolbar = document
+        .querySelector('[data-slot="objects-toolbar"]')
+        ?.getBoundingClientRect();
+      const column = document.querySelector('thead th')?.getBoundingClientRect();
+      const probe = document.elementFromPoint((column?.left ?? 0) + 24, (column?.top ?? 0) + 8);
+      return {
+        headerBottom: appHeader ? appHeader.bottom : null,
+        toolbarTop: toolbar ? toolbar.top : null,
+        toolbarBottom: toolbar ? toolbar.bottom : null,
+        columnTop: column ? column.top : null,
+        probeInHeader: Boolean(probe?.closest('thead')),
+      };
+    });
+    expect(stuck.headerBottom).not.toBeNull();
+    expect(stuck.toolbarTop ?? 0).toBeGreaterThanOrEqual((stuck.headerBottom ?? 0) - 1);
+    expect(stuck.toolbarTop ?? 99).toBeLessThan((stuck.headerBottom ?? 0) + 3);
+    expect(stuck.columnTop ?? 0).toBeGreaterThanOrEqual((stuck.toolbarBottom ?? 0) - 1);
+    expect(stuck.columnTop ?? 99).toBeLessThan((stuck.toolbarBottom ?? 0) + 3);
+    expect(stuck.probeInHeader).toBe(true);
+    await page.screenshot({
+      path: resolve(process.cwd(), 'test-results/objects-ui/1440-scrolled.png'),
+    });
+
+    await page.getByRole('button', { name: 'Редактировать' }).first().click();
+    await expect(page.getByRole('heading', { name: 'Редактировать объект' })).toBeVisible();
+    await page.getByRole('button', { name: 'Календарь: Дата приёмки в эксплуатацию' }).click();
+    await expect(page.locator('[data-calendar-popover]')).toBeVisible();
+    await page.screenshot({
+      path: resolve(process.cwd(), 'test-results/objects-ui/1440-calendar.png'),
+    });
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+
+    const row = page.locator('tbody tr').first();
+    await page.mouse.move(0, 0);
+    const resting = await row.evaluate((element) => getComputedStyle(element).backgroundColor);
+    await row.hover();
+    const hovered = await row.evaluate((element) => getComputedStyle(element).backgroundColor);
+    expect(hovered).not.toBe(resting);
+    await row.getByRole('button', { name: 'Редактировать' }).focus();
+    const focused = await row.evaluate((element) => getComputedStyle(element).backgroundColor);
+    expect(focused).not.toBe(resting);
+
+    await page.setViewportSize({ width: 1024, height: 768 });
+    await page.getByLabel('Поиск по объектам').fill(name);
+    const addressCell = page.locator('tbody tr td').nth(1);
+    await expect(addressCell).toContainText('проспект Независимости');
+    const addressLayout = await addressCell.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        text: element.textContent ?? '',
+        overflowWrap: style.overflowWrap,
+        textOverflow: style.textOverflow,
+        clipped: element.scrollHeight > element.clientHeight + 2,
+        width: element.getBoundingClientRect().width,
+      };
+    });
+    expect(addressLayout.text).toContain(address);
+    expect(addressLayout.overflowWrap).not.toBe('anywhere');
+    expect(addressLayout.textOverflow).not.toBe('ellipsis');
+    expect(addressLayout.clipped).toBe(false);
+    expect(addressLayout.width).toBeGreaterThan(180);
+    const nameLayout = await page
+      .locator('tbody tr td')
+      .nth(0)
+      .evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          overflowWrap: style.overflowWrap,
+          width: element.getBoundingClientRect().width,
+        };
+      });
+    expect(nameLayout.overflowWrap).not.toBe('anywhere');
+    expect(nameLayout.width).toBeGreaterThan(150);
+    const dateLayout = await page
+      .locator('tbody tr td')
+      .nth(2)
+      .evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          whiteSpace: style.whiteSpace,
+          fits: element.scrollWidth <= element.clientWidth + 1,
+        };
+      });
+    expect(dateLayout.whiteSpace).toContain('nowrap');
+    expect(dateLayout.fits).toBe(true);
+    await page.screenshot({
+      path: resolve(process.cwd(), 'test-results/objects-ui/1024-columns.png'),
+    });
+
+    await page.setViewportSize({ width: 768, height: 1024 });
+    const scroller = page.locator('[data-slot="objects-table-scroll"]');
+    await scroller.evaluate((element) => {
+      element.scrollLeft = 120;
+    });
+    const aligned = await page.evaluate(() => {
+      const header = document.querySelectorAll('thead th')[1]?.getBoundingClientRect();
+      const cell = document.querySelector('tbody tr td:nth-child(2)')?.getBoundingClientRect();
+      return {
+        delta: header && cell ? Math.abs(header.left - cell.left) : 99,
+        scrollLeft: document.querySelector('[data-slot="objects-table-scroll"]')?.scrollLeft ?? 0,
+      };
+    });
+    expect(aligned.scrollLeft).toBeGreaterThan(0);
+    expect(aligned.delta).toBeLessThan(2);
+    await expectNoHorizontalOverflow(page);
+    await page.screenshot({
+      path: resolve(process.cwd(), 'test-results/objects-ui/768-scrolled-x.png'),
+    });
+
+    for (const width of [700, 640]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(page.locator('table')).toBeHidden();
+      await expect(page.getByText(address).filter({ visible: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Редактировать' })).toBeVisible();
+      await expectNoHorizontalOverflow(page);
+      await page.screenshot({
+        path: resolve(process.cwd(), `test-results/objects-ui/${width}-cards.png`),
+      });
+    }
+
+    for (const viewport of [
+      { width: 390, height: 844 },
+      { width: 360, height: 800 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await page.evaluate(() => window.scrollTo(0, 700));
+      await expect(page.getByRole('button', { name: 'Добавить объект' })).toBeInViewport();
+      await expect(page.locator('table')).toBeHidden();
+      await expect(page.getByText(address).filter({ visible: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Редактировать' })).toBeVisible();
+      await expectNoHorizontalOverflow(page);
+      await page.screenshot({
+        path: resolve(process.cwd(), `test-results/objects-ui/${viewport.width}-cards.png`),
+      });
+    }
+
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/objects');
+    await page.getByLabel('Поиск по объектам').fill('Северный');
+    await expect(page).toHaveURL(/search=/);
+    await page.getByLabel('Строк на странице').click();
+    await page.getByRole('option', { name: '50', exact: true }).click();
+    await expect(page).toHaveURL(/pageSize=50/);
+    await page.goto('/objects');
+    await expect(page).toHaveURL(/pageSize=50/);
+    await page.reload();
+    await expect(page.getByLabel('Поиск по объектам')).toHaveValue('');
+    await page.getByLabel('Поиск по объектам').fill('Северный');
+    await expect(page).toHaveURL(/search=/, { timeout: 5_000 });
+    await page.reload();
+    await expect(page.getByLabel('Поиск по объектам')).toHaveValue('Северный');
+    await expect(page.getByLabel('Строк на странице')).toContainText('50');
+
+    for (const zoom of [1.25, 1.5]) {
+      await page.setViewportSize({ width: 1024, height: 768 });
+      await page.evaluate((value) => {
+        document.documentElement.style.zoom = String(value);
+      }, zoom);
+      await page.screenshot({
+        path: resolve(process.cwd(), `test-results/objects-ui/1024-zoom-${zoom}.png`),
+      });
+      await expectNoHorizontalOverflow(page);
+      await page.evaluate(() => {
+        document.documentElement.style.zoom = '1';
+      });
+    }
+
     expect(applicationErrors(errors)).toEqual([]);
   });
 });

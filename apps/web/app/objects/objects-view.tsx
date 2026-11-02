@@ -5,7 +5,7 @@ import { OBJECTS_DIRECTORY_PAGE_SIZES, responsibleEngineerNotice } from '@sgr-re
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { toast } from 'sonner';
 import { PersonName } from '@/components/person-name';
 import { personOption } from '@/lib/lookups';
@@ -38,6 +38,7 @@ import {
 } from '@/components/ui/select';
 import { ApiError } from '../../lib/command-api';
 import { formatCalendarDate } from '../../lib/registry-url';
+import { objectTableColumns } from '../../lib/objects-table-layout';
 import { readPageSizePreference, writePageSizePreference } from '../../lib/page-size-preference';
 import { queryKeys } from '../../lib/query-keys';
 import {
@@ -45,6 +46,9 @@ import {
   linkObjectResponsibleEngineer,
   createPropertyObject,
 } from '../../lib/objects-api';
+
+const STICKY_SCROLL_MARGIN =
+  'scroll-mt-[calc(var(--objects-sticky-top,4rem)+var(--objects-toolbar-height,0px)+var(--objects-thead-height,0px)+8px)]';
 
 function emptyDash(value: string | null | undefined): string {
   return value && value.trim().length > 0 ? value : '—';
@@ -139,6 +143,63 @@ export function ObjectsView({
     null,
   );
   const [createOpen, setCreateOpen] = useState(false);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const [stickyTop, setStickyTop] = useState(64);
+  const [toolbarHeight, setToolbarHeight] = useState(0);
+  const [toolbarFrame, setToolbarFrame] = useState({ left: 0, width: 0 });
+
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    const apply = () => {
+      const header = document.querySelector('header');
+      const toolbar = toolbarRef.current;
+      const main = document.querySelector('main');
+      const thead = document.querySelector('[data-slot="objects-table-scroll"] thead');
+      const headerHeight = Math.round(header?.getBoundingClientRect().height ?? 64);
+      const frame = main?.getBoundingClientRect();
+      if (toolbar && frame && frame.width > 0) {
+        toolbar.style.left = `${frame.left}px`;
+        toolbar.style.width = `${frame.width}px`;
+      }
+      const nextToolbarHeight = Math.round(toolbar?.getBoundingClientRect().height ?? 0);
+      const theadHeight = thead?.getBoundingClientRect().height ?? 0;
+      setStickyTop(headerHeight);
+      setToolbarHeight(nextToolbarHeight);
+      if (frame) {
+        const left = Math.round(frame.left);
+        const width = Math.round(frame.width);
+        setToolbarFrame((current) =>
+          current.left === left && current.width === width ? current : { left, width },
+        );
+      }
+      root.style.setProperty('--objects-thead-height', `${theadHeight}px`);
+      root.style.scrollPaddingTop = `${headerHeight + nextToolbarHeight + theadHeight}px`;
+    };
+    apply();
+    const observer = new ResizeObserver(apply);
+    const header = document.querySelector('header');
+    const main = document.querySelector('main');
+    const thead = document.querySelector('[data-slot="objects-table-scroll"] thead');
+    if (header) {
+      observer.observe(header);
+    }
+    if (main) {
+      observer.observe(main);
+    }
+    if (toolbarRef.current) {
+      observer.observe(toolbarRef.current);
+    }
+    if (thead) {
+      observer.observe(thead);
+    }
+    window.addEventListener('resize', apply);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', apply);
+      root.style.removeProperty('--objects-thead-height');
+      root.style.scrollPaddingTop = '';
+    };
+  }, [listQuery.data?.canCreate, listQuery.isLoading, listQuery.data?.items.length]);
 
   useEffect(() => {
     if (params.has('pageSize')) {
@@ -186,22 +247,39 @@ export function ObjectsView({
   const to = Math.min(page * pageSize, totalCount);
 
   return (
-    <div className="grid min-w-0 gap-4">
-      <PageHeader
-        title="Объекты"
-        description={totalCount > 0 ? `Всего ${totalCount}` : 'Каталог объектов строительства'}
-        actions={
-          data?.canCreate ? (
-            <Button
-              type="button"
-              className="min-h-11 w-full sm:w-auto"
-              onClick={() => setCreateOpen(true)}
-            >
-              Добавить объект
-            </Button>
-          ) : null
-        }
-      />
+    <div
+      className="min-w-0 space-y-4"
+      style={
+        {
+          '--objects-sticky-top': `${stickyTop}px`,
+          '--objects-toolbar-height': `${toolbarHeight}px`,
+        } as CSSProperties
+      }
+    >
+      <div aria-hidden="true" style={{ height: toolbarHeight }} />
+      <div
+        ref={toolbarRef}
+        data-slot="objects-toolbar"
+        className="fixed z-30 border-b bg-background px-3 pb-3 shadow-sm md:px-6 lg:px-8 xl:px-4 2xl:px-6"
+        style={{ top: stickyTop, left: toolbarFrame.left, width: toolbarFrame.width }}
+      >
+        <PageHeader
+          className="mb-0"
+          title="Объекты"
+          description={totalCount > 0 ? `Всего ${totalCount}` : 'Каталог объектов строительства'}
+          actions={
+            data?.canCreate ? (
+              <Button
+                type="button"
+                className="min-h-11 w-full sm:w-auto"
+                onClick={() => setCreateOpen(true)}
+              >
+                Добавить объект
+              </Button>
+            ) : null
+          }
+        />
+      </div>
       <div className="flex flex-col gap-3 md:flex-row md:items-end">
         <label className="grid min-w-0 flex-1 gap-1">
           <span className="text-sm font-medium">Поиск</span>
@@ -281,6 +359,8 @@ export function ObjectsView({
               data={data!}
               canManageLinks={canManageLinks}
               canEdit={Boolean(data?.canEdit)}
+              stickyTop={stickyTop}
+              toolbarHeight={toolbarHeight}
               onAssign={setLinkTarget}
               onDirectoryLink={setDirectoryTarget}
               onEdit={setEditTarget}
@@ -373,6 +453,8 @@ export function ObjectsView({
             name: editTarget.name,
             address: editTarget.address,
             active: editTarget.active,
+            commissionedAt: editTarget.commissionedAt,
+            warrantyEndsAt: editTarget.warrantyEndsAt,
             responsibleEngineerIds: editTarget.responsibleEngineers
               .filter((engineer) => engineer.linked)
               .map((engineer) => engineer.id),
@@ -416,6 +498,8 @@ function ObjectsTable({
   data,
   canManageLinks,
   canEdit,
+  stickyTop,
+  toolbarHeight,
   onAssign,
   onDirectoryLink,
   onEdit,
@@ -423,39 +507,139 @@ function ObjectsTable({
   data: ObjectsDirectoryResponse;
   canManageLinks: boolean;
   canEdit: boolean;
+  stickyTop: number;
+  toolbarHeight: number;
   onAssign: (item: ObjectsDirectoryResponse['items'][number]) => void;
   onDirectoryLink: (item: ObjectsDirectoryResponse['items'][number]) => void;
   onEdit: (item: ObjectsDirectoryResponse['items'][number]) => void;
 }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const headRef = useRef<HTMLTableSectionElement>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
+  useLayoutEffect(() => {
+    const node = scrollRef.current;
+    if (!node) {
+      return;
+    }
+    const apply = () => setContainerWidth(node.clientWidth);
+    apply();
+    const observer = new ResizeObserver(apply);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+  useLayoutEffect(() => {
+    const head = headRef.current;
+    const wrap = scrollRef.current;
+    if (!head || !wrap) {
+      return;
+    }
+    let frame = 0;
+    let applied = -1;
+    const pin = () => {
+      frame = 0;
+      const cells = [...head.querySelectorAll('th')];
+      if (wrap.getClientRects().length === 0) {
+        applied = 0;
+        for (const cell of cells) {
+          cell.style.transform = '';
+        }
+        return;
+      }
+      const stickyLine = stickyTop + toolbarHeight;
+      const layoutTop = head.getBoundingClientRect().top;
+      const maxShift = Math.max(
+        0,
+        wrap.getBoundingClientRect().bottom - stickyLine - head.offsetHeight,
+      );
+      const next = Math.min(Math.max(0, stickyLine - layoutTop), maxShift);
+      if (Math.abs(next - applied) < 0.5) {
+        return;
+      }
+      applied = next;
+      const transform = next > 0.5 ? `translateY(${next}px)` : '';
+      for (const cell of cells) {
+        cell.style.transform = transform;
+      }
+    };
+    const schedule = () => {
+      if (frame === 0) {
+        frame = window.requestAnimationFrame(pin);
+      }
+    };
+    pin();
+    window.addEventListener('scroll', schedule, { passive: true });
+    window.addEventListener('resize', schedule);
+    const observer = new ResizeObserver(schedule);
+    observer.observe(wrap);
+    const toolbar = document.querySelector('[data-slot="objects-toolbar"]');
+    if (toolbar) {
+      observer.observe(toolbar);
+    }
+    return () => {
+      window.removeEventListener('scroll', schedule);
+      window.removeEventListener('resize', schedule);
+      observer.disconnect();
+      if (frame !== 0) {
+        window.cancelAnimationFrame(frame);
+      }
+    };
+  }, [stickyTop, toolbarHeight, containerWidth, canEdit, data.items.length]);
+  const columns = objectTableColumns(containerWidth, canEdit);
+  const headerClass =
+    'relative z-20 border-b bg-card px-3 py-2 align-bottom leading-snug shadow-[0_1px_0_0_var(--border)]';
   return (
-    <div className="min-w-0 max-w-full overflow-x-auto overscroll-x-contain rounded-md border bg-card pb-2">
-      <table className="w-full min-w-180 text-sm">
-        <thead className="sticky top-0 z-10 border-b bg-card text-left text-[12px] font-medium text-muted-foreground">
+    <div
+      ref={scrollRef}
+      data-slot="objects-table-scroll"
+      className="min-w-0 max-w-full overflow-x-auto overflow-y-clip overscroll-x-contain rounded-md border bg-card"
+    >
+      <table
+        className="text-sm"
+        style={{
+          tableLayout: 'fixed',
+          width: columns.scrolls ? columns.tableWidth : '100%',
+          minWidth: columns.tableWidth,
+        }}
+      >
+        <colgroup>
+          <col style={{ width: columns.name }} />
+          <col style={{ width: columns.address }} />
+          <col style={{ width: columns.commissioned }} />
+          <col style={{ width: columns.warranty }} />
+          <col style={{ width: columns.engineers }} />
+          {canEdit ? <col style={{ width: columns.actions }} /> : null}
+        </colgroup>
+        <thead ref={headRef} className="text-left text-[12px] font-medium text-muted-foreground">
           <tr>
-            <th className="px-3 py-3">Объект</th>
-            <th className="px-3 py-3">Адрес</th>
-            <th className="px-3 py-3 whitespace-nowrap">Дата приёмки в эксплуатацию</th>
-            <th className="px-3 py-3 whitespace-nowrap">Дата завершения гарантийного срока</th>
-            <th className="px-3 py-3">Ответственный инженер</th>
-            {canEdit ? <th className="px-3 py-3">Действия</th> : null}
+            <th className={headerClass}>Объект</th>
+            <th className={headerClass}>Адрес</th>
+            <th className={`${headerClass} whitespace-normal`}>Дата приёмки в эксплуатацию</th>
+            <th className={`${headerClass} whitespace-normal`}>
+              Дата завершения гарантийного срока
+            </th>
+            <th className={headerClass}>Ответственный инженер</th>
+            {canEdit ? <th className={headerClass}>Действия</th> : null}
           </tr>
         </thead>
         <tbody>
           {data.items.map((item) => (
-            <tr key={item.id} className="border-b align-top">
-              <td className="max-w-88 px-3 py-3 font-medium wrap-break-word">
+            <tr
+              key={item.id}
+              className="border-b align-top has-[:focus-visible]:bg-muted/40 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-muted/40"
+            >
+              <td className="px-3 py-3 font-medium wrap-break-word">
                 <span className="inline-flex flex-wrap items-center gap-2">
                   {item.name}
                   {item.active === false ? <Badge variant="outline">Неактивен</Badge> : null}
                 </span>
               </td>
-              <td className="min-w-0 px-3 py-3 whitespace-normal wrap-break-word text-muted-foreground [overflow-wrap:anywhere]">
+              <td className="px-3 py-3 whitespace-normal wrap-break-word text-muted-foreground">
                 {emptyDash(item.address)}
               </td>
-              <td className="px-3 py-3 whitespace-nowrap">
+              <td className="px-3 py-3 whitespace-nowrap tabular-nums">
                 {formatCalendarDate(item.commissionedAt)}
               </td>
-              <td className="px-3 py-3 whitespace-nowrap">
+              <td className="px-3 py-3 whitespace-nowrap tabular-nums">
                 {formatCalendarDate(item.warrantyEndsAt)}
               </td>
               <td className="px-3 py-3">
@@ -468,8 +652,14 @@ function ObjectsTable({
                 />
               </td>
               {canEdit ? (
-                <td className="px-3 py-3">
-                  <Button type="button" variant="outline" size="sm" onClick={() => onEdit(item)}>
+                <td className="px-3 py-3 whitespace-nowrap">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className={STICKY_SCROLL_MARGIN}
+                    onClick={() => onEdit(item)}
+                  >
                     Редактировать
                   </Button>
                 </td>
@@ -511,9 +701,7 @@ function ObjectsCards({
                   </Badge>
                 ) : null}
               </h2>
-              <p className="text-sm whitespace-normal wrap-break-word [overflow-wrap:anywhere]">
-                {emptyDash(item.address)}
-              </p>
+              <p className="text-sm whitespace-normal wrap-break-word">{emptyDash(item.address)}</p>
               <p className="text-sm">
                 Принят в эксплуатацию: {formatCalendarDate(item.commissionedAt)}
               </p>
@@ -526,7 +714,12 @@ function ObjectsCards({
                 onDirectoryLink={() => onDirectoryLink(item)}
               />
               {canEdit ? (
-                <Button type="button" variant="outline" onClick={() => onEdit(item)}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className={STICKY_SCROLL_MARGIN}
+                  onClick={() => onEdit(item)}
+                >
                   Редактировать
                 </Button>
               ) : null}
@@ -595,7 +788,7 @@ function ResponsibleCell({
           type="button"
           variant="ghost"
           size="sm"
-          className="w-fit"
+          className={`w-fit ${STICKY_SCROLL_MARGIN}`}
           onClick={() => setExpanded((value) => !value)}
         >
           {expanded ? 'Свернуть' : `Ещё ${linked.length - 3}`}
@@ -606,7 +799,7 @@ function ResponsibleCell({
           type="button"
           variant="outline"
           size="sm"
-          className="w-fit"
+          className={`w-fit ${STICKY_SCROLL_MARGIN}`}
           onClick={unmatched ? onDirectoryLink : onAssign}
         >
           {unmatched ? 'Связать' : linked.length > 0 ? 'Изменить привязку' : 'Назначить'}

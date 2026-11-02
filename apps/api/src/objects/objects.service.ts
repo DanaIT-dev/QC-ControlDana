@@ -21,6 +21,7 @@ import {
   DuplicateValueError,
   isOversightRole,
   parseManualObjectInput,
+  resolvePropertyObjectDateUpdate,
   StaleWriteError,
   ValidationError,
 } from '@sgr-registry/domain';
@@ -329,12 +330,39 @@ export class ObjectsService {
     const ctx = actorContext(user, request);
     try {
       const updated = await this.prisma.client.$transaction(async (tx) => {
+        const current = await tx.propertyObject.findUnique({
+          where: { id: objectId },
+          select: { commissionedAt: true, warrantyEndsAt: true },
+        });
+        if (!current) {
+          throw new NotFoundException('Запись не найдена');
+        }
+        const dates = resolvePropertyObjectDateUpdate({
+          currentCommissionedAt: current.commissionedAt
+            ? calendarDateInTimeZone(current.commissionedAt, BUSINESS_TIME_ZONE)
+            : null,
+          currentWarrantyEndsAt: current.warrantyEndsAt
+            ? calendarDateInTimeZone(current.warrantyEndsAt, BUSINESS_TIME_ZONE)
+            : null,
+          commissionedAt: parsed.commissionedAt,
+          warrantyEndsAt: parsed.warrantyEndsAt,
+        });
         const row = await updatePropertyObjectViaDefiner(tx, {
           id: objectId,
           expectedVersion: parsed.expectedVersion,
           name: input.name,
           address: input.address,
           active: parsed.active ?? null,
+          commissionedAt:
+            dates.setCommissionedAt && dates.commissionedAt
+              ? calendarDateToUtcNoon(dates.commissionedAt)
+              : null,
+          setCommissionedAt: dates.setCommissionedAt,
+          warrantyEndsAt:
+            dates.setWarrantyEndsAt && dates.warrantyEndsAt
+              ? calendarDateToUtcNoon(dates.warrantyEndsAt)
+              : null,
+          setWarrantyEndsAt: dates.setWarrantyEndsAt,
           actorUserId: user.id,
           actorName: user.fullName,
           requestId: ctx.requestId,
