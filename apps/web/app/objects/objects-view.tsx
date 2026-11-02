@@ -587,6 +587,8 @@ function ObjectsTable({
   const columns = objectTableColumns(containerWidth, canEdit);
   const headerClass =
     'relative z-20 border-b bg-card px-3 py-2 align-bottom leading-snug shadow-[0_1px_0_0_var(--border)]';
+  const dataCellClass =
+    'px-3 py-3 transition-colors duration-150 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-muted/80';
   return (
     <div
       ref={scrollRef}
@@ -623,26 +625,25 @@ function ObjectsTable({
         </thead>
         <tbody>
           {data.items.map((item) => (
-            <tr
-              key={item.id}
-              className="border-b align-top has-[:focus-visible]:bg-muted/40 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-muted/40"
-            >
-              <td className="px-3 py-3 font-medium wrap-break-word">
+            <tr key={item.id} className="border-b align-top has-[:focus-visible]:bg-muted/40">
+              <td className={`${dataCellClass} font-medium wrap-break-word`}>
                 <span className="inline-flex flex-wrap items-center gap-2">
                   {item.name}
                   {item.active === false ? <Badge variant="outline">Неактивен</Badge> : null}
                 </span>
               </td>
-              <td className="px-3 py-3 whitespace-normal wrap-break-word text-muted-foreground">
+              <td
+                className={`${dataCellClass} whitespace-normal wrap-break-word text-muted-foreground`}
+              >
                 {emptyDash(item.address)}
               </td>
-              <td className="px-3 py-3 whitespace-nowrap tabular-nums">
+              <td className={`${dataCellClass} whitespace-nowrap tabular-nums`}>
                 {formatCalendarDate(item.commissionedAt)}
               </td>
-              <td className="px-3 py-3 whitespace-nowrap tabular-nums">
+              <td className={`${dataCellClass} whitespace-nowrap tabular-nums`}>
                 {formatCalendarDate(item.warrantyEndsAt)}
               </td>
-              <td className="px-3 py-3">
+              <td className={dataCellClass}>
                 <ResponsibleCell
                   engineers={item.responsibleEngineers}
                   directoryEngineer={item.responsibleEngineer}
@@ -652,7 +653,7 @@ function ObjectsTable({
                 />
               </td>
               {canEdit ? (
-                <td className="px-3 py-3 whitespace-nowrap">
+                <td className={`${dataCellClass} whitespace-nowrap`}>
                   <Button
                     type="button"
                     variant="outline"

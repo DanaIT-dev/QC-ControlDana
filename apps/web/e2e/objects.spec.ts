@@ -520,14 +520,21 @@ test.describe('objects directory', () => {
     await page.keyboard.press('Escape');
 
     const row = page.locator('tbody tr').first();
+    const nameCell = row.locator('td').nth(0);
+    const addressCellInRow = row.locator('td').nth(1);
     await page.mouse.move(0, 0);
-    const resting = await row.evaluate((element) => getComputedStyle(element).backgroundColor);
-    await row.hover();
-    const hovered = await row.evaluate((element) => getComputedStyle(element).backgroundColor);
+    const resting = await nameCell.evaluate((element) => getComputedStyle(element).backgroundColor);
+    await nameCell.hover();
+    const hovered = await nameCell.evaluate((element) => getComputedStyle(element).backgroundColor);
+    const neighbor = await addressCellInRow.evaluate(
+      (element) => getComputedStyle(element).backgroundColor,
+    );
     expect(hovered).not.toBe(resting);
+    expect(neighbor).toBe(resting);
+    await page.mouse.move(0, 0);
     await row.getByRole('button', { name: 'Редактировать' }).focus();
     const focused = await row.evaluate((element) => getComputedStyle(element).backgroundColor);
-    expect(focused).not.toBe(resting);
+    expect(focused).not.toBe('rgba(0, 0, 0, 0)');
 
     await page.setViewportSize({ width: 1024, height: 768 });
     await page.getByLabel('Поиск по объектам').fill(name);
