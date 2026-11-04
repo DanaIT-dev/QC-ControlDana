@@ -37,7 +37,11 @@ import {
   createPropertyObjectViaDefiner,
   updatePropertyObjectViaDefiner,
 } from '@sgr-registry/database';
-import { notifyOrganizationIncomplete, OutboxWriter } from '@sgr-registry/jobs';
+import {
+  notifyNewlyEligibleClosureApprovers,
+  notifyOrganizationIncomplete,
+  OutboxWriter,
+} from '@sgr-registry/jobs';
 import type { FastifyRequest } from 'fastify';
 import type { AuthenticatedUser } from '../auth/authenticated-user.js';
 import { PrismaService } from '../auth/prisma.tokens.js';
@@ -605,9 +609,10 @@ export class ReferenceDataService {
     const name = normalizeReferenceName(input.name);
     const address = normalizeOptionalText(input.address, 'address', REFERENCE_ADDRESS_MAX);
     const ctx = actorContext(actor, request);
+    const outboxIds: string[] = [];
     try {
-      return await this.prisma.client.$transaction(async (tx) => {
-        const created = await createPropertyObjectViaDefiner(tx, {
+      const created = await this.prisma.client.$transaction(async (tx) => {
+        const row = await createPropertyObjectViaDefiner(tx, {
           name,
           address,
           commissionedAt: optionalDate(input.commissionedAt, 'commissionedAt'),
@@ -620,14 +625,19 @@ export class ReferenceDataService {
         });
         if (input.responsibleEngineerIds) {
           await syncObjectEngineers(tx, {
-            objectId: created.id,
+            objectId: row.id,
             objectActive: true,
             engineerIds: input.responsibleEngineerIds,
             ctx,
           });
+          outboxIds.push(
+            ...(await notifyNewlyEligibleClosureApprovers(this.outboxWriter, tx, row.id)),
+          );
         }
-        return tx.propertyObject.findUniqueOrThrow({ where: { id: created.id } });
+        return tx.propertyObject.findUniqueOrThrow({ where: { id: row.id } });
       });
+      await this.outboxWriter.enqueue(outboxIds);
+      return created;
     } catch (error) {
       throw mapPropertyObjectWriteError(error);
     }
@@ -646,8 +656,9 @@ export class ReferenceDataService {
     }
     const name = normalizeReferenceName(input.name);
     const address = normalizeOptionalText(input.address, 'address', REFERENCE_ADDRESS_MAX);
+    const outboxIds: string[] = [];
     try {
-      return await this.prisma.client.$transaction(async (tx) => {
+      const updated = await this.prisma.client.$transaction(async (tx) => {
         const current = await tx.propertyObject.findUnique({ where: { id } });
         if (!current) {
           throw new NotFoundException('Запись не найдена');
@@ -690,9 +701,12 @@ export class ReferenceDataService {
             engineerIds: input.responsibleEngineerIds,
             ctx,
           });
+          outboxIds.push(...(await notifyNewlyEligibleClosureApprovers(this.outboxWriter, tx, id)));
         }
         return tx.propertyObject.findUniqueOrThrow({ where: { id } });
       });
+      await this.outboxWriter.enqueue(outboxIds);
+      return updated;
     } catch (error) {
       throw mapPropertyObjectWriteError(error);
     }

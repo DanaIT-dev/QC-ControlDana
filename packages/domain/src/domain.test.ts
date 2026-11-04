@@ -447,6 +447,7 @@ describe('capabilities', () => {
       'REOPEN_DEFECT',
       'SUBMIT_DEFECT_FOR_INSPECTION',
       'CLOSE_ACT_WITHOUT_INSPECTION',
+      'DECIDE_ACT_CLOSURE_WITHOUT_INSPECTION',
       'ACCEPT_DEFECT_REPAIR',
       'REJECT_DEFECT_REPAIR',
       'MANAGE_PROPOSALS',
@@ -496,6 +497,8 @@ describe('capabilities', () => {
       'REOPEN_DEFECT',
       'SUBMIT_DEFECT_FOR_INSPECTION',
       'CLOSE_ACT_WITHOUT_INSPECTION',
+      'REQUEST_ACT_CLOSURE_WITHOUT_INSPECTION',
+      'DECIDE_ACT_CLOSURE_WITHOUT_INSPECTION',
       'ACCEPT_DEFECT_REPAIR',
       'REJECT_DEFECT_REPAIR',
       'VIEW_PROPOSAL_A',
@@ -523,7 +526,9 @@ describe('capabilities', () => {
     expect(hasCapability('SUPER_ADMIN', 'MANAGE_DEFECT_FINANCIALS')).toBe(true);
     expect(hasCapability('SUPER_ADMIN', 'REVIEW_ANALYTICS_INSIGHTS')).toBe(true);
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).toContain('SUBMIT_DEFECT_FOR_INSPECTION');
-    expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('CLOSE_ACT_WITHOUT_INSPECTION');
+    expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain(
+      'CLOSE_ACT_WITHOUT_INSPECTION',
+    );
     expect(capabilitiesForRole('PENDING_ROLE')).not.toContain('SUBMIT_DEFECT_FOR_INSPECTION');
     expect(capabilitiesForRole('PENDING_ROLE')).not.toContain('CLOSE_ACT_WITHOUT_INSPECTION');
     expect(capabilitiesForRole('ADMIN')).toContain('ACCEPT_DEFECT_REPAIR');
@@ -567,7 +572,18 @@ describe('capabilities', () => {
     expect(canManageSystemSettings('SGR_MANAGER')).toBe(false);
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('VIEW_ACT_CHAT');
     expect(capabilitiesForRole('SUPER_ADMIN')).toEqual([...CAPABILITIES]);
-    expect(capabilitiesForRole('MANAGER')).toEqual(capabilitiesForRole('ADMIN'));
+    expect(capabilitiesForRole('MANAGER')).toEqual(
+      capabilitiesForRole('ADMIN').filter(
+        (capability) =>
+          capability !== 'CLOSE_ACT_WITHOUT_INSPECTION' &&
+          capability !== 'DECIDE_ACT_CLOSURE_WITHOUT_INSPECTION',
+      ),
+    );
+    expect(capabilitiesForRole('MANAGER')).not.toContain('CLOSE_ACT_WITHOUT_INSPECTION');
+    expect(capabilitiesForRole('MANAGER')).not.toContain('REQUEST_ACT_CLOSURE_WITHOUT_INSPECTION');
+    expect(capabilitiesForRole('MANAGER')).not.toContain('DECIDE_ACT_CLOSURE_WITHOUT_INSPECTION');
+    expect(capabilitiesForRole('MANAGER')).toContain('SUBMIT_DEFECT_FOR_INSPECTION');
+    expect(capabilitiesForRole('MANAGER')).toContain('ACCEPT_DEFECT_REPAIR');
     expect(capabilitiesForRole('MANAGER')).not.toContain('MANAGE_ADMIN_GRANTS');
     expect(roleLabel('MANAGER')).toBe('Руководитель');
     expect(roleLabel('SGR_MANAGER')).toBe('Руководитель СГР');

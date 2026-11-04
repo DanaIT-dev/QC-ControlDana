@@ -6,55 +6,61 @@
 
 Граница доступа `RESPONSIBLE_ENGINEER` — закреплённые объекты (`PropertyObjectEngineer`, активные строки с `unassignedAt IS NULL`). Назначение инженера на `DefectItem` — операционная принадлежность работы, а не security scope.
 
-`SUBMIT_DEFECT_FOR_INSPECTION` и `CLOSE_ACT_WITHOUT_INSPECTION` — разные полномочия. Первое передаёт дефект с виновной организацией на проверку. Второе закрывает весь акт без подтверждения устранения и фиксирует сотрудника, дату и причину. Обычная приёмка (`ACCEPT_DEFECT_REPAIR`) при этом не расширяется. `SUPER_ADMIN` имеет оба полномочия через полный набор capabilities. `PENDING_ROLE` и неавторизованный пользователь не имеют ни одного. Чтение или создание акта не заменяет активное назначение на объект.
+`SUBMIT_DEFECT_FOR_INSPECTION` и закрытие без проверки — разные полномочия. Первое передаёт дефект с виновной организацией на проверку. Его сохраняют ADMIN, MANAGER, SGR_MANAGER, RESPONSIBLE_ENGINEER на закреплённом объекте и SUPER_ADMIN.
 
-| Capability                        | ADMIN | SGR_MANAGER | CONTRACTOR_ENGINEER | RESPONSIBLE_ENGINEER                      |
-| --------------------------------- | ----- | ----------- | ------------------- | ----------------------------------------- |
-| MANAGE_ADMIN_GRANTS               | нет   | нет         | нет                 | нет                                       |
-| MANAGE_USERS                      | да    | нет         | нет                 | нет                                       |
-| MANAGE_REFERENCE_DATA             | да    | да          | нет                 | нет                                       |
-| VIEW_REFERENCE_DATA               | да    | да          | нет                 | да, только объекты и организации          |
-| VIEW_SYSTEM_STATUS                | да    | нет         | нет                 | нет                                       |
-| VIEW_ALL_ACTS                     | да    | да          | нет                 | нет                                       |
-| VIEW_ORGANIZATION_ACTS            | нет   | нет         | да                  | нет                                       |
-| SUBMIT_DEFECT_FOR_INSPECTION      | да    | да          | да, историческая    | да, закреплённые активные объекты         |
-| CLOSE_ACT_WITHOUT_INSPECTION      | да    | да          | нет                 | да, закреплённые активные объекты         |
-| ACCEPT_DEFECT_REPAIR              | да    | да          | нет                 | да                                        |
-| REJECT_DEFECT_REPAIR              | да    | да          | нет                 | да                                        |
-| VIEW_ASSIGNED_DEFECTS             | —     | —           | —                   | да, все акты закреплённых объектов        |
-| CREATE_ACT                        | да    | да          | нет                 | да, только закреплённые активные объекты  |
-| START_ACT                         | да    | да          | нет                 | да, только закреплённые активные объекты  |
-| EDIT_ACT_HEADER                   | да    | да          | нет                 | да, закреплённые объекты                  |
-| ADD_DEFECT                        | да    | да          | нет                 | да, закреплённые объекты                  |
-| EDIT_DEFECT                       | да    | да          | нет                 | да, закреплённые объекты, дефект в работе |
-| EDIT_ASSIGNMENTS                  | да    | да          | нет                 | да, инженеры из состава объекта           |
-| EDIT_PLANNED_DEADLINE             | да    | да          | нет                 | да, закреплённые объекты                  |
-| EDIT_CLAIM_DEADLINE               | да    | да          | нет                 | да, закреплённые объекты                  |
-| EDIT_THIRD_PARTY_DEADLINE         | да    | да          | да                  | да, закреплённые объекты                  |
-| COMPLETE_DEFECT                   | да    | да          | нет                 | да, IN_PROGRESS на закреплённом объекте   |
-| REOPEN_DEFECT                     | да    | да          | нет                 | да, закреплённые объекты                  |
-| MANAGE_PROPOSALS                  | да    | да          | да                  | нет                                       |
-| VIEW_PROPOSAL_A                   | да    | да          | да                  | да, только чтение A                       |
-| VIEW_HISTORY                      | да    | да          | нет                 | нет                                       |
-| VIEW_ASSIGNED_HISTORY             | нет   | нет         | нет                 | да, закреплённые объекты                  |
-| VIEW_ACT_CHAT                     | да    | да          | нет                 | да, акты закреплённых объектов            |
-| CANCEL_ACT                        | да    | да          | нет                 | нет                                       |
-| VIEW_ATTACHMENTS                  | да    | да          | да                  | да, закреплённые объекты                  |
-| UPLOAD_ACT_ATTACHMENT             | да    | да          | нет                 | да, закреплённые объекты                  |
-| UPLOAD_DEFECT_ATTACHMENT          | да    | да          | да, THIRD_PARTY     | да, PHOTO/OTHER на объекте                |
-| UPLOAD_PROPOSAL_ATTACHMENT        | да    | да          | да, A/B/C           | нет                                       |
-| ARCHIVE_ATTACHMENT                | да    | да          | свои                | свои на закреплённых объектах             |
-| DOWNLOAD_ATTACHMENT               | да    | да          | READY в scope       | READY в scope                             |
-| VIEW_NOTIFICATIONS                | да    | да          | да                  | да, только свой object scope              |
-| VIEW_DEADLINE_CONTROL             | да    | да          | THIRD_PARTY         | GENERAL закреплённых объектов             |
-| VIEW_QUALITY_ANALYTICS            | да    | да          | нет                 | нет                                       |
-| VIEW_FINANCIAL_ANALYTICS          | да    | да          | нет                 | нет                                       |
-| VIEW_CROSS_ORGANIZATION_ANALYTICS | да    | да          | нет                 | нет                                       |
-| MANAGE_DEFECT_FINANCIALS          | да    | да          | нет                 | нет                                       |
-| REVIEW_ANALYTICS_INSIGHTS         | да    | да          | нет                 | нет                                       |
-| MANAGE_NOTIFICATION_SETTINGS      | да    | нет         | нет                 | нет                                       |
-| CHANGE_OWN_PASSWORD               | да    | да          | да                  | да                                        |
-| VIEW_OWN_PROFILE                  | да    | да          | да                  | да                                        |
+Закрытие без проверки — отдельный процесс. В нём участвуют только ADMIN, SGR_MANAGER, SUPER_ADMIN и ответственные инженеры объекта. Обычный MANAGER не получает уведомление, не закрывает акт напрямую и не подтверждает или отклоняет запрос. Эти права не выдаются через общую группу руководящих ролей. Организация в реквизитах дефекта права не даёт. Роль подрядчика не участвует. PENDING_ROLE и неавторизованный пользователь не участвуют.
+
+Прямое закрытие доступно закреплённому за объектом инженеру, ADMIN и SGR_MANAGER, если нет ожидающего запроса. Инженер, который уже видит акт, но не закреплён за объектом, прямое закрытие не выполняет: он отправляет запрос. Создание акта или назначение на дефект не делает инженера ответственным за объект. Если на объекте есть активные ответственные инженеры, запрос решает любой из них, кроме инициатора. ADMIN и SGR_MANAGER тогда только получают информацию и не обходят маршрут, в том числе прямым закрытием. Если ответственных инженеров нет, запрос решают ADMIN или SGR_MANAGER. SUPER_ADMIN может принять решение и закрыть акт напрямую независимо от маршрута. Инициатор не согласует собственный запрос. Обычная приёмка при этом не расширяется. В таблице ниже обычный MANAGER для этих трёх полномочий — «нет», даже если другое полномочие у него совпадает с ADMIN.
+
+| Capability                             | ADMIN                                                   | SGR_MANAGER                                             | CONTRACTOR_ENGINEER | RESPONSIBLE_ENGINEER                                 |
+| -------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------- | ------------------- | ---------------------------------------------------- |
+| MANAGE_ADMIN_GRANTS                    | нет                                                     | нет                                                     | нет                 | нет                                                  |
+| MANAGE_USERS                           | да                                                      | нет                                                     | нет                 | нет                                                  |
+| MANAGE_REFERENCE_DATA                  | да                                                      | да                                                      | нет                 | нет                                                  |
+| VIEW_REFERENCE_DATA                    | да                                                      | да                                                      | нет                 | да, только объекты и организации                     |
+| VIEW_SYSTEM_STATUS                     | да                                                      | нет                                                     | нет                 | нет                                                  |
+| VIEW_ALL_ACTS                          | да                                                      | да                                                      | нет                 | нет                                                  |
+| VIEW_ORGANIZATION_ACTS                 | нет                                                     | нет                                                     | да                  | нет                                                  |
+| SUBMIT_DEFECT_FOR_INSPECTION           | да                                                      | да                                                      | да, историческая    | да, закреплённые активные объекты                    |
+| CLOSE_ACT_WITHOUT_INSPECTION           | да, если нет ожидающего запроса                         | да, если нет ожидающего запроса                         | нет                 | да, только закрепление за объектом                   |
+| REQUEST_ACT_CLOSURE_WITHOUT_INSPECTION | нет                                                     | нет                                                     | нет                 | да, если акт уже виден и инженер не закреплён        |
+| DECIDE_ACT_CLOSURE_WITHOUT_INSPECTION  | да, только когда на объекте нет ответственных инженеров | да, только когда на объекте нет ответственных инженеров | нет                 | да, если инженер закреплён и не является инициатором |
+| ACCEPT_DEFECT_REPAIR                   | да                                                      | да                                                      | нет                 | да                                                   |
+| REJECT_DEFECT_REPAIR                   | да                                                      | да                                                      | нет                 | да                                                   |
+| VIEW_ASSIGNED_DEFECTS                  | —                                                       | —                                                       | —                   | да, все акты закреплённых объектов                   |
+| CREATE_ACT                             | да                                                      | да                                                      | нет                 | да, только закреплённые активные объекты             |
+| START_ACT                              | да                                                      | да                                                      | нет                 | да, только закреплённые активные объекты             |
+| EDIT_ACT_HEADER                        | да                                                      | да                                                      | нет                 | да, закреплённые объекты                             |
+| ADD_DEFECT                             | да                                                      | да                                                      | нет                 | да, закреплённые объекты                             |
+| EDIT_DEFECT                            | да                                                      | да                                                      | нет                 | да, закреплённые объекты, дефект в работе            |
+| EDIT_ASSIGNMENTS                       | да                                                      | да                                                      | нет                 | да, инженеры из состава объекта                      |
+| EDIT_PLANNED_DEADLINE                  | да                                                      | да                                                      | нет                 | да, закреплённые объекты                             |
+| EDIT_CLAIM_DEADLINE                    | да                                                      | да                                                      | нет                 | да, закреплённые объекты                             |
+| EDIT_THIRD_PARTY_DEADLINE              | да                                                      | да                                                      | да                  | да, закреплённые объекты                             |
+| COMPLETE_DEFECT                        | да                                                      | да                                                      | нет                 | да, IN_PROGRESS на закреплённом объекте              |
+| REOPEN_DEFECT                          | да                                                      | да                                                      | нет                 | да, закреплённые объекты                             |
+| MANAGE_PROPOSALS                       | да                                                      | да                                                      | да                  | нет                                                  |
+| VIEW_PROPOSAL_A                        | да                                                      | да                                                      | да                  | да, только чтение A                                  |
+| VIEW_HISTORY                           | да                                                      | да                                                      | нет                 | нет                                                  |
+| VIEW_ASSIGNED_HISTORY                  | нет                                                     | нет                                                     | нет                 | да, закреплённые объекты                             |
+| VIEW_ACT_CHAT                          | да                                                      | да                                                      | нет                 | да, акты закреплённых объектов                       |
+| CANCEL_ACT                             | да                                                      | да                                                      | нет                 | нет                                                  |
+| VIEW_ATTACHMENTS                       | да                                                      | да                                                      | да                  | да, закреплённые объекты                             |
+| UPLOAD_ACT_ATTACHMENT                  | да                                                      | да                                                      | нет                 | да, закреплённые объекты                             |
+| UPLOAD_DEFECT_ATTACHMENT               | да                                                      | да                                                      | да, THIRD_PARTY     | да, PHOTO/OTHER на объекте                           |
+| UPLOAD_PROPOSAL_ATTACHMENT             | да                                                      | да                                                      | да, A/B/C           | нет                                                  |
+| ARCHIVE_ATTACHMENT                     | да                                                      | да                                                      | свои                | свои на закреплённых объектах                        |
+| DOWNLOAD_ATTACHMENT                    | да                                                      | да                                                      | READY в scope       | READY в scope                                        |
+| VIEW_NOTIFICATIONS                     | да                                                      | да                                                      | да                  | да, только свой object scope                         |
+| VIEW_DEADLINE_CONTROL                  | да                                                      | да                                                      | THIRD_PARTY         | GENERAL закреплённых объектов                        |
+| VIEW_QUALITY_ANALYTICS                 | да                                                      | да                                                      | нет                 | нет                                                  |
+| VIEW_FINANCIAL_ANALYTICS               | да                                                      | да                                                      | нет                 | нет                                                  |
+| VIEW_CROSS_ORGANIZATION_ANALYTICS      | да                                                      | да                                                      | нет                 | нет                                                  |
+| MANAGE_DEFECT_FINANCIALS               | да                                                      | да                                                      | нет                 | нет                                                  |
+| REVIEW_ANALYTICS_INSIGHTS              | да                                                      | да                                                      | нет                 | нет                                                  |
+| MANAGE_NOTIFICATION_SETTINGS           | да                                                      | нет                                                     | нет                 | нет                                                  |
+| CHANGE_OWN_PASSWORD                    | да                                                      | да                                                      | да                  | да                                                   |
+| VIEW_OWN_PROFILE                       | да                                                      | да                                                      | да                  | да                                                   |
 
 Обычный `ADMIN` управляет обычными сотрудниками (`SGR_MANAGER`, `RESPONSIBLE_ENGINEER`, `CONTRACTOR_ENGINEER`) и назначает рабочую роль пользователю в `PENDING_ROLE`. Он не назначает и не снимает `ADMIN`, не создаёт `SUPER_ADMIN`, не меняет и не архивирует `ADMIN`/`SUPER_ADMIN` через общий users API.
 

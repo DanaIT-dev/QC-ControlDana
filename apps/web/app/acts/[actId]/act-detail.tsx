@@ -67,7 +67,7 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
     queryFn: () => fetchActDetail(actId),
     retry: false,
   });
-  const showChat = canViewActChat(user.role);
+  const showChat = canViewActChat(user.role) && (detailQuery.data?.viewerMayMutateAct ?? true);
   const [tab, setTab] = useState(() =>
     requestedTab === 'discussion' && showChat ? 'discussion' : 'defects',
   );
@@ -103,7 +103,8 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
 
   const act = detailQuery.data;
   const showBC = canViewProposalGroupBC(user.role);
-  const showHistory = canViewHistory(user.role);
+  const showHistory = canViewHistory(user.role) && act.viewerMayMutateAct;
+  const showFiles = act.viewerMayMutateAct;
   const completion = actCompletionSummary({
     actStatus: act.status,
     closureMethod: act.closureMethod,
@@ -189,18 +190,71 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
         </div>
         <ActOperations act={act} user={user} />
       </div>
+      {act.closureRequest?.status === 'PENDING' ? (
+        <Card className="border-amber-300 bg-amber-50 shadow-none">
+          <CardHeader>
+            <CardTitle className="text-lg">Ожидает согласования закрытия без проверки</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-2 text-sm">
+            <p>Инициатор: {act.closureRequest.requestedByName}</p>
+            <p>Время запроса: {formatTimestamp(act.closureRequest.requestedAt)}</p>
+            <p>Причина: {act.closureRequest.reason}</p>
+            <p>
+              Согласующие:{' '}
+              {act.closureRequest.approverNames.length > 0
+                ? act.closureRequest.approverNames.join(', ')
+                : '—'}
+            </p>
+            <p>{act.closureRequest.routeLabel}</p>
+          </CardContent>
+        </Card>
+      ) : null}
+      {act.closureRequest?.status === 'REJECTED' && act.closureMethod == null ? (
+        <Card className="shadow-none">
+          <CardHeader>
+            <CardTitle className="text-lg">В закрытии без проверки отказано</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-2 text-sm">
+            <p>Решение принял: {act.closureRequest.decidedByName ?? '—'}</p>
+            <p>
+              Дата:{' '}
+              {act.closureRequest.decidedAt ? formatTimestamp(act.closureRequest.decidedAt) : '—'}
+            </p>
+            <p>Причина: {act.closureRequest.decisionReason ?? '—'}</p>
+          </CardContent>
+        </Card>
+      ) : null}
       {act.closureMethod === 'WITHOUT_INSPECTION' ? (
         <Card className="border-amber-300 bg-amber-50 shadow-none">
           <CardHeader>
             <CardTitle className="text-lg">Закрыт без проверки</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-2 text-sm">
-            <p>Закрыл: {act.closedWithoutInspectionByName ?? '—'}</p>
-            <p>
-              Дата:{' '}
-              {act.closedWithoutInspectionAt ? formatTimestamp(act.closedWithoutInspectionAt) : '—'}
-            </p>
-            <p>Причина: {act.closureReason ?? '—'}</p>
+            {act.closureRequest?.status === 'APPROVED' ? (
+              <>
+                <p>Инициатор: {act.closureRequest.requestedByName}</p>
+                <p>Закрытие подтвердил: {act.closureRequest.decidedByName ?? '—'}</p>
+                <p>Дата запроса: {formatTimestamp(act.closureRequest.requestedAt)}</p>
+                <p>
+                  Дата закрытия:{' '}
+                  {act.closedWithoutInspectionAt
+                    ? formatTimestamp(act.closedWithoutInspectionAt)
+                    : '—'}
+                </p>
+                <p>Причина: {act.closureRequest.reason}</p>
+              </>
+            ) : (
+              <>
+                <p>Закрыл: {act.closedWithoutInspectionByName ?? '—'}</p>
+                <p>
+                  Дата:{' '}
+                  {act.closedWithoutInspectionAt
+                    ? formatTimestamp(act.closedWithoutInspectionAt)
+                    : '—'}
+                </p>
+                <p>Причина: {act.closureReason ?? '—'}</p>
+              </>
+            )}
           </CardContent>
         </Card>
       ) : null}
@@ -275,16 +329,18 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
           </CardContent>
         </Card>
       ) : null}
-      <AttachmentsPanel
-        title="Вложения акта"
-        listPath={`/api/acts/${act.id}/attachments`}
-        uploadPath={`/api/acts/${act.id}/attachments`}
-        categories={['ACT_DOCUMENT', 'ACT_SCAN', 'OTHER']}
-        canUpload={canUploadCategory(user.role, 'ACT', 'ACT_DOCUMENT')}
-        csrfToken={user.csrfToken}
-        uploadLabel="Добавить файлы"
-        emptyLabel="Вложения отсутствуют"
-      />
+      {showFiles ? (
+        <AttachmentsPanel
+          title="Вложения акта"
+          listPath={`/api/acts/${act.id}/attachments`}
+          uploadPath={`/api/acts/${act.id}/attachments`}
+          categories={['ACT_DOCUMENT', 'ACT_SCAN', 'OTHER']}
+          canUpload={canUploadCategory(user.role, 'ACT', 'ACT_DOCUMENT')}
+          csrfToken={user.csrfToken}
+          uploadLabel="Добавить файлы"
+          emptyLabel="Вложения отсутствуют"
+        />
+      ) : null}
       <Tabs value={tab} onValueChange={setTab} className="min-w-0 max-w-full">
         <TabsList className="h-auto min-h-8 w-full max-w-full flex-wrap justify-start">
           <TabsTrigger value="defects">Дефекты</TabsTrigger>
@@ -425,30 +481,32 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
                 {!item.claimDetails && act.legacyImport ? (
                   <p className="text-sm text-muted-foreground">{importedDescriptionLabel(null)}</p>
                 ) : null}
-                <AttachmentsPanel
-                  title="Файлы и фотографии"
-                  listPath={`/api/defects/${item.id}/attachments`}
-                  uploadPath={`/api/defects/${item.id}/attachments`}
-                  categories={
-                    user.role === 'CONTRACTOR_ENGINEER'
-                      ? ['THIRD_PARTY_DOCUMENT', 'REPAIR_EVIDENCE']
-                      : user.role === 'RESPONSIBLE_ENGINEER'
-                        ? ['DEFECT_PHOTO', 'OTHER']
-                        : [
-                            'DEFECT_PHOTO',
-                            'CLAIM_DOCUMENT',
-                            'THIRD_PARTY_DOCUMENT',
-                            'REPAIR_EVIDENCE',
-                            'OTHER',
-                          ]
-                  }
-                  canUpload={(
-                    ['DEFECT_PHOTO', 'CLAIM_DOCUMENT', 'THIRD_PARTY_DOCUMENT', 'OTHER'] as const
-                  ).some((category) => canUploadCategory(user.role, 'DEFECT_ITEM', category))}
-                  csrfToken={user.csrfToken}
-                  compact
-                />
-                {item.proposalA?.id ? (
+                {showFiles ? (
+                  <AttachmentsPanel
+                    title="Файлы и фотографии"
+                    listPath={`/api/defects/${item.id}/attachments`}
+                    uploadPath={`/api/defects/${item.id}/attachments`}
+                    categories={
+                      user.role === 'CONTRACTOR_ENGINEER'
+                        ? ['THIRD_PARTY_DOCUMENT', 'REPAIR_EVIDENCE']
+                        : user.role === 'RESPONSIBLE_ENGINEER'
+                          ? ['DEFECT_PHOTO', 'OTHER']
+                          : [
+                              'DEFECT_PHOTO',
+                              'CLAIM_DOCUMENT',
+                              'THIRD_PARTY_DOCUMENT',
+                              'REPAIR_EVIDENCE',
+                              'OTHER',
+                            ]
+                    }
+                    canUpload={(
+                      ['DEFECT_PHOTO', 'CLAIM_DOCUMENT', 'THIRD_PARTY_DOCUMENT', 'OTHER'] as const
+                    ).some((category) => canUploadCategory(user.role, 'DEFECT_ITEM', category))}
+                    csrfToken={user.csrfToken}
+                    compact
+                  />
+                ) : null}
+                {showFiles && item.proposalA?.id ? (
                   <AttachmentsPanel
                     title="Документы предложения A"
                     listPath={`/api/proposals/${item.proposalA.id}/attachments`}
@@ -459,7 +517,7 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
                     compact
                   />
                 ) : null}
-                {showBC
+                {showFiles && showBC
                   ? item.proposalsBC?.map((proposal) =>
                       proposal.id ? (
                         <AttachmentsPanel
@@ -528,7 +586,7 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
                     </Badge>
                   ))}
                 </div>
-                {nextStepFor(item) ? (
+                {showFiles && nextStepFor(item) ? (
                   <p className="text-sm text-muted-foreground">{nextStepFor(item)}</p>
                 ) : null}
                 <ActOperations act={act} item={item} user={user} />

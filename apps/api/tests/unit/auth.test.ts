@@ -271,7 +271,15 @@ describe('capabilities contract', () => {
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('VIEW_HISTORY');
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('VIEW_ASSIGNED_HISTORY');
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('VIEW_ACT_CHAT');
-    expect(capabilitiesForRole('MANAGER')).toEqual(capabilitiesForRole('ADMIN'));
+    expect(capabilitiesForRole('MANAGER')).toEqual(
+      capabilitiesForRole('ADMIN').filter(
+        (capability) =>
+          capability !== 'CLOSE_ACT_WITHOUT_INSPECTION' &&
+          capability !== 'DECIDE_ACT_CLOSURE_WITHOUT_INSPECTION',
+      ),
+    );
+    expect(capabilitiesForRole('MANAGER')).not.toContain('REQUEST_ACT_CLOSURE_WITHOUT_INSPECTION');
+    expect(capabilitiesForRole('MANAGER')).toContain('SUBMIT_DEFECT_FOR_INSPECTION');
     expect(capabilitiesForRole('ADMIN')).toContain('VIEW_ACT_CHAT');
   });
 });

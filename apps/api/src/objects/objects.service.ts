@@ -1,4 +1,5 @@
 import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { notifyNewlyEligibleClosureApprovers, OutboxWriter } from '@sgr-registry/jobs';
 import {
   createPropertyObjectRequestSchema,
   linkObjectResponsibleEngineerSchema,
@@ -61,7 +62,10 @@ const DIRECTORY_ENGINEER_SELECT = {
 
 @Injectable()
 export class ObjectsService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(OutboxWriter) private readonly outboxWriter: OutboxWriter,
+  ) {}
 
   async list(
     user: AuthenticatedUser,
@@ -263,6 +267,7 @@ export class ObjectsService {
     const engineerIds = parsed.responsibleEngineerIds;
     const hasEngineerIds = (engineerIds?.length ?? 0) > 0;
     const ctx = actorContext(user, request);
+    const outboxIds: string[] = [];
     try {
       const created = await this.prisma.client.$transaction(async (tx) => {
         const row = await createPropertyObjectViaDefiner(tx, {
@@ -283,9 +288,13 @@ export class ObjectsService {
             engineerIds,
             ctx,
           });
+          outboxIds.push(
+            ...(await notifyNewlyEligibleClosureApprovers(this.outboxWriter, tx, row.id)),
+          );
         }
         return row;
       });
+      await this.outboxWriter.enqueue(outboxIds);
       return {
         id: created.id,
         name: created.name,
@@ -328,6 +337,7 @@ export class ObjectsService {
       address: parsed.address,
     });
     const ctx = actorContext(user, request);
+    const outboxIds: string[] = [];
     try {
       const updated = await this.prisma.client.$transaction(async (tx) => {
         const current = await tx.propertyObject.findUnique({
@@ -374,9 +384,13 @@ export class ObjectsService {
             engineerIds: parsed.responsibleEngineerIds,
             ctx,
           });
+          outboxIds.push(
+            ...(await notifyNewlyEligibleClosureApprovers(this.outboxWriter, tx, objectId)),
+          );
         }
         return row;
       });
+      await this.outboxWriter.enqueue(outboxIds);
       return {
         id: updated.id,
         name: updated.name,
@@ -411,7 +425,7 @@ export class ObjectsService {
     const ctx = actorContext(user, request);
     if (input.userIds) {
       const engineerIds = input.userIds;
-      await this.prisma.client.$transaction(async (tx) => {
+      const outboxIds = await this.prisma.client.$transaction(async (tx) => {
         const object = await tx.propertyObject.findUnique({ where: { id: objectId } });
         if (!object) {
           throw new NotFoundException('Запись не найдена');
@@ -422,7 +436,9 @@ export class ObjectsService {
           engineerIds,
           ctx,
         });
+        return notifyNewlyEligibleClosureApprovers(this.outboxWriter, tx, objectId);
       });
+      await this.outboxWriter.enqueue(outboxIds);
       return { ok: true };
     }
     if (input.userId === undefined) {
@@ -451,6 +467,10 @@ export class ObjectsService {
           matchResult: 'MATCHED',
         });
       }
+      const outboxIds = await this.prisma.client.$transaction((tx) =>
+        notifyNewlyEligibleClosureApprovers(this.outboxWriter, tx, objectId),
+      );
+      await this.outboxWriter.enqueue(outboxIds);
     } catch (error) {
       throw mapDirectoryLinkError(error);
     }

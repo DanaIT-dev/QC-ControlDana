@@ -238,6 +238,22 @@ export const closeActWithoutInspectionRequestSchema = z
   })
   .strict();
 
+export const requestActClosureWithoutInspectionSchema = z
+  .object({
+    reason: z.string(),
+  })
+  .strict();
+
+export const decideActClosureWithoutInspectionSchema = z
+  .object({
+    requestId: uuid,
+    expectedVersion: expectedVersionSchema,
+    defectFingerprint: z.string(),
+    decision: z.enum(['APPROVE', 'REJECT']),
+    reason: z.string().optional(),
+  })
+  .strict();
+
 export const reopenDefectRequestSchema = z
   .object({
     expectedVersion: expectedVersionSchema,

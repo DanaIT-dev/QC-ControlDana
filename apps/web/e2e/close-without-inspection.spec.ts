@@ -84,6 +84,9 @@ test('engineer submits a defect and closes the act without inspection', async ({
   await page.goto(actUrl);
   await expect(page.getByRole('button', { name: 'Передать на проверку' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Закрыть акт без проверки' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Запросить закрытие без проверки' })).toHaveCount(
+    0,
+  );
 
   for (const viewport of VIEWPORTS) {
     await page.setViewportSize({ width: viewport.width, height: viewport.height });

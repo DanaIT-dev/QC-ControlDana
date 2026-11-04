@@ -3,11 +3,14 @@ import {
   buildOccurrenceKey,
   calendarDateInTimeZone,
   daysUntilDeadline,
+  displayActNumber,
+  displayObjectName,
   effectiveDeadlineOf,
   notificationTitle,
   overdueDaysOf,
   reachedEscalationThresholds,
   shouldBumpGeneralCycle,
+  uniqueRecipientIds,
   type NotificationType,
 } from '@sgr-registry/domain';
 import { writeAuditLog } from './audit-writer.js';
@@ -82,6 +85,7 @@ export async function writeDomainOutbox(
     threshold?: number | null;
     organizationId?: string | null;
     missingFields?: string[];
+    includeSuperAdmin?: boolean;
   },
 ): Promise<string> {
   return writer.create(tx, {
@@ -102,6 +106,7 @@ export async function writeDomainOutbox(
       threshold: input.threshold ?? null,
       organizationId: input.organizationId ?? null,
       missingFields: input.missingFields ?? null,
+      includeSuperAdmin: input.includeSuperAdmin === true,
     },
   });
 }
@@ -308,10 +313,258 @@ export async function notifyDeadlineActivated(
   ];
 }
 
+const CLOSURE_NOTICE_ROLES = [
+  'ADMIN',
+  'SGR_MANAGER',
+  'SUPER_ADMIN',
+  'RESPONSIBLE_ENGINEER',
+] as const;
+
+async function closureNoticeRecipientIds(tx: OutboxTx, ids: string[]): Promise<string[]> {
+  if (ids.length === 0) {
+    return [];
+  }
+  const rows = await tx.user.findMany({
+    where: {
+      id: { in: uniqueRecipientIds(ids) },
+      status: 'ACTIVE',
+      role: { in: [...CLOSURE_NOTICE_ROLES] },
+    },
+    select: { id: true },
+  });
+  return rows.map((row) => row.id);
+}
+
+async function closureActLabel(tx: OutboxTx, actId: string) {
+  const act = await tx.act.findUniqueOrThrow({
+    where: { id: actId },
+    select: {
+      officialNumber: true,
+      sourceActNumberRaw: true,
+      propertyObject: { select: { name: true } },
+    },
+  });
+  let objectName = act.propertyObject?.name ?? null;
+  if (!objectName) {
+    const rows = await tx.$queryRaw<Array<{ name: string }>>`
+      SELECT name FROM public.sgr_visible_act_object(${actId}::uuid)
+    `;
+    objectName = rows[0]?.name ?? null;
+  }
+  return {
+    number: displayActNumber({
+      officialNumber: act.officialNumber,
+      sourceActNumberRaw: act.sourceActNumberRaw,
+    }),
+    objectName: displayObjectName(objectName),
+  };
+}
+
+export async function notifyActClosureRequest(
+  writer: OutboxWriter,
+  tx: OutboxTx,
+  input: {
+    requestId: string;
+    actId: string;
+    objectId: string | null;
+    initiatorUserId: string;
+    initiatorName: string;
+    reason: string;
+  },
+): Promise<string[]> {
+  const engineers = input.objectId
+    ? await tx.propertyObjectEngineer.findMany({
+        where: {
+          propertyObjectId: input.objectId,
+          unassignedAt: null,
+          user: { status: 'ACTIVE', role: 'RESPONSIBLE_ENGINEER' },
+        },
+        select: { userId: true },
+      })
+    : [];
+  const admins = await activeRoleIds(tx, 'ADMIN');
+  const sgrManagers = await activeRoleIds(tx, 'SGR_MANAGER');
+  const superAdmins = await tx.user.findMany({
+    where: { role: 'SUPER_ADMIN', status: 'ACTIVE' },
+    select: { id: true },
+  });
+  const label = await closureActLabel(tx, input.actId);
+  const recipients = await closureNoticeRecipientIds(tx, [
+    ...engineers.map((row) => row.userId),
+    ...admins,
+    ...sgrManagers,
+    ...superAdmins.map((row) => row.id),
+  ]);
+  const broadcast = await writeDomainOutbox(writer, tx, {
+    type: 'ACT_CLOSURE_WITHOUT_INSPECTION_REQUESTED',
+    occurrenceParts: ['ACT_CLOSURE_REQUEST', input.requestId],
+    actId: input.actId,
+    defectItemId: null,
+    actorUserId: input.initiatorUserId,
+    includeSuperAdmin: true,
+    extraRecipientIds: recipients,
+    body: `Инженер ${input.initiatorName} запрашивает закрытие акта ${label.number} по объекту ${label.objectName} без проверки. Причина: ${input.reason}.`,
+  });
+  const confirmation = await writeDomainOutbox(writer, tx, {
+    type: 'ACT_CLOSURE_WITHOUT_INSPECTION_REQUESTED',
+    occurrenceParts: ['ACT_CLOSURE_REQUEST_SENT', input.requestId],
+    actId: input.actId,
+    defectItemId: null,
+    actorUserId: null,
+    automatic: true,
+    includeSuperAdmin: true,
+    extraRecipientIds: await closureNoticeRecipientIds(tx, [input.initiatorUserId]),
+    body: `Запрос на закрытие акта ${label.number} без проверки отправлен.`,
+  });
+  return [broadcast, confirmation];
+}
+
+export async function notifyActClosureDecision(
+  writer: OutboxWriter,
+  tx: OutboxTx,
+  input: {
+    requestId: string;
+    actId: string;
+    initiatorUserId: string;
+    approverName: string;
+    approved: boolean;
+    reason?: string | null;
+  },
+): Promise<string> {
+  const label = await closureActLabel(tx, input.actId);
+  const body = input.approved
+    ? `Акт ${label.number} закрыт без проверки. Закрытие согласовал ${input.approverName}.`
+    : `В закрытии акта ${label.number} без проверки отказано. Решение принял ${input.approverName}. Причина: ${input.reason ?? ''}.`;
+  return writeDomainOutbox(writer, tx, {
+    type: input.approved
+      ? 'ACT_CLOSURE_WITHOUT_INSPECTION_APPROVED'
+      : 'ACT_CLOSURE_WITHOUT_INSPECTION_REJECTED',
+    occurrenceParts: [
+      input.approved ? 'ACT_CLOSURE_APPROVED' : 'ACT_CLOSURE_REJECTED',
+      input.requestId,
+    ],
+    actId: input.actId,
+    defectItemId: null,
+    actorUserId: null,
+    automatic: true,
+    includeSuperAdmin: true,
+    extraRecipientIds: await closureNoticeRecipientIds(tx, [input.initiatorUserId]),
+    body,
+  });
+}
+
+export async function notifyActClosureRequestObsolete(
+  writer: OutboxWriter,
+  tx: OutboxTx,
+  input: { requestId: string; actId: string; initiatorUserId: string },
+): Promise<string> {
+  const label = await closureActLabel(tx, input.actId);
+  return writeDomainOutbox(writer, tx, {
+    type: 'ACT_CLOSURE_WITHOUT_INSPECTION_OBSOLETE',
+    occurrenceParts: ['ACT_CLOSURE_OBSOLETE', input.requestId],
+    actId: input.actId,
+    defectItemId: null,
+    actorUserId: null,
+    automatic: true,
+    includeSuperAdmin: true,
+    extraRecipientIds: await closureNoticeRecipientIds(tx, [input.initiatorUserId]),
+    body: `Запрос на закрытие акта ${label.number} без проверки больше не действует: акт уже завершён или аннулирован.`,
+  });
+}
+
+export async function notifyNewlyEligibleClosureApprovers(
+  writer: OutboxWriter,
+  tx: OutboxTx,
+  objectId: string,
+): Promise<string[]> {
+  const requests = await tx.actClosureRequest.findMany({
+    where: { status: 'PENDING', act: { objectId } },
+    select: {
+      id: true,
+      actId: true,
+      reason: true,
+      requestedByUserId: true,
+      requestedByName: true,
+    },
+  });
+  const ids: string[] = [];
+  for (const request of requests) {
+    const engineers = await tx.propertyObjectEngineer.findMany({
+      where: {
+        propertyObjectId: objectId,
+        unassignedAt: null,
+        user: { status: 'ACTIVE', role: 'RESPONSIBLE_ENGINEER' },
+      },
+      select: { userId: true },
+    });
+    const eligible =
+      engineers.length > 0
+        ? engineers.map((row) => row.userId)
+        : [
+            ...(await activeRoleIds(tx, 'ADMIN')),
+            ...(await activeRoleIds(tx, 'SGR_MANAGER')),
+            ...(
+              await tx.user.findMany({
+                where: { role: 'SUPER_ADMIN', status: 'ACTIVE' },
+                select: { id: true },
+              })
+            ).map((row) => row.id),
+          ];
+    const already = await tx.notificationRecipient.findMany({
+      where: {
+        revokedAt: null,
+        event: { actId: request.actId, type: 'ACT_CLOSURE_WITHOUT_INSPECTION_REQUESTED' },
+      },
+      select: { userId: true },
+    });
+    const queued = await tx.outboxEvent.findMany({
+      where: {
+        type: 'ACT_CLOSURE_WITHOUT_INSPECTION_REQUESTED',
+        payload: { path: ['actId'], equals: request.actId },
+      },
+      select: { payload: true },
+    });
+    const known = new Set(already.map((row) => row.userId));
+    for (const row of queued) {
+      const ids = (row.payload as { extraRecipientIds?: string[] }).extraRecipientIds ?? [];
+      for (const id of ids) {
+        known.add(id);
+      }
+    }
+    const fresh = await closureNoticeRecipientIds(
+      tx,
+      eligible.filter((id) => id !== request.requestedByUserId && !known.has(id)),
+    );
+    if (fresh.length === 0) {
+      continue;
+    }
+    const label = await closureActLabel(tx, request.actId);
+    ids.push(
+      await writeDomainOutbox(writer, tx, {
+        type: 'ACT_CLOSURE_WITHOUT_INSPECTION_REQUESTED',
+        occurrenceParts: ['ACT_CLOSURE_REQUEST_ROUTE', request.id, fresh.slice().sort().join(',')],
+        actId: request.actId,
+        defectItemId: null,
+        actorUserId: request.requestedByUserId,
+        includeSuperAdmin: true,
+        extraRecipientIds: fresh,
+        body: `Инженер ${request.requestedByName} запрашивает закрытие акта ${label.number} по объекту ${label.objectName} без проверки. Причина: ${request.reason}.`,
+      }),
+    );
+  }
+  return ids;
+}
+
 export async function notifyActClosedWithoutInspection(
   writer: OutboxWriter,
   tx: OutboxTx,
-  input: { actId: string; objectId: string | null; actorUserId: string; reason: string },
+  input: {
+    actId: string;
+    objectId: string | null;
+    actorUserId: string;
+    reason: string;
+    omitRecipientIds?: string[];
+  },
 ): Promise<string> {
   const managers = await activeRoleIds(tx, 'SGR_MANAGER');
   const admins = await activeRoleIds(tx, 'ADMIN');
@@ -329,18 +582,28 @@ export async function notifyActClosedWithoutInspection(
     tx,
     liable.map((row) => row.organizationId),
   );
+  const omitted = new Set(input.omitRecipientIds ?? []);
+  const candidates = [
+    ...managers,
+    ...admins,
+    ...engineers.map((row) => row.userId),
+    ...contractors,
+  ].filter((id) => !omitted.has(id));
+  const allowed = await tx.user.findMany({
+    where: {
+      id: { in: uniqueRecipientIds(candidates) },
+      status: 'ACTIVE',
+      role: { not: 'MANAGER' },
+    },
+    select: { id: true },
+  });
   return writeDomainOutbox(writer, tx, {
     type: 'ACT_CLOSED_WITHOUT_INSPECTION',
     occurrenceParts: ['ACT_CLOSED_WITHOUT_INSPECTION', input.actId],
     actId: input.actId,
     defectItemId: null,
     actorUserId: input.actorUserId,
-    extraRecipientIds: [
-      ...managers,
-      ...admins,
-      ...engineers.map((row) => row.userId),
-      ...contractors,
-    ],
+    extraRecipientIds: allowed.map((row) => row.id),
     body: `Акт закрыт без проверки. Причина: ${input.reason}`,
   });
 }

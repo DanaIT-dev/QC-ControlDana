@@ -9,6 +9,8 @@ import {
   completeDefectRequestSchema,
   cancelActRequestSchema,
   closeActWithoutInspectionRequestSchema,
+  decideActClosureWithoutInspectionSchema,
+  requestActClosureWithoutInspectionSchema,
   createActRequestSchema,
   historyQuerySchema,
   patchActHeaderRequestSchema,
@@ -49,6 +51,10 @@ import {
   calendarDateToUtcNoon,
   resolveCompletionInstant,
   assertInstantNotBefore,
+  canDecideActClosureRequest,
+  canDirectCloseActWithoutInspection,
+  canRequestActClosureWithoutInspection,
+  closureDefectFingerprint,
   canViewAssignedHistory,
   canViewFullHistory,
   canViewHistory,
@@ -101,6 +107,9 @@ import { resolveRegistryAccessScope } from '../registry/registry-access-scope.js
 import {
   notifyActCancelled,
   notifyActClosedWithoutInspection,
+  notifyActClosureDecision,
+  notifyActClosureRequest,
+  notifyActClosureRequestObsolete,
   notifyContractorsAssigned,
   notifyDeadlineActivated,
   notifyDeadlineChanges,
@@ -952,12 +961,12 @@ export class OperationsService {
               version: latest.version,
               status: latest.status,
               actStatus: currentAct.status,
-              outboxIds: [] as string[],
+              outboxIds: await this.obsoletePendingClosureRequests(tx, item.actId),
             };
           }
           throw new StaleWriteError();
         }
-        await this.syncActStatus(tx, item.actId);
+        const closureNoticeIds = await this.syncActStatus(tx, item.actId);
         const fresh = await tx.defectItem.findUniqueOrThrow({ where: { id: defectItemId } });
         const currentAct = await tx.act.findUniqueOrThrow({
           where: { id: item.actId },
@@ -995,7 +1004,7 @@ export class OperationsService {
           version: fresh.version,
           status: fresh.status,
           actStatus: currentAct.status,
-          outboxIds,
+          outboxIds: [...outboxIds, ...closureNoticeIds],
         };
       });
     } catch (error) {
@@ -1092,7 +1101,7 @@ export class OperationsService {
         }
         throw new StaleWriteError();
       }
-      await this.syncActStatus(tx, item.actId);
+      const closureNoticeIds = await this.syncActStatus(tx, item.actId);
       const fresh = await tx.defectItem.findUniqueOrThrow({ where: { id: defectItemId } });
       const outboxIds = await notifyDefectSubmittedForInspection(this.outboxWriter, tx, {
         actId: item.actId,
@@ -1123,7 +1132,12 @@ export class OperationsService {
         oldValue: toJsonValue({ status: 'IN_PROGRESS' }),
         newValue: toJsonValue({ status: 'PENDING_INSPECTION', comment }),
       });
-      return { id: fresh.id, version: fresh.version, status: fresh.status, outboxIds };
+      return {
+        id: fresh.id,
+        version: fresh.version,
+        status: fresh.status,
+        outboxIds: [...outboxIds, ...closureNoticeIds],
+      };
     });
     await this.outboxWriter.enqueue(result.outboxIds);
     return { id: result.id, version: result.version, status: result.status };
@@ -1186,7 +1200,7 @@ export class OperationsService {
             version: latest.version,
             status: latest.status,
             actStatus: act.status,
-            outboxIds: [] as string[],
+            outboxIds: await this.obsoletePendingClosureRequests(tx, item.actId),
           };
         }
         throw new StaleWriteError();
@@ -1212,7 +1226,7 @@ export class OperationsService {
             version: latest.version,
             status: latest.status,
             actStatus: act.status,
-            outboxIds: [] as string[],
+            outboxIds: await this.obsoletePendingClosureRequests(tx, item.actId),
           };
         }
         throw new StaleWriteError();
@@ -1223,7 +1237,7 @@ export class OperationsService {
         userId: user.id,
         reviewedAt: acceptedAt,
       });
-      await this.syncActStatus(tx, item.actId);
+      const closureNoticeIds = await this.syncActStatus(tx, item.actId);
       const fresh = await tx.defectItem.findUniqueOrThrow({ where: { id: defectItemId } });
       const outboxIds = await notifyDefectStatus(this.outboxWriter, tx, {
         type: 'DEFECT_COMPLETED',
@@ -1258,7 +1272,7 @@ export class OperationsService {
         version: fresh.version,
         status: fresh.status,
         actStatus: currentAct.status,
-        outboxIds,
+        outboxIds: [...outboxIds, ...closureNoticeIds],
       };
     });
     await this.outboxWriter.enqueue(result.outboxIds);
@@ -1325,7 +1339,7 @@ export class OperationsService {
         reviewedAt: rejectedAt,
         rejectionReason: reason,
       });
-      await this.syncActStatus(tx, item.actId);
+      const closureNoticeIds = await this.syncActStatus(tx, item.actId);
       const fresh = await tx.defectItem.findUniqueOrThrow({ where: { id: defectItemId } });
       const outboxIds = await notifyDefectRepairRejected(this.outboxWriter, tx, {
         actId: item.actId,
@@ -1351,7 +1365,12 @@ export class OperationsService {
         oldValue: toJsonValue({ status: 'PENDING_INSPECTION' }),
         newValue: toJsonValue({ status: 'IN_PROGRESS', reason }),
       });
-      return { id: fresh.id, version: fresh.version, status: fresh.status, outboxIds };
+      return {
+        id: fresh.id,
+        version: fresh.version,
+        status: fresh.status,
+        outboxIds: [...outboxIds, ...closureNoticeIds],
+      };
     });
     await this.outboxWriter.enqueue(result.outboxIds);
     return { id: result.id, version: result.version, status: result.status };
@@ -1366,9 +1385,12 @@ export class OperationsService {
     const input = parseCommandBody(closeActWithoutInspectionRequestSchema, body);
     const reason = normalizeRequiredReason(input.reason);
     const ctx = actorContext(user, request);
-    await this.requireVisibleAct(user, actId);
+    if (user.role === 'MANAGER') {
+      throw new ForbiddenException('Недостаточно прав');
+    }
+    await this.requireVisibleAct(user, actId, { includeOwnActs: true });
     const result = await this.prisma.client.$transaction(async (tx) => {
-      const locked = await this.lockVisibleAct(tx, user, actId);
+      const locked = await this.lockVisibleAct(tx, user, actId, { includeOwnActs: true });
       if (locked.closureMethod === 'WITHOUT_INSPECTION') {
         return {
           id: locked.id,
@@ -1381,6 +1403,27 @@ export class OperationsService {
           idempotent: true,
           outboxIds: [] as string[],
         };
+      }
+      const assigned = await this.activeObjectEngineer(tx, locked.objectId, user.id);
+      const pending = await tx.actClosureRequest.findFirst({
+        where: { actId, status: 'PENDING' },
+        select: { id: true },
+      });
+      if (
+        !canDirectCloseActWithoutInspection({
+          role: user.role,
+          assignedToObject: assigned,
+          pendingRequest: pending != null,
+        })
+      ) {
+        if (pending && user.role !== 'SUPER_ADMIN') {
+          throw new InvalidTransitionError(
+            'Есть запрос на согласование закрытия без проверки. Его нельзя обойти прямым закрытием.',
+          );
+        }
+        throw new ForbiddenException(
+          'Прямое закрытие доступно инженеру, закреплённому за объектом, администратору, руководителю СГР или суперадминистратору.',
+        );
       }
       if (locked.status === 'CANCELLED') {
         throw new InvalidTransitionError('Аннулированный акт нельзя закрыть без проверки');
@@ -1396,128 +1439,17 @@ export class OperationsService {
       if (locked.version !== input.expectedVersion) {
         throw new StaleWriteError();
       }
-      const defects = await tx.defectItem.findMany({
-        where: { actId },
-        select: {
-          id: true,
-          status: true,
-          closureMethod: true,
-        },
-      });
-      if (defects.length === 0) {
-        throw new InvalidTransitionError('В акте нет дефектов. Закрыть акт без проверки нельзя.');
-      }
-      const unfinished = defects.filter((item) => item.status !== 'COMPLETED');
-      const actor = await tx.user.findUnique({
-        where: { id: user.id },
-        select: { fullName: true },
-      });
-      const actorName = actor?.fullName.trim() ?? '';
-      if (!actorName) {
-        throw new ValidationError('actor', 'Не удалось определить сотрудника');
-      }
-      const closedAt = new Date();
-      if (unfinished.length > 0) {
-        await tx.defectInspectionAttempt.updateMany({
-          where: { defectItemId: { in: unfinished.map((item) => item.id) }, status: 'PENDING' },
-          data: {
-            status: 'TERMINATED',
-            reviewedByUserId: user.id,
-            reviewedAt: closedAt,
-            reviewComment: reason,
-            rejectionReason: null,
-          },
-        });
-        const closed = await tx.defectItem.updateMany({
-          where: {
-            id: { in: unfinished.map((item) => item.id) },
-            status: { in: ['IN_PROGRESS', 'PENDING_INSPECTION'] },
-            closureMethod: null,
-          },
-          data: {
-            status: 'COMPLETED',
-            closureMethod: 'WITHOUT_INSPECTION',
-            version: { increment: 1 },
-          },
-        });
-        if (closed.count !== unfinished.length) {
-          throw new StaleWriteError();
-        }
-        for (const item of unfinished) {
-          await tx.$executeRaw`SELECT public.sgr_satisfy_sla_clocks(${item.id}::uuid)`;
-        }
-      }
-      const updated = await tx.act.updateMany({
-        where: {
-          id: actId,
-          version: locked.version,
-          status: { in: ['IN_PROGRESS', 'COMPLETED'] },
-          closureMethod: null,
-        },
-        data: {
-          status: 'COMPLETED',
-          closureMethod: 'WITHOUT_INSPECTION',
-          closedWithoutInspectionAt: closedAt,
-          closedWithoutInspectionByUserId: user.id,
-          closedWithoutInspectionByName: actorName,
-          closureReason: reason,
-          version: { increment: 1 },
-        },
-      });
-      if (updated.count !== 1) {
-        throw new StaleWriteError();
-      }
-      const fresh = await tx.act.findUniqueOrThrow({ where: { id: actId } });
-      await writeAuditLog(tx, {
-        ...ctx,
-        action: 'ACT_CLOSED_WITHOUT_INSPECTION',
-        entityType: 'ACT',
-        entityId: actId,
+      const closed = await this.applyCloseWithoutInspection(tx, {
+        user,
+        actId,
         reason,
-        oldValue: toJsonValue({ status: 'IN_PROGRESS' }),
-        newValue: toJsonValue({
-          status: 'COMPLETED',
-          closureMethod: 'WITHOUT_INSPECTION',
-          closedByUserId: user.id,
-          closedByName: actorName,
-          unfinished: unfinished.length,
-        }),
+        ctx,
+        lockedVersion: locked.version,
       });
-      for (const item of unfinished) {
-        await writeAuditLog(tx, {
-          ...ctx,
-          action: 'DEFECT_CLOSED_WITHOUT_INSPECTION',
-          entityType: 'DEFECT_ITEM',
-          entityId: item.id,
-          parentEntityType: 'ACT',
-          parentEntityId: actId,
-          reason,
-          oldValue: toJsonValue({ status: item.status }),
-          newValue: toJsonValue({
-            status: 'COMPLETED',
-            closureMethod: 'WITHOUT_INSPECTION',
-          }),
-        });
+      if (pending && user.role === 'SUPER_ADMIN') {
+        closed.outboxIds.push(...(await this.obsoleteClosureRequest(tx, pending.id)));
       }
-      const outboxIds = [
-        await notifyActClosedWithoutInspection(this.outboxWriter, tx, {
-          actId,
-          objectId: fresh.objectId,
-          actorUserId: user.id,
-          reason,
-        }),
-      ];
-      return {
-        id: fresh.id,
-        status: fresh.status,
-        version: fresh.version,
-        closureMethod: fresh.closureMethod,
-        closedWithoutInspectionAt: fresh.closedWithoutInspectionAt?.toISOString() ?? null,
-        closedWithoutInspectionByName: fresh.closedWithoutInspectionByName,
-        closureReason: fresh.closureReason,
-        idempotent: false,
-        outboxIds,
-      };
+      return { ...closed, idempotent: false };
     });
     await this.outboxWriter.enqueue(result.outboxIds);
     return {
@@ -1529,6 +1461,292 @@ export class OperationsService {
       closedWithoutInspectionByName: result.closedWithoutInspectionByName,
       closureReason: result.closureReason,
       idempotent: result.idempotent,
+    };
+  }
+
+  async requestClosureWithoutInspection(
+    user: AuthenticatedUser,
+    actId: string,
+    body: unknown,
+    request: FastifyRequest,
+  ) {
+    const input = parseCommandBody(requestActClosureWithoutInspectionSchema, body);
+    const reason = normalizeRequiredReason(input.reason);
+    const ctx = actorContext(user, request);
+    if (user.role !== 'RESPONSIBLE_ENGINEER') {
+      throw new ForbiddenException('Недостаточно прав');
+    }
+    await this.requireVisibleAct(user, actId, { includeOwnActs: true });
+    try {
+      const result = await this.prisma.client.$transaction(async (tx) => {
+        const locked = await this.lockVisibleAct(tx, user, actId, { includeOwnActs: true });
+        this.assertActCloseable(locked);
+        if (locked.objectId == null) {
+          throw new InvalidTransitionError(
+            'У акта не указан объект, поэтому нельзя определить, кто согласует закрытие.',
+          );
+        }
+        const assigned = await this.activeObjectEngineer(tx, locked.objectId, user.id);
+        if (
+          !canRequestActClosureWithoutInspection({
+            role: user.role,
+            canReadAct: true,
+            assignedToObject: assigned,
+            pendingRequest: false,
+          })
+        ) {
+          throw new ForbiddenException(
+            'Запрос доступен инженеру, который видит акт, но не закреплён за объектом.',
+          );
+        }
+        const existing = await tx.actClosureRequest.findFirst({
+          where: { actId, status: 'PENDING' },
+        });
+        if (existing) {
+          if (existing.requestedByUserId === user.id && existing.reason === reason) {
+            return { request: existing, outboxIds: [] as string[], idempotent: true };
+          }
+          throw new InvalidTransitionError(
+            'По этому акту уже есть запрос на закрытие без проверки.',
+          );
+        }
+        const actorName = await this.requireActorName(tx, user.id);
+        const created = await tx.actClosureRequest.create({
+          data: {
+            actId,
+            status: 'PENDING',
+            reason,
+            requestedByUserId: user.id,
+            requestedByName: actorName,
+            requestedAt: new Date(),
+          },
+        });
+        await writeAuditLog(tx, {
+          ...ctx,
+          action: 'ACT_CLOSURE_WITHOUT_INSPECTION_REQUESTED',
+          entityType: 'ACT',
+          entityId: actId,
+          reason,
+          newValue: toJsonValue({
+            requestId: created.id,
+            initiatorUserId: user.id,
+            initiatorName: actorName,
+          }),
+        });
+        const outboxIds = await notifyActClosureRequest(this.outboxWriter, tx, {
+          requestId: created.id,
+          actId,
+          objectId: locked.objectId,
+          initiatorUserId: user.id,
+          initiatorName: actorName,
+          reason,
+        });
+        return { request: created, outboxIds, idempotent: false };
+      });
+      await this.outboxWriter.enqueue(result.outboxIds);
+      return presentClosureRequest(result.request, result.idempotent);
+    } catch (error) {
+      if (!isUniqueViolation(error)) {
+        throw error;
+      }
+      const existing = await this.prisma.client.actClosureRequest.findFirst({
+        where: { actId, status: 'PENDING' },
+      });
+      if (existing?.requestedByUserId === user.id && existing.reason === reason) {
+        return presentClosureRequest(existing, true);
+      }
+      throw new InvalidTransitionError('По этому акту уже есть запрос на закрытие без проверки.');
+    }
+  }
+
+  async decideClosureWithoutInspection(
+    user: AuthenticatedUser,
+    actId: string,
+    body: unknown,
+    request: FastifyRequest,
+  ) {
+    const input = parseCommandBody(decideActClosureWithoutInspectionSchema, body);
+    const ctx = actorContext(user, request);
+    if (
+      user.role === 'MANAGER' ||
+      user.role === 'PENDING_ROLE' ||
+      user.role === 'CONTRACTOR_ENGINEER' ||
+      user.role === 'UNASSIGNED'
+    ) {
+      throw new ForbiddenException('Недостаточно прав');
+    }
+    await this.requireVisibleAct(user, actId, { includeOwnActs: true });
+    const result = await this.prisma.client.$transaction(async (tx) => {
+      const locked = await this.lockVisibleAct(tx, user, actId, { includeOwnActs: true });
+      await tx.$queryRaw`SELECT id FROM public.act_closure_requests WHERE id = ${input.requestId}::uuid FOR UPDATE`;
+      const closureRequest = await tx.actClosureRequest.findFirst({
+        where: { id: input.requestId, actId },
+      });
+      if (!closureRequest) {
+        throw new NotFoundException('Запись не найдена');
+      }
+      if (closureRequest.status !== 'PENDING') {
+        const sameDecision =
+          closureRequest.decidedByUserId === user.id &&
+          ((input.decision === 'APPROVE' && closureRequest.status === 'APPROVED') ||
+            (input.decision === 'REJECT' && closureRequest.status === 'REJECTED'));
+        if (sameDecision) {
+          return {
+            request: closureRequest,
+            act: locked,
+            outboxIds: [] as string[],
+            idempotent: true,
+          };
+        }
+        throw new InvalidTransitionError('Решение по запросу уже принято.');
+      }
+      const defects = await tx.defectItem.findMany({
+        where: { actId },
+        select: { id: true, version: true, status: true },
+        orderBy: { id: 'asc' },
+      });
+      if (
+        locked.version !== input.expectedVersion ||
+        closureDefectFingerprint(defects) !== input.defectFingerprint
+      ) {
+        throw new StaleWriteError();
+      }
+      if (
+        locked.status === 'COMPLETED' ||
+        locked.status === 'CANCELLED' ||
+        locked.closureMethod != null ||
+        locked.startedAt == null
+      ) {
+        const obsoleteIds = await this.obsoleteClosureRequest(tx, closureRequest.id);
+        return {
+          request: closureRequest,
+          act: locked,
+          outboxIds: obsoleteIds,
+          idempotent: false,
+          obsolete: true,
+        };
+      }
+      const engineers = await this.activeObjectEngineers(tx, locked.objectId);
+      if (
+        !canDecideActClosureRequest({
+          actor: { id: user.id, role: user.role },
+          initiatorId: closureRequest.requestedByUserId,
+          objectId: locked.objectId,
+          activeEngineerIds: engineers.map((engineer) => engineer.id),
+        })
+      ) {
+        throw new ForbiddenException('Недостаточно прав для решения по этому запросу.');
+      }
+      const actorName = await this.requireActorName(tx, user.id);
+      const decidedAt = new Date();
+      if (input.decision === 'REJECT') {
+        const decisionReason = normalizeRequiredReason(input.reason);
+        const updated = await tx.actClosureRequest.updateMany({
+          where: { id: closureRequest.id, status: 'PENDING' },
+          data: {
+            status: 'REJECTED',
+            decisionReason,
+            decidedByUserId: user.id,
+            decidedByName: actorName,
+            decidedAt,
+          },
+        });
+        if (updated.count !== 1) {
+          throw new StaleWriteError();
+        }
+        await writeAuditLog(tx, {
+          ...ctx,
+          action: 'ACT_CLOSURE_WITHOUT_INSPECTION_REJECTED',
+          entityType: 'ACT',
+          entityId: actId,
+          reason: decisionReason,
+          newValue: toJsonValue({
+            requestId: closureRequest.id,
+            initiatorUserId: closureRequest.requestedByUserId,
+            initiatorName: closureRequest.requestedByName,
+            decidedByUserId: user.id,
+            decidedByName: actorName,
+          }),
+        });
+        const outboxIds = [
+          await notifyActClosureDecision(this.outboxWriter, tx, {
+            requestId: closureRequest.id,
+            actId,
+            initiatorUserId: closureRequest.requestedByUserId,
+            approverName: actorName,
+            approved: false,
+            reason: decisionReason,
+          }),
+        ];
+        const fresh = await tx.actClosureRequest.findUniqueOrThrow({
+          where: { id: closureRequest.id },
+        });
+        return { request: fresh, act: locked, outboxIds, idempotent: false };
+      }
+      const closed = await this.applyCloseWithoutInspection(tx, {
+        user,
+        actId,
+        reason: closureRequest.reason,
+        ctx,
+        lockedVersion: locked.version,
+        initiator: {
+          userId: closureRequest.requestedByUserId,
+          name: closureRequest.requestedByName,
+        },
+        omitRecipientIds: [closureRequest.requestedByUserId],
+      });
+      const approved = await tx.actClosureRequest.updateMany({
+        where: { id: closureRequest.id, status: 'PENDING' },
+        data: {
+          status: 'APPROVED',
+          decisionReason: null,
+          decidedByUserId: user.id,
+          decidedByName: actorName,
+          decidedAt,
+        },
+      });
+      if (approved.count !== 1) {
+        throw new StaleWriteError();
+      }
+      await writeAuditLog(tx, {
+        ...ctx,
+        action: 'ACT_CLOSURE_WITHOUT_INSPECTION_APPROVED',
+        entityType: 'ACT',
+        entityId: actId,
+        reason: closureRequest.reason,
+        newValue: toJsonValue({
+          requestId: closureRequest.id,
+          initiatorUserId: closureRequest.requestedByUserId,
+          initiatorName: closureRequest.requestedByName,
+          decidedByUserId: user.id,
+          decidedByName: actorName,
+        }),
+      });
+      closed.outboxIds.push(
+        await notifyActClosureDecision(this.outboxWriter, tx, {
+          requestId: closureRequest.id,
+          actId,
+          initiatorUserId: closureRequest.requestedByUserId,
+          approverName: actorName,
+          approved: true,
+        }),
+      );
+      const fresh = await tx.actClosureRequest.findUniqueOrThrow({
+        where: { id: closureRequest.id },
+      });
+      const act = await tx.act.findUniqueOrThrow({ where: { id: actId } });
+      return { request: fresh, act, outboxIds: closed.outboxIds, idempotent: false };
+    });
+    await this.outboxWriter.enqueue(result.outboxIds);
+    if ('obsolete' in result && result.obsolete) {
+      throw new InvalidTransitionError(
+        'Запрос больше не действует: акт уже завершён или аннулирован.',
+      );
+    }
+    return {
+      ...presentClosureRequest(result.request, result.idempotent),
+      actStatus: result.act.status,
+      closureMethod: result.act.closureMethod,
     };
   }
 
@@ -1568,7 +1786,7 @@ export class OperationsService {
           version: current.version,
           cancellationReason: current.cancellationReason,
           cancelledAt: current.cancelledAt?.toISOString() ?? null,
-          outboxIds: [] as string[],
+          outboxIds: await this.obsoletePendingClosureRequests(tx, actId),
         };
       }
       cancelAct(
@@ -1601,7 +1819,7 @@ export class OperationsService {
             version: latest.version,
             cancellationReason: latest.cancellationReason,
             cancelledAt: latest.cancelledAt?.toISOString() ?? null,
-            outboxIds: [] as string[],
+            outboxIds: await this.obsoletePendingClosureRequests(tx, actId),
           };
         }
         throw new StaleWriteError();
@@ -1612,6 +1830,7 @@ export class OperationsService {
         objectId: fresh.objectId,
         actorUserId: user.id,
       });
+      const obsoleteIds = await this.obsoletePendingClosureRequests(tx, actId);
       await writeAuditLog(tx, {
         ...ctx,
         action: 'ACT_CANCELLED',
@@ -1631,7 +1850,7 @@ export class OperationsService {
         version: fresh.version,
         cancellationReason: fresh.cancellationReason,
         cancelledAt: fresh.cancelledAt?.toISOString() ?? null,
-        outboxIds: [outboxId],
+        outboxIds: [outboxId, ...obsoleteIds],
       };
     });
     await this.outboxWriter.enqueue(result.outboxIds);
@@ -1795,7 +2014,7 @@ export class OperationsService {
       if (updated.count !== 1) {
         throw new StaleWriteError();
       }
-      await this.syncActStatus(tx, item.actId);
+      const closureNoticeIds = await this.syncActStatus(tx, item.actId);
       const fresh = await tx.defectItem.findUniqueOrThrow({ where: { id: defectItemId } });
       const outboxIds = await notifyDefectStatus(this.outboxWriter, tx, {
         type: 'DEFECT_REOPENED',
@@ -1825,7 +2044,12 @@ export class OperationsService {
         }),
         newValue: toJsonValue({ status: 'IN_PROGRESS', readyAt: null }),
       });
-      return { id: fresh.id, version: fresh.version, status: fresh.status, outboxIds };
+      return {
+        id: fresh.id,
+        version: fresh.version,
+        status: fresh.status,
+        outboxIds: [...outboxIds, ...closureNoticeIds],
+      };
     });
     await this.outboxWriter.enqueue(result.outboxIds);
     return { id: result.id, version: result.version, status: result.status };
@@ -2491,12 +2715,16 @@ export class OperationsService {
     client: Prisma.TransactionClient,
     user: AuthenticatedUser,
     actId: string,
+    options?: { includeOwnActs?: boolean },
   ) {
     if (!UUID_PATTERN.test(actId)) {
       throw new NotFoundException('Запись не найдена');
     }
     const act = await client.act.findFirst({
-      where: (await resolveRegistryAccessScope(this.prisma.client, user)).actVisibleWhere(actId),
+      where: (await resolveRegistryAccessScope(this.prisma.client, user)).actVisibleWhere(
+        actId,
+        options,
+      ),
     });
     if (!act) {
       throw new NotFoundException('Запись не найдена');
@@ -2605,13 +2833,17 @@ export class OperationsService {
     }
   }
 
-  private async requireVisibleAct(user: AuthenticatedUser, actId: string) {
+  private async requireVisibleAct(
+    user: AuthenticatedUser,
+    actId: string,
+    options?: { includeOwnActs?: boolean },
+  ) {
     if (!UUID_PATTERN.test(actId)) {
       throw new NotFoundException('Запись не найдена');
     }
     const scope = await resolveRegistryAccessScope(this.prisma.client, user);
     const act = await this.prisma.client.act.findFirst({
-      where: scope.actVisibleWhere(actId),
+      where: scope.actVisibleWhere(actId, options),
       select: {
         id: true,
         status: true,
@@ -2659,15 +2891,16 @@ export class OperationsService {
     tx: Prisma.TransactionClient,
     user: AuthenticatedUser,
     actId: string,
+    options?: { includeOwnActs?: boolean },
   ) {
     await tx.$queryRaw`SELECT id FROM public.acts WHERE id = ${actId}::uuid FOR UPDATE`;
-    return this.requireVisibleActOn(tx, user, actId);
+    return this.requireVisibleActOn(tx, user, actId, options);
   }
 
-  private async syncActStatus(tx: Prisma.TransactionClient, actId: string) {
+  private async syncActStatus(tx: Prisma.TransactionClient, actId: string): Promise<string[]> {
     const act = await tx.act.findUniqueOrThrow({ where: { id: actId } });
     if (act.status === 'CANCELLED' || act.closureMethod === 'WITHOUT_INSPECTION') {
-      return;
+      return this.obsoletePendingClosureRequests(tx, actId);
     }
     const items = await tx.defectItem.findMany({ where: { actId } });
     const status = computeActStatus(
@@ -2675,13 +2908,262 @@ export class OperationsService {
       { startedAt: act.startedAt, cancelledAt: act.cancelledAt },
       { currentStatus: act.status },
     );
-    if (status === act.status) {
-      return;
+    // The defect trigger marks an act completed when no defect is IN_PROGRESS.
+    // A defect waiting for inspection is not finished, so recompute and restore
+    // IN_PROGRESS before treating completion as final.
+    if (status !== act.status) {
+      await tx.act.update({
+        where: { id: actId },
+        data: { status },
+      });
     }
-    await tx.act.update({
-      where: { id: actId },
-      data: { status },
+    if (status === 'COMPLETED' || status === 'CANCELLED') {
+      return this.obsoletePendingClosureRequests(tx, actId);
+    }
+    return [];
+  }
+
+  private assertActCloseable(act: {
+    status: string;
+    startedAt: Date | null;
+    closureMethod: string | null;
+  }) {
+    if (act.closureMethod === 'WITHOUT_INSPECTION' || act.status === 'COMPLETED') {
+      throw new InvalidTransitionError('Завершённый акт нельзя закрыть без проверки');
+    }
+    if (act.status === 'CANCELLED') {
+      throw new InvalidTransitionError('Аннулированный акт нельзя закрыть без проверки');
+    }
+    if (act.status !== 'IN_PROGRESS' || act.startedAt == null) {
+      throw new InvalidTransitionError(
+        'Закрыть без проверки можно только акт, который уже взят в работу',
+      );
+    }
+  }
+
+  private async requireActorName(tx: Prisma.TransactionClient, userId: string) {
+    const actor = await tx.user.findUnique({
+      where: { id: userId },
+      select: { fullName: true },
     });
+    const actorName = actor?.fullName.trim() ?? '';
+    if (!actorName) {
+      throw new ValidationError('actor', 'Не удалось определить сотрудника');
+    }
+    return actorName;
+  }
+
+  private async activeObjectEngineer(
+    tx: Prisma.TransactionClient,
+    objectId: string | null,
+    userId: string,
+  ) {
+    if (!objectId) {
+      return false;
+    }
+    const row = await tx.propertyObjectEngineer.findFirst({
+      where: {
+        propertyObjectId: objectId,
+        userId,
+        unassignedAt: null,
+        user: { status: 'ACTIVE', role: 'RESPONSIBLE_ENGINEER' },
+      },
+      select: { userId: true },
+    });
+    return row != null;
+  }
+
+  private async activeObjectEngineers(tx: Prisma.TransactionClient, objectId: string | null) {
+    if (!objectId) {
+      return [];
+    }
+    const rows = await tx.propertyObjectEngineer.findMany({
+      where: {
+        propertyObjectId: objectId,
+        unassignedAt: null,
+        user: { status: 'ACTIVE', role: 'RESPONSIBLE_ENGINEER' },
+      },
+      select: { user: { select: { id: true, fullName: true } } },
+    });
+    return rows.map((row) => ({ id: row.user.id, fullName: row.user.fullName }));
+  }
+
+  private async obsoleteClosureRequest(tx: Prisma.TransactionClient, requestId: string) {
+    return this.markClosureRequestsObsolete(tx, { id: requestId, status: 'PENDING' as const });
+  }
+
+  private async obsoletePendingClosureRequests(tx: Prisma.TransactionClient, actId: string) {
+    return this.markClosureRequestsObsolete(tx, { actId, status: 'PENDING' as const });
+  }
+
+  private async markClosureRequestsObsolete(
+    tx: Prisma.TransactionClient,
+    where: { id?: string; actId?: string; status: 'PENDING' },
+  ) {
+    const pending = await tx.actClosureRequest.findMany({ where });
+    const outboxIds: string[] = [];
+    for (const request of pending) {
+      const updated = await tx.actClosureRequest.updateMany({
+        where: { id: request.id, status: 'PENDING' },
+        data: { status: 'OBSOLETE' },
+      });
+      if (updated.count !== 1) {
+        continue;
+      }
+      await writeAuditLog(tx, {
+        actor: null,
+        action: 'ACT_CLOSURE_WITHOUT_INSPECTION_OBSOLETE',
+        entityType: 'ACT',
+        entityId: request.actId,
+        source: 'SYSTEM',
+        newValue: toJsonValue({
+          requestId: request.id,
+          initiatorUserId: request.requestedByUserId,
+          initiatorName: request.requestedByName,
+        }),
+      });
+      outboxIds.push(
+        await notifyActClosureRequestObsolete(this.outboxWriter, tx, {
+          requestId: request.id,
+          actId: request.actId,
+          initiatorUserId: request.requestedByUserId,
+        }),
+      );
+    }
+    return outboxIds;
+  }
+
+  private async applyCloseWithoutInspection(
+    tx: Prisma.TransactionClient,
+    input: {
+      user: AuthenticatedUser;
+      actId: string;
+      reason: string;
+      ctx: {
+        actor: { id: string; fullName: string };
+        requestId: string | null;
+        ipAddress: string | null;
+      };
+      lockedVersion: number;
+      initiator?: { userId: string; name: string };
+      omitRecipientIds?: string[];
+    },
+  ) {
+    const defects = await tx.defectItem.findMany({
+      where: { actId: input.actId },
+      select: { id: true, status: true, closureMethod: true },
+    });
+    if (defects.length === 0) {
+      throw new InvalidTransitionError('В акте нет дефектов. Закрыть акт без проверки нельзя.');
+    }
+    const unfinished = defects.filter((item) => item.status !== 'COMPLETED');
+    const actorName = await this.requireActorName(tx, input.user.id);
+    const closedAt = new Date();
+    if (unfinished.length > 0) {
+      await tx.defectInspectionAttempt.updateMany({
+        where: { defectItemId: { in: unfinished.map((item) => item.id) }, status: 'PENDING' },
+        data: {
+          status: 'TERMINATED',
+          reviewedByUserId: input.user.id,
+          reviewedAt: closedAt,
+          reviewComment: input.reason,
+          rejectionReason: null,
+        },
+      });
+      const closed = await tx.defectItem.updateMany({
+        where: {
+          id: { in: unfinished.map((item) => item.id) },
+          status: { in: ['IN_PROGRESS', 'PENDING_INSPECTION'] },
+          closureMethod: null,
+        },
+        data: {
+          status: 'COMPLETED',
+          closureMethod: 'WITHOUT_INSPECTION',
+          version: { increment: 1 },
+        },
+      });
+      if (closed.count !== unfinished.length) {
+        throw new StaleWriteError();
+      }
+      for (const item of unfinished) {
+        await tx.$executeRaw`SELECT public.sgr_satisfy_sla_clocks(${item.id}::uuid)`;
+      }
+    }
+    const updated = await tx.act.updateMany({
+      where: {
+        id: input.actId,
+        version: input.lockedVersion,
+        status: { in: ['IN_PROGRESS', 'COMPLETED'] },
+        closureMethod: null,
+      },
+      data: {
+        status: 'COMPLETED',
+        closureMethod: 'WITHOUT_INSPECTION',
+        closedWithoutInspectionAt: closedAt,
+        closedWithoutInspectionByUserId: input.user.id,
+        closedWithoutInspectionByName: actorName,
+        closureReason: input.reason,
+        version: { increment: 1 },
+      },
+    });
+    if (updated.count !== 1) {
+      throw new StaleWriteError();
+    }
+    const fresh = await tx.act.findUniqueOrThrow({ where: { id: input.actId } });
+    await writeAuditLog(tx, {
+      ...input.ctx,
+      action: 'ACT_CLOSED_WITHOUT_INSPECTION',
+      entityType: 'ACT',
+      entityId: input.actId,
+      reason: input.reason,
+      oldValue: toJsonValue({ status: 'IN_PROGRESS' }),
+      newValue: toJsonValue({
+        status: 'COMPLETED',
+        closureMethod: 'WITHOUT_INSPECTION',
+        closedByUserId: input.user.id,
+        closedByName: actorName,
+        initiatorUserId: input.initiator?.userId ?? null,
+        initiatorName: input.initiator?.name ?? null,
+        unfinished: unfinished.length,
+      }),
+    });
+    for (const item of unfinished) {
+      await writeAuditLog(tx, {
+        ...input.ctx,
+        action: 'DEFECT_CLOSED_WITHOUT_INSPECTION',
+        entityType: 'DEFECT_ITEM',
+        entityId: item.id,
+        parentEntityType: 'ACT',
+        parentEntityId: input.actId,
+        reason: input.reason,
+        oldValue: toJsonValue({ status: item.status }),
+        newValue: toJsonValue({
+          status: 'COMPLETED',
+          closureMethod: 'WITHOUT_INSPECTION',
+          closedByUserId: input.user.id,
+          initiatorUserId: input.initiator?.userId ?? null,
+        }),
+      });
+    }
+    const outboxIds = [
+      await notifyActClosedWithoutInspection(this.outboxWriter, tx, {
+        actId: input.actId,
+        objectId: fresh.objectId,
+        actorUserId: input.user.id,
+        reason: input.reason,
+        omitRecipientIds: input.omitRecipientIds,
+      }),
+    ];
+    return {
+      id: fresh.id,
+      status: fresh.status,
+      version: fresh.version,
+      closureMethod: fresh.closureMethod,
+      closedWithoutInspectionAt: fresh.closedWithoutInspectionAt?.toISOString() ?? null,
+      closedWithoutInspectionByName: fresh.closedWithoutInspectionByName,
+      closureReason: fresh.closureReason,
+      outboxIds,
+    };
   }
 }
 
@@ -2733,4 +3215,34 @@ function mapStartActError(error: unknown): never {
     throw new ForbiddenException('Недостаточно прав');
   }
   throw error;
+}
+
+function presentClosureRequest(
+  request: {
+    id: string;
+    status: string;
+    reason: string;
+    requestedByName: string;
+    requestedAt: Date;
+    decidedByName: string | null;
+    decidedAt: Date | null;
+    decisionReason: string | null;
+  },
+  idempotent: boolean,
+) {
+  return {
+    id: request.id,
+    status: request.status,
+    reason: request.reason,
+    requestedByName: request.requestedByName,
+    requestedAt: request.requestedAt.toISOString(),
+    decidedByName: request.decidedByName,
+    decidedAt: request.decidedAt?.toISOString() ?? null,
+    decisionReason: request.decisionReason,
+    idempotent,
+  };
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
 }

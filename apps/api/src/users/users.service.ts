@@ -7,6 +7,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
+import { notifyNewlyEligibleClosureApprovers, OutboxWriter } from '@sgr-registry/jobs';
 import {
   completeOwnProfileRequestSchema,
   createUserRequestSchema,
@@ -103,6 +104,7 @@ export class UsersService {
     @Inject(AUTH_PRISMA_CLIENT) private readonly authPrisma: PrismaClient,
     @Inject(RedisSessionStore) private readonly sessions: RedisSessionStore,
     @Inject(Argon2PasswordHasher) private readonly hasher: Argon2PasswordHasher,
+    @Inject(OutboxWriter) private readonly outboxWriter: OutboxWriter,
   ) {}
 
   async list(actor: AuthenticatedUser, rawQuery: Record<string, unknown>) {
@@ -984,7 +986,8 @@ export class UsersService {
     const input = parseCommandBody(assignUserObjectRequestSchema, body);
     assertUserId(userId);
     const ctx = actorContext(actor, request);
-    return this.prisma.client.$transaction(async (tx) => {
+    const outboxIds: string[] = [];
+    const result = await this.prisma.client.$transaction(async (tx) => {
       const target = await tx.user.findUnique({
         where: { id: userId },
         select: { id: true, role: true, status: true },
@@ -1040,8 +1043,13 @@ export class UsersService {
         entityId: object.id,
         newValue: toJsonValue({ userId }),
       });
+      outboxIds.push(
+        ...(await notifyNewlyEligibleClosureApprovers(this.outboxWriter, tx, object.id)),
+      );
       return { id: saved.id, active: true };
     });
+    await this.outboxWriter.enqueue(outboxIds);
+    return result;
   }
 
   async revokeObjectAssignment(
@@ -1056,7 +1064,8 @@ export class UsersService {
     assertUserId(userId);
     assertUserId(assignmentId);
     const ctx = actorContext(actor, request);
-    return this.prisma.client.$transaction(async (tx) => {
+    const outboxIds: string[] = [];
+    const result = await this.prisma.client.$transaction(async (tx) => {
       const current = await tx.propertyObjectEngineer.findFirst({
         where: { id: assignmentId, userId },
       });
@@ -1077,8 +1086,17 @@ export class UsersService {
         entityId: current.propertyObjectId,
         oldValue: toJsonValue({ userId }),
       });
+      outboxIds.push(
+        ...(await notifyNewlyEligibleClosureApprovers(
+          this.outboxWriter,
+          tx,
+          current.propertyObjectId,
+        )),
+      );
       return { id: current.id, active: false };
     });
+    await this.outboxWriter.enqueue(outboxIds);
+    return result;
   }
 }
 

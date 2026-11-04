@@ -19,6 +19,13 @@ import {
   REGISTRY_STATUS_FILTER_OPTIONS,
   calendarDateInTimeZone,
   canResolveImportedEngineer,
+  canDecideActClosureRequest,
+  canDirectCloseActWithoutInspection,
+  canRequestActClosureWithoutInspection,
+  closureApprovalRoute,
+  closureDefectFingerprint,
+  closureRouteLabel,
+  viewerMayMutateVisibleAct,
   actFillLabel,
   actFillState,
   assignmentLabel,
@@ -274,7 +281,7 @@ export class RegistryService {
     const timeZone = loadConfig().BUSINESS_TIME_ZONE || BUSINESS_TIME_ZONE;
     const now = new Date();
     const act = await this.prisma.client.act.findFirst({
-      where: scope.actVisibleWhere(actId),
+      where: scope.actVisibleWhere(actId, { includeOwnActs: true }),
       select: {
         id: true,
         formCode: true,
@@ -285,6 +292,7 @@ export class RegistryService {
         sourceRows: true,
         importedAt: true,
         status: true,
+        createdById: true,
         closureMethod: true,
         closedWithoutInspectionAt: true,
         closedWithoutInspectionByName: true,
@@ -315,7 +323,7 @@ export class RegistryService {
         },
         customer: { select: { officialName: true } },
         defectItems: {
-          where: scope.defectItemsOnActWhere(actId),
+          where: scope.defectItemsOnActWhere(actId, { includeOwnActs: true }),
           orderBy: [{ location: 'asc' }, { id: 'asc' }],
           select: {
             id: true,
@@ -473,8 +481,21 @@ export class RegistryService {
         ...proposals,
       };
     });
+    let propertyObject = act.propertyObject;
+    if (!propertyObject && act.objectId) {
+      const rows = await this.prisma.client.$queryRaw<
+        Array<{
+          name: string;
+          address: string | null;
+          commissionedAt: Date | null;
+          warrantyEndsAt: Date | null;
+        }>
+      >`SELECT name, address, "commissionedAt", "warrantyEndsAt" FROM public.sgr_visible_act_object(${act.id}::uuid)`;
+      propertyObject = rows[0] ?? null;
+    }
     const header = toActHeader({
       ...act,
+      propertyObject,
       sourceDeadlineRaws: [
         ...new Set(
           act.defectItems
@@ -505,11 +526,114 @@ export class RegistryService {
       (count, item) => count + item.responsibleEngineers.length,
       0,
     );
+    const objectEngineers = act.objectId
+      ? await this.prisma.client.propertyObjectEngineer.findMany({
+          where: {
+            propertyObjectId: act.objectId,
+            unassignedAt: null,
+            user: { status: 'ACTIVE', role: 'RESPONSIBLE_ENGINEER' },
+          },
+          select: { user: { select: { id: true, fullName: true } } },
+          orderBy: { user: { fullName: 'asc' } },
+        })
+      : [];
+    const engineerIds = objectEngineers.map((row) => row.user.id);
+    const assignedToObject = engineerIds.includes(user.id);
+    const route = closureApprovalRoute({
+      objectId: act.objectId,
+      activeEngineerIds: engineerIds,
+    });
+    const approverNames =
+      route === 'OBJECT_ENGINEERS'
+        ? objectEngineers.map((row) => row.user.fullName)
+        : route === 'ADMIN_SGR'
+          ? ['Администратор', 'Руководитель СГР']
+          : [];
+    const routeLabel = closureRouteLabel({ route, approverNames });
+    const pendingRequest = await this.prisma.client.actClosureRequest.findFirst({
+      where: { actId, status: 'PENDING' },
+      orderBy: { requestedAt: 'desc' },
+    });
+    const closureRequestRow =
+      pendingRequest ??
+      (await this.prisma.client.actClosureRequest.findFirst({
+        where: { actId },
+        orderBy: { requestedAt: 'desc' },
+      }));
+    const closeable =
+      act.status === 'IN_PROGRESS' &&
+      act.startedAt != null &&
+      act.closureMethod == null &&
+      act.objectId != null &&
+      act.defectItems.length > 0;
+    const readsOwnCreatedAct =
+      user.role === 'RESPONSIBLE_ENGINEER' && act.createdById === user.id && !assignedToObject;
     return {
       ...header,
       fillState,
       fillLabel: actFillLabel(fillState),
       assignmentLabel: assignmentLabel(assignedEngineers),
+      viewerMayMutateAct: viewerMayMutateVisibleAct({
+        role: user.role,
+        assignedToObject,
+        readsOwnCreatedAct,
+      }),
+      canDirectCloseWithoutInspection:
+        closeable &&
+        canDirectCloseActWithoutInspection({
+          role: user.role,
+          assignedToObject,
+          pendingRequest: pendingRequest != null,
+        }),
+      canRequestClosureWithoutInspection:
+        closeable &&
+        canRequestActClosureWithoutInspection({
+          role: user.role,
+          canReadAct: true,
+          assignedToObject,
+          pendingRequest: pendingRequest != null,
+        }),
+      closureRouteLabel: routeLabel,
+      defectFingerprint: closureDefectFingerprint(
+        act.defectItems.map((item) => ({
+          id: item.id,
+          version: item.version,
+          status: item.status,
+        })),
+      ),
+      closureRequest: closureRequestRow
+        ? {
+            id: closureRequestRow.id,
+            status: closureRequestRow.status,
+            reason: closureRequestRow.reason,
+            requestedByName: closureRequestRow.requestedByName,
+            requestedAt: closureRequestRow.requestedAt.toISOString(),
+            decidedByName: closureRequestRow.decidedByName,
+            decidedAt: closureRequestRow.decidedAt?.toISOString() ?? null,
+            decisionReason: closureRequestRow.decisionReason,
+            canDecide:
+              closureRequestRow.status === 'PENDING' &&
+              canDecideActClosureRequest({
+                actor: { id: user.id, role: user.role },
+                initiatorId: closureRequestRow.requestedByUserId,
+                objectId: act.objectId,
+                activeEngineerIds: engineerIds,
+              }),
+            approverNames,
+            routeLabel,
+            unfinishedDefects: act.defectItems
+              .filter((item) =>
+                closureRequestRow.status === 'PENDING'
+                  ? item.status !== 'COMPLETED'
+                  : item.closureMethod === 'WITHOUT_INSPECTION',
+              )
+              .map((item) => ({
+                id: item.id,
+                location: item.location,
+                status: item.status,
+              })),
+          }
+        : null,
       defectItems,
     };
   }

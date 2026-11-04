@@ -109,6 +109,13 @@ enum DefectClosureMethod {
   WITHOUT_INSPECTION
 }
 
+enum ActClosureRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  OBSOLETE
+}
+
 enum FinancialAmountType {
   ESTIMATE
   APPROVED_AMOUNT
@@ -201,6 +208,8 @@ model User {
   inspectionAttemptsSubmitted DefectInspectionAttempt[] @relation("AttemptSubmittedBy")
   inspectionAttemptsReviewed DefectInspectionAttempt[] @relation("AttemptReviewedBy")
   actsClosedWithoutInspection Act[] @relation("ActClosedWithoutInspectionBy")
+  closureRequestsMade ActClosureRequest[] @relation("ClosureRequestedBy")
+  closureRequestsDecided ActClosureRequest[] @relation("ClosureDecidedBy")
   financialImpactsCreated DefectFinancialImpact[] @relation("FinancialCreatedBy")
   financialImpactsConfirmed DefectFinancialImpact[] @relation("FinancialConfirmedBy")
   analyticsInsightsReviewed AnalyticsInsight[] @relation("InsightReviewedBy")
@@ -439,6 +448,7 @@ model Act {
   startedBy      User?           @relation("ActStartedBy", fields: [startedById], references: [id], onDelete: Restrict)
   cancelledBy    User?          @relation("ActCancelledBy", fields: [cancelledByUserId], references: [id], onDelete: Restrict)
   closedWithoutInspectionBy User?  @relation("ActClosedWithoutInspectionBy", fields: [closedWithoutInspectionByUserId], references: [id], onDelete: Restrict)
+  closureRequests ActClosureRequest[]
   importBatch    ImportBatch?   @relation(fields: [importBatchId], references: [id], onDelete: Restrict)
   defectItems    DefectItem[]
   attachments    Attachment[]
@@ -455,6 +465,31 @@ model Act {
   @@index([importBatchId])
   @@index([closedWithoutInspectionByUserId])
   @@map("acts")
+}
+
+model ActClosureRequest {
+  id                String                   @id @default(uuid()) @db.Uuid
+  actId             String                   @db.Uuid
+  status            ActClosureRequestStatus
+  reason            String
+  requestedByUserId String                   @db.Uuid
+  requestedByName   String
+  requestedAt       DateTime                 @db.Timestamptz(3)
+  decidedByUserId   String?                  @db.Uuid
+  decidedByName     String?
+  decidedAt         DateTime?                @db.Timestamptz(3)
+  decisionReason    String?
+  createdAt         DateTime                 @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime                 @updatedAt @db.Timestamptz(3)
+
+  act         Act   @relation(fields: [actId], references: [id], onDelete: Restrict)
+  requestedBy User  @relation("ClosureRequestedBy", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  decidedBy   User? @relation("ClosureDecidedBy", fields: [decidedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([actId, requestedAt])
+  @@index([requestedByUserId])
+  @@index([decidedByUserId])
+  @@map("act_closure_requests")
 }
 
 model ActChatMessage {

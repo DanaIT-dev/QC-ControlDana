@@ -206,6 +206,25 @@ export interface ActDetailResponse {
   closedWithoutInspectionAt: string | null;
   closedWithoutInspectionByName: string | null;
   closureReason: string | null;
+  viewerMayMutateAct: boolean;
+  canDirectCloseWithoutInspection: boolean;
+  canRequestClosureWithoutInspection: boolean;
+  closureRouteLabel: string;
+  defectFingerprint: string;
+  closureRequest: {
+    id: string;
+    status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'OBSOLETE';
+    reason: string;
+    requestedByName: string;
+    requestedAt: string;
+    decidedByName: string | null;
+    decidedAt: string | null;
+    decisionReason: string | null;
+    canDecide: boolean;
+    approverNames: string[];
+    routeLabel: string;
+    unfinishedDefects: Array<{ id: string; location: string | null; status: DefectItemStatus }>;
+  } | null;
   legacyImport: ActLegacyImportSource | null;
   defectItems: ActDetailDefectItem[];
 }

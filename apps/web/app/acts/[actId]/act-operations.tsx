@@ -102,6 +102,30 @@ export function ActOperations({
     await queryClient.invalidateQueries({ queryKey: historyKey(act.id) });
   }
 
+  if (item && !act.viewerMayMutateAct) {
+    return null;
+  }
+
+  if (!item && !act.viewerMayMutateAct) {
+    return (
+      <div className="action-row flex flex-wrap gap-2">
+        {act.canRequestClosureWithoutInspection ? (
+          <RequestClosureButton
+            act={act}
+            onSave={(reason) =>
+              run(`/api/acts/${act.id}/close-without-inspection/requests`, 'POST', { reason })
+            }
+          />
+        ) : null}
+        <ConflictDialog
+          open={conflict}
+          onRefresh={() => void refresh()}
+          onOpenChange={setConflict}
+        />
+      </div>
+    );
+  }
+
   if (!item) {
     return (
       <div className="action-row flex flex-wrap gap-2">
@@ -149,11 +173,7 @@ export function ActOperations({
             onSave={(body) => run(`/api/acts/${act.id}/defects`, 'POST', body)}
           />
         ) : null}
-        {hasCapability(user.role, 'CLOSE_ACT_WITHOUT_INSPECTION') &&
-        act.status === 'IN_PROGRESS' &&
-        act.startedAt &&
-        act.closureMethod == null &&
-        act.defectItems.length > 0 ? (
+        {act.canDirectCloseWithoutInspection ? (
           <CloseWithoutInspectionButton
             act={act}
             onSave={(reason) =>
@@ -161,6 +181,22 @@ export function ActOperations({
                 expectedVersion: act.version,
                 reason,
               })
+            }
+          />
+        ) : null}
+        {act.canRequestClosureWithoutInspection ? (
+          <RequestClosureButton
+            act={act}
+            onSave={(reason) =>
+              run(`/api/acts/${act.id}/close-without-inspection/requests`, 'POST', { reason })
+            }
+          />
+        ) : null}
+        {act.closureRequest?.canDecide ? (
+          <DecideClosureButtons
+            act={act}
+            onDecide={(body) =>
+              run(`/api/acts/${act.id}/close-without-inspection/decisions`, 'POST', body)
             }
           />
         ) : null}
@@ -1293,6 +1329,225 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
   notes: 'Примечания',
 };
 
+function RequestClosureButton({
+  act,
+  onSave,
+}: {
+  act: ActDetailResponse;
+  onSave: (reason: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState('');
+  const [pending, setPending] = useState(false);
+  const trimmed = reason.trim();
+  const number = displayActNumber({
+    officialNumber: act.officialNumber,
+    sourceActNumberRaw: act.legacyImport?.sourceActNumberRaw,
+  });
+
+  return (
+    <>
+      <Button type="button" variant="secondary" onClick={() => setOpen(true)}>
+        Запросить закрытие без проверки
+      </Button>
+      <Dialog
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next);
+          if (!next) {
+            setReason('');
+          }
+        }}
+      >
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Запросить закрытие без проверки</DialogTitle>
+          </DialogHeader>
+          <form
+            className="grid gap-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!trimmed || pending) {
+                return;
+              }
+              setPending(true);
+              void Promise.resolve(onSave(trimmed)).finally(() => {
+                setPending(false);
+                setOpen(false);
+                setReason('');
+              });
+            }}
+          >
+            <p className="text-sm">
+              Акт {number}. Объект: {displayObjectName(act.objectName)}.
+            </p>
+            <p className="text-sm">
+              Закрытие без проверки не подтверждает устранение дефектов. Акт и дефекты останутся в
+              текущих статусах, пока запрос не подтвердят.
+            </p>
+            <p className="text-sm text-muted-foreground">{act.closureRouteLabel}</p>
+            <div className="grid gap-1.5">
+              <Label htmlFor="request-closure-reason">Причина</Label>
+              <Textarea
+                id="request-closure-reason"
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+                required
+              />
+            </div>
+            <DialogFooter className="flex-col gap-2 sm:flex-row">
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                Отмена
+              </Button>
+              <Button type="submit" disabled={!trimmed || pending}>
+                Отправить запрос
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+function DecideClosureButtons({
+  act,
+  onDecide,
+}: {
+  act: ActDetailResponse;
+  onDecide: (body: {
+    requestId: string;
+    expectedVersion: number;
+    defectFingerprint: string;
+    decision: 'APPROVE' | 'REJECT';
+    reason?: string;
+  }) => void;
+}) {
+  const request = act.closureRequest;
+  const [approveOpen, setApproveOpen] = useState(false);
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [reason, setReason] = useState('');
+  const [pending, setPending] = useState(false);
+  const [snapshot, setSnapshot] = useState({
+    version: act.version,
+    fingerprint: act.defectFingerprint,
+  });
+  if (!request) {
+    return null;
+  }
+  const trimmed = reason.trim();
+  const number = displayActNumber({
+    officialNumber: act.officialNumber,
+    sourceActNumberRaw: act.legacyImport?.sourceActNumberRaw,
+  });
+
+  function openDecision(kind: 'approve' | 'reject') {
+    setSnapshot({ version: act.version, fingerprint: act.defectFingerprint });
+    setReason('');
+    if (kind === 'approve') {
+      setApproveOpen(true);
+    } else {
+      setRejectOpen(true);
+    }
+  }
+
+  function submit(decision: 'APPROVE' | 'REJECT') {
+    if (pending || (decision === 'REJECT' && !trimmed)) {
+      return;
+    }
+    setPending(true);
+    void Promise.resolve(
+      onDecide({
+        requestId: request!.id,
+        expectedVersion: snapshot.version,
+        defectFingerprint: snapshot.fingerprint,
+        decision,
+        ...(decision === 'REJECT' ? { reason: trimmed } : {}),
+      }),
+    ).finally(() => {
+      setPending(false);
+      setApproveOpen(false);
+      setRejectOpen(false);
+      setReason('');
+    });
+  }
+
+  return (
+    <>
+      <Button type="button" onClick={() => openDecision('approve')}>
+        Подтвердить закрытие без проверки
+      </Button>
+      <Button type="button" variant="outline" onClick={() => openDecision('reject')}>
+        Отклонить запрос
+      </Button>
+      <Dialog open={approveOpen} onOpenChange={setApproveOpen}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Подтвердить закрытие без проверки</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-3 text-sm">
+            <p>
+              Акт {number}. Объект: {displayObjectName(act.objectName)}.
+            </p>
+            <p>Причина запроса: {request.reason}</p>
+            <p>Закрытие не подтверждает устранение дефектов.</p>
+            <div>
+              <p className="mb-1 font-medium">Будут закрыты дефекты</p>
+              <ul className="grid gap-1">
+                {request.unfinishedDefects.map((item) => (
+                  <li key={item.id}>
+                    {item.location?.trim() || 'Без помещения'} · {item.status}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+          <DialogFooter className="flex-col gap-2 sm:flex-row">
+            <Button type="button" variant="outline" onClick={() => setApproveOpen(false)}>
+              Отмена
+            </Button>
+            <Button type="button" disabled={pending} onClick={() => submit('APPROVE')}>
+              Подтвердить закрытие без проверки
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Отклонить запрос</DialogTitle>
+          </DialogHeader>
+          <form
+            className="grid gap-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              submit('REJECT');
+            }}
+          >
+            <div className="grid gap-1.5">
+              <Label htmlFor="reject-closure-reason">Причина отказа</Label>
+              <Textarea
+                id="reject-closure-reason"
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+                required
+              />
+            </div>
+            <DialogFooter className="flex-col gap-2 sm:flex-row">
+              <Button type="button" variant="outline" onClick={() => setRejectOpen(false)}>
+                Отмена
+              </Button>
+              <Button type="submit" disabled={!trimmed || pending}>
+                Отклонить запрос
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 function CloseWithoutInspectionButton({
   act,
   onSave,
@@ -1397,6 +1652,12 @@ function successMessage(path: string, actStatus?: string) {
   }
   if (path.endsWith('/submit-for-inspection')) {
     return 'Дефект передан на проверку';
+  }
+  if (path.endsWith('/close-without-inspection/requests')) {
+    return 'Запрос на закрытие без проверки отправлен';
+  }
+  if (path.endsWith('/close-without-inspection/decisions')) {
+    return 'Решение по запросу сохранено';
   }
   if (path.endsWith('/close-without-inspection')) {
     return 'Акт закрыт без проверки';

@@ -303,6 +303,7 @@ describe('operations integration', () => {
       await prisma.defectItemLiableOrganization.deleteMany({
         where: { defectItem: { actId: { in: actIds } } },
       });
+      await prisma.actClosureRequest.deleteMany({ where: { actId: { in: actIds } } });
       await prisma.act.updateMany({
         where: { id: { in: actIds } },
         data: {

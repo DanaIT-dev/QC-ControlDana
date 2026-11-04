@@ -25,6 +25,28 @@ async function cleanup(): Promise<void> {
   await prisma.proposal.deleteMany();
   await prisma.defectItemLiableOrganization.deleteMany();
   await prisma.defectItemEngineer.deleteMany();
+  await prisma.defectInspectionAttempt.deleteMany();
+  await prisma.actClosureRequest.deleteMany();
+  await prisma.act.updateMany({
+    data: {
+      closureMethod: null,
+      closedWithoutInspectionAt: null,
+      closedWithoutInspectionByUserId: null,
+      closedWithoutInspectionByName: null,
+      closureReason: null,
+    },
+  });
+  await prisma.defectItem.updateMany({ data: { closureMethod: null } });
+  await prisma.$executeRawUnsafe(
+    'ALTER TABLE public.defect_financial_impacts DISABLE TRIGGER defect_financial_impacts_guard',
+  );
+  try {
+    await prisma.defectFinancialImpact.deleteMany();
+  } finally {
+    await prisma.$executeRawUnsafe(
+      'ALTER TABLE public.defect_financial_impacts ENABLE TRIGGER defect_financial_impacts_guard',
+    );
+  }
   await prisma.defectItem.deleteMany();
   await prisma.act.deleteMany();
   await prisma.actNumberSequence.deleteMany();

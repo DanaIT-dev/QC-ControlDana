@@ -61,6 +61,7 @@ type OutboxPayload = {
   extraRecipientIds?: string[];
   organizationId?: string | null;
   missingFields?: string[] | null;
+  includeSuperAdmin?: boolean;
 };
 
 export type WorkerDbRunner = <T>(callback: () => Promise<T>) => Promise<T>;
@@ -632,19 +633,21 @@ export class NotificationDispatcher {
   }
 
   private async resolveRecipients(payload: OutboxPayload): Promise<string[]> {
+    const closureNotice = payload.type.startsWith('ACT_CLOSURE_WITHOUT_INSPECTION');
     const users = await this.prisma.user.findMany({
       where: {
         id: { in: payload.extraRecipientIds ?? [] },
         status: 'ACTIVE',
-        role: { not: 'SUPER_ADMIN' },
       },
-      select: { id: true },
+      select: { id: true, role: true },
     });
-    return suppressActorRecipients(
-      users.map((row) => row.id),
-      payload.actorUserId,
-      { automatic: payload.automatic === true },
-    );
+    const ids = users
+      .filter((user) => (payload.includeSuperAdmin ? true : user.role !== 'SUPER_ADMIN'))
+      .filter((user) => (closureNotice ? user.role !== 'MANAGER' : true))
+      .map((user) => user.id);
+    return suppressActorRecipients(ids, payload.actorUserId, {
+      automatic: payload.automatic === true,
+    });
   }
 
   private async activeIds(

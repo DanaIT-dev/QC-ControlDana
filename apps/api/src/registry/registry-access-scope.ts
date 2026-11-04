@@ -93,15 +93,15 @@ export class RegistryAccessScope {
     return uncancelled;
   }
 
-  actVisibleWhere(actId: string): Prisma.ActWhereInput {
+  actVisibleWhere(actId: string, options?: { includeOwnActs?: boolean }): Prisma.ActWhereInput {
     const mode = registryAccessMode(this.role);
     if (mode === 'object_assigned') {
+      const ownAct: Prisma.ActWhereInput = options?.includeOwnActs
+        ? { createdById: this.userId }
+        : { status: 'NEW', createdById: this.userId };
       return {
         id: actId,
-        OR: [
-          { propertyObject: this.assignedObjectWhere() },
-          { status: 'NEW', createdById: this.userId },
-        ],
+        OR: [{ propertyObject: this.assignedObjectWhere() }, ownAct],
       };
     }
     if (mode === 'organization_liable') {
@@ -133,15 +133,18 @@ export class RegistryAccessScope {
     return { id: objectId };
   }
 
-  defectItemsOnActWhere(actId: string): Prisma.DefectItemWhereInput {
+  defectItemsOnActWhere(
+    actId: string,
+    options?: { includeOwnActs?: boolean },
+  ): Prisma.DefectItemWhereInput {
     const mode = registryAccessMode(this.role);
     if (mode === 'object_assigned') {
+      const ownAct: Prisma.ActWhereInput = options?.includeOwnActs
+        ? { createdById: this.userId }
+        : { status: 'NEW', createdById: this.userId };
       return {
         actId,
-        OR: [
-          { act: { propertyObject: this.assignedObjectWhere() } },
-          { act: { status: 'NEW', createdById: this.userId } },
-        ],
+        OR: [{ act: { propertyObject: this.assignedObjectWhere() } }, { act: ownAct }],
       };
     }
     if (mode === 'organization_liable') {
@@ -179,10 +182,7 @@ export class RegistryAccessScope {
         AND: [
           { status: { not: 'CANCELLED' } },
           {
-            OR: [
-              { propertyObject: this.assignedObjectWhere() },
-              { status: 'NEW', createdById: this.userId },
-            ],
+            OR: [{ propertyObject: this.assignedObjectWhere() }, { createdById: this.userId }],
           },
         ],
       };
