@@ -25,6 +25,17 @@ import { OperationsService } from './operations.service.js';
 export class DefectsCommandController {
   constructor(@Inject(OperationsService) private readonly operationsService: OperationsService) {}
 
+  @Patch(':defectItemId')
+  @RequireCapability('EDIT_DEFECT')
+  update(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('defectItemId') defectItemId: string,
+    @Body() body: unknown,
+    @Req() request: FastifyRequest,
+  ) {
+    return this.operationsService.updateDefect(user, defectItemId, body, request);
+  }
+
   @Put(':defectItemId/assignments')
   @RequireCapability('EDIT_ASSIGNMENTS')
   assignments(

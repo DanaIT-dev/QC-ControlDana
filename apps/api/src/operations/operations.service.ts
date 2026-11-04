@@ -3,6 +3,7 @@ import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nest
 import {
   acceptDefectRepairRequestSchema,
   addDefectRequestSchema,
+  updateDefectRequestSchema,
   archiveProposalRequestSchema,
   auditLogQuerySchema,
   completeDefectRequestSchema,
@@ -60,6 +61,7 @@ import {
   completeDefectItem,
   rejectDefectRepair,
   submitDefectForInspection,
+  applyDefectContentPatch,
   computeActStatus,
   createDefectItem,
   deadlineChangeRequiresReason,
@@ -529,6 +531,135 @@ export class OperationsService {
     return result;
   }
 
+  async updateDefect(
+    user: AuthenticatedUser,
+    defectItemId: string,
+    body: unknown,
+    request: FastifyRequest,
+  ) {
+    const input = parseCommandBody(updateDefectRequestSchema, body);
+    const ctx = actorContext(user, request);
+    const visible = await this.requireVisibleDefect(user, defectItemId);
+    const parent = await this.requireVisibleAct(user, visible.actId);
+    this.assertDefectContentEditable(parent.status, visible.status);
+    const location =
+      input.location === undefined ? undefined : normalizeDraftLocation(input.location);
+    const claimDetails =
+      input.claimDetails === undefined ? undefined : normalizeDraftClaimDetails(input.claimDetails);
+    const notes = input.notes === undefined ? undefined : normalizeDraftNotes(input.notes);
+    if (input.location !== undefined && !location) {
+      throw new ValidationError('location', 'Укажите помещение');
+    }
+    if (input.claimDetails !== undefined && !claimDetails) {
+      throw new ValidationError('claimDetails', 'Укажите описание');
+    }
+    return this.prisma.client.$transaction(async (tx) => {
+      const current = await this.requireVisibleDefectOn(tx, user, defectItemId);
+      const act = await this.requireVisibleActOn(tx, user, current.actId);
+      this.assertDefectContentEditable(act.status, current.status);
+      if (current.version !== input.expectedVersion) {
+        throw new StaleWriteError();
+      }
+      if (input.defectTypeId) {
+        await this.assertDefectType(tx, input.defectTypeId);
+      }
+      if (input.workTypeId) {
+        await this.assertWorkType(tx, input.workTypeId);
+      }
+      const patch = applyDefectContentPatch(
+        {
+          location: current.location,
+          defectTypeId: current.defectTypeId,
+          workTypeId: current.workTypeId,
+          claimDetails: current.claimDetails,
+          notes: current.notes,
+        },
+        {
+          location,
+          defectTypeId: input.defectTypeId,
+          workTypeId: input.workTypeId,
+          claimDetails,
+          notes,
+        },
+      );
+      if (!patch.changed) {
+        return { id: current.id, version: current.version };
+      }
+      const startedAt = act.startedAt;
+      const plannedDeadline = current.plannedDeadline;
+      const updated = await tx.defectItem.updateMany({
+        where: { id: defectItemId, version: input.expectedVersion, status: 'IN_PROGRESS' },
+        data: {
+          location: patch.next.location,
+          defectTypeId: patch.next.defectTypeId,
+          workTypeId: patch.next.workTypeId,
+          claimDetails: patch.next.claimDetails,
+          notes: patch.next.notes,
+          version: { increment: 1 },
+        },
+      });
+      if (updated.count !== 1) {
+        throw new StaleWriteError();
+      }
+      const fresh = await tx.defectItem.findUniqueOrThrow({
+        where: { id: defectItemId },
+        include: { defectType: { select: { name: true } }, workType: { select: { name: true } } },
+      });
+      const previousType = current.defectTypeId
+        ? await tx.defectType.findUnique({
+            where: { id: current.defectTypeId },
+            select: { name: true },
+          })
+        : null;
+      const previousWork = current.workTypeId
+        ? await tx.workType.findUnique({
+            where: { id: current.workTypeId },
+            select: { name: true },
+          })
+        : null;
+      if (
+        fresh.status !== current.status ||
+        fresh.plannedDeadline?.getTime() !== plannedDeadline?.getTime()
+      ) {
+        throw new InvalidTransitionError('Исправление дефекта не меняет статус и срок');
+      }
+      const freshAct = await tx.act.findUniqueOrThrow({ where: { id: current.actId } });
+      if (
+        freshAct.startedAt?.getTime() !== startedAt?.getTime() ||
+        freshAct.status !== act.status
+      ) {
+        throw new InvalidTransitionError('Исправление дефекта не меняет ход работы по акту');
+      }
+      await writeAuditLog(tx, {
+        ...ctx,
+        action: 'DEFECT_UPDATED',
+        entityType: 'DEFECT_ITEM',
+        entityId: defectItemId,
+        parentEntityType: 'ACT',
+        parentEntityId: current.actId,
+        oldValue: toJsonValue({
+          location: current.location,
+          defectTypeId: current.defectTypeId,
+          defectTypeName: previousType?.name ?? null,
+          workTypeId: current.workTypeId,
+          workTypeName: previousWork?.name ?? null,
+          claimDetails: current.claimDetails,
+          notes: current.notes,
+        }),
+        newValue: toJsonValue({
+          location: fresh.location,
+          defectTypeId: fresh.defectTypeId,
+          defectTypeName: fresh.defectType?.name ?? null,
+          workTypeId: fresh.workTypeId,
+          workTypeName: fresh.workType?.name ?? null,
+          claimDetails: fresh.claimDetails,
+          notes: fresh.notes,
+        }),
+      });
+      return { id: fresh.id, version: fresh.version };
+    });
+  }
+
   async replaceAssignments(
     user: AuthenticatedUser,
     defectItemId: string,
@@ -766,7 +897,7 @@ export class OperationsService {
       throw new InvalidTransitionError('Нельзя исполнить дефект до начала работы по акту');
     }
     if (item.status === 'COMPLETED') {
-      return { id: item.id, version: item.version, status: item.status };
+      return { id: item.id, version: item.version, status: item.status, actStatus: act.status };
     }
     const liableCount = await this.prisma.client.defectItemLiableOrganization.count({
       where: { defectItemId },
@@ -797,10 +928,15 @@ export class OperationsService {
         if (updated.count !== 1) {
           const latest = await tx.defectItem.findUnique({ where: { id: defectItemId } });
           if (latest?.status === 'COMPLETED') {
+            const currentAct = await tx.act.findUniqueOrThrow({
+              where: { id: item.actId },
+              select: { status: true },
+            });
             return {
               id: latest.id,
               version: latest.version,
               status: latest.status,
+              actStatus: currentAct.status,
               outboxIds: [] as string[],
             };
           }
@@ -808,6 +944,10 @@ export class OperationsService {
         }
         await this.syncActStatus(tx, item.actId);
         const fresh = await tx.defectItem.findUniqueOrThrow({ where: { id: defectItemId } });
+        const currentAct = await tx.act.findUniqueOrThrow({
+          where: { id: item.actId },
+          select: { status: true },
+        });
         const outboxIds = await notifyDefectStatus(this.outboxWriter, tx, {
           type: 'DEFECT_COMPLETED',
           actId: item.actId,
@@ -835,14 +975,25 @@ export class OperationsService {
             comment: normalizeNotes(input.comment),
           }),
         });
-        return { id: fresh.id, version: fresh.version, status: fresh.status, outboxIds };
+        return {
+          id: fresh.id,
+          version: fresh.version,
+          status: fresh.status,
+          actStatus: currentAct.status,
+          outboxIds,
+        };
       });
     } catch (error) {
       rethrowIfActNotStarted(error);
       throw error;
     }
     await this.outboxWriter.enqueue(result.outboxIds);
-    return { id: result.id, version: result.version, status: result.status };
+    return {
+      id: result.id,
+      version: result.version,
+      status: result.status,
+      actStatus: result.actStatus,
+    };
   }
 
   async submitForInspection(
@@ -996,6 +1147,7 @@ export class OperationsService {
             id: latest.id,
             version: latest.version,
             status: latest.status,
+            actStatus: act.status,
             outboxIds: [] as string[],
           };
         }
@@ -1018,6 +1170,7 @@ export class OperationsService {
             id: latest.id,
             version: latest.version,
             status: latest.status,
+            actStatus: act.status,
             outboxIds: [] as string[],
           };
         }
@@ -1055,10 +1208,25 @@ export class OperationsService {
         oldValue: toJsonValue({ status: 'PENDING_INSPECTION' }),
         newValue: toJsonValue({ status: 'COMPLETED', acceptedByUserId: user.id }),
       });
-      return { id: fresh.id, version: fresh.version, status: fresh.status, outboxIds };
+      const currentAct = await tx.act.findUniqueOrThrow({
+        where: { id: item.actId },
+        select: { status: true },
+      });
+      return {
+        id: fresh.id,
+        version: fresh.version,
+        status: fresh.status,
+        actStatus: currentAct.status,
+        outboxIds,
+      };
     });
     await this.outboxWriter.enqueue(result.outboxIds);
-    return { id: result.id, version: result.version, status: result.status };
+    return {
+      id: result.id,
+      version: result.version,
+      status: result.status,
+      actStatus: result.actStatus,
+    };
   }
 
   async rejectRepair(
@@ -2198,6 +2366,15 @@ export class OperationsService {
     }
     if (requireActive && rows.some((row) => !row.active)) {
       throw new ValidationError('liableOrganizationIds', 'Нельзя назначить архивную организацию');
+    }
+  }
+
+  private assertDefectContentEditable(actStatus: string, defectStatus: string) {
+    if (actStatus === 'COMPLETED' || actStatus === 'CANCELLED') {
+      throw new InvalidTransitionError('Завершённый или аннулированный акт нельзя исправлять');
+    }
+    if (defectStatus !== 'IN_PROGRESS') {
+      throw new InvalidTransitionError('Исправить можно только дефект, который ещё в работе');
     }
   }
 

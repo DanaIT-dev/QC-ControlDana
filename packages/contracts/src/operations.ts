@@ -178,6 +178,17 @@ export const addDefectRequestSchema = createActDefectItemSchema.extend({
   expectedActVersion: expectedVersionSchema,
 });
 
+export const updateDefectRequestSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    location: z.union([z.string(), z.null()]).optional(),
+    defectTypeId: optionalUuid,
+    workTypeId: optionalUuid,
+    claimDetails: z.union([z.string(), z.null()]).optional(),
+    notes: z.union([z.string(), z.null()]).optional(),
+  })
+  .strict();
+
 export const resolveImportedEngineerRequestSchema = z
   .object({
     userId: uuid,

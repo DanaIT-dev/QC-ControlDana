@@ -121,6 +121,12 @@ export function ReferenceDataView({
     contactPerson: string;
     roles: OrganizationRole[];
   } | null>(null);
+  const [defectTypeEditTarget, setDefectTypeEditTarget] = useState<{
+    id: string;
+    version: number;
+    name: string;
+    usageCount: number;
+  } | null>(null);
   const [constructionEditTarget, setConstructionEditTarget] = useState<{
     id: string;
     version: number;
@@ -176,7 +182,10 @@ export function ReferenceDataView({
     try {
       await commandFetch(path, { method, csrfToken, body });
       toast.success('Справочник обновлён');
-      await queryClient.invalidateQueries({ queryKey: ['reference'] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['reference'] }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.lookups }),
+      ]);
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
         setConflict(true);
@@ -427,6 +436,23 @@ export function ReferenceDataView({
                             Редактировать
                           </Button>
                         ) : null}
+                        {tab === 'defect-types' ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              setDefectTypeEditTarget({
+                                id,
+                                version,
+                                name: title,
+                                usageCount: Number(item.usageCount ?? 0),
+                              })
+                            }
+                          >
+                            Редактировать
+                          </Button>
+                        ) : null}
                         {!isConstruction && active ? (
                           <Button
                             type="button"
@@ -557,6 +583,22 @@ export function ReferenceDataView({
                         Редактировать
                       </Button>
                     ) : null}
+                    {tab === 'defect-types' ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() =>
+                          setDefectTypeEditTarget({
+                            id,
+                            version,
+                            name: title,
+                            usageCount: Number(item.usageCount ?? 0),
+                          })
+                        }
+                      >
+                        Редактировать
+                      </Button>
+                    ) : null}
                     {!isConstruction && active ? (
                       <Button
                         type="button"
@@ -627,6 +669,20 @@ export function ReferenceDataView({
           onSaved={async () => {
             setConstructionEditTarget(null);
             await queryClient.invalidateQueries({ queryKey: ['reference'] });
+          }}
+        />
+      ) : null}
+      {defectTypeEditTarget ? (
+        <EditDefectTypeDialog
+          csrfToken={csrfToken}
+          target={defectTypeEditTarget}
+          onClose={() => setDefectTypeEditTarget(null)}
+          onSaved={async () => {
+            setDefectTypeEditTarget(null);
+            await Promise.all([
+              queryClient.invalidateQueries({ queryKey: ['reference'] }),
+              queryClient.invalidateQueries({ queryKey: queryKeys.lookups }),
+            ]);
           }}
         />
       ) : null}
@@ -814,7 +870,7 @@ function CreateReferenceDialog({
               <OrganizationRoleFields roles={roles} onChange={setRoles} />
             </>
           ) : null}
-          {tab === 'work-types' || tab === 'defect-types' ? (
+          {tab === 'work-types' ? (
             <>
               <div className="grid gap-1.5">
                 <Label htmlFor="ref-code">Код</Label>
@@ -825,6 +881,12 @@ function CreateReferenceDialog({
                 <Input id="ref-item-name" name="name" required />
               </div>
             </>
+          ) : null}
+          {tab === 'defect-types' ? (
+            <div className="grid gap-1.5">
+              <Label htmlFor="ref-item-name">Название</Label>
+              <Input id="ref-item-name" name="name" required />
+            </div>
           ) : null}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
@@ -838,6 +900,81 @@ function CreateReferenceDialog({
               }
             >
               {tab === 'construction-work-organizations' ? 'Добавить' : 'Создать'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EditDefectTypeDialog({
+  csrfToken,
+  target,
+  onClose,
+  onSaved,
+}: {
+  csrfToken: string;
+  target: { id: string; version: number; name: string; usageCount: number };
+  onClose: () => void;
+  onSaved: () => Promise<void> | void;
+}) {
+  const [name, setName] = useState(target.name);
+  const [pending, setPending] = useState(false);
+  return (
+    <Dialog open onOpenChange={(open) => !open && !pending && onClose()}>
+      <DialogContent className="max-h-[min(100dvh,40rem)] overflow-y-auto">
+        <form
+          className="grid gap-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (pending) {
+              return;
+            }
+            setPending(true);
+            void (async () => {
+              try {
+                await commandFetch(`/api/reference-data/defect-types/${target.id}`, {
+                  method: 'PATCH',
+                  csrfToken,
+                  body: { expectedVersion: target.version, name: name.trim() },
+                });
+                toast.success('Вид дефекта сохранён');
+                await onSaved();
+                onClose();
+              } catch (error) {
+                toast.error(error instanceof ApiError ? error.message : 'Не удалось сохранить');
+              } finally {
+                setPending(false);
+              }
+            })();
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Редактировать вид дефекта</DialogTitle>
+          </DialogHeader>
+          {target.usageCount > 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Это название показывается во всех дефектах этого вида. После сохранения оно изменится
+              везде, где открыт этот справочник. Уже записанная история не изменится.
+            </p>
+          ) : null}
+          <div className="grid gap-1.5">
+            <Label htmlFor="edit-defect-type-name">Название</Label>
+            <Input
+              id="edit-defect-type-name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              required
+              className="min-h-11"
+            />
+          </div>
+          <DialogFooter className="flex-col gap-2 sm:flex-row">
+            <Button type="button" variant="outline" onClick={onClose} disabled={pending}>
+              Отмена
+            </Button>
+            <Button type="submit" disabled={pending || name.trim().length === 0}>
+              Сохранить
             </Button>
           </DialogFooter>
         </form>

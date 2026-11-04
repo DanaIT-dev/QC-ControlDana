@@ -104,7 +104,7 @@ test.describe('new act workflow status', () => {
     await expect(page.getByText('Статус не установлен', { exact: true }).first()).toBeVisible();
     await expect(page.getByText('Работа по акту ещё не начата')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Взять в работу' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Исполнить' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Завершить дефект' })).toHaveCount(0);
     await expectNoHorizontalOverflow(page);
 
     const actUrl = page.url();
@@ -130,8 +130,8 @@ test.describe('new act workflow status', () => {
     await expect(page.getByText(/Дата и время:/)).toBeVisible();
 
     await page.getByRole('tab', { name: 'Дефекты' }).click();
-    await page.getByRole('button', { name: 'Исполнить' }).click();
-    await expect(page.getByText('Изменения сохранены')).toBeVisible();
+    await page.getByRole('button', { name: 'Завершить дефект' }).click();
+    await expect(page.getByText('Дефект завершён. Акт завершён.')).toBeVisible();
     await expect(page.getByText('Исполнено', { exact: true }).first()).toBeVisible();
     expect(applicationErrors(errors)).toEqual([]);
     expect(errors.filter((message) => /hydrat/i.test(message))).toEqual([]);

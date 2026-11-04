@@ -568,6 +568,19 @@ export class ReferenceDataService {
       skip: (input.page - 1) * input.pageSize,
       take: input.pageSize,
     });
+    const usage = new Map<string, number>();
+    if (model === 'defectType' && items.length > 0) {
+      const counts = await this.prisma.client.defectItem.groupBy({
+        by: ['defectTypeId'],
+        where: { defectTypeId: { in: items.map((item) => item.id) } },
+        _count: { _all: true },
+      });
+      for (const row of counts) {
+        if (row.defectTypeId) {
+          usage.set(row.defectTypeId, row._count._all);
+        }
+      }
+    }
     return {
       items: items.map((item) => ({
         id: item.id,
@@ -577,6 +590,7 @@ export class ReferenceDataService {
         active: item.active,
         version: item.version,
         archivedAt: item.archivedAt?.toISOString() ?? null,
+        ...(model === 'defectType' ? { usageCount: usage.get(item.id) ?? 0 } : {}),
       })),
       ...pageMeta(input, totalCount),
     };
@@ -952,6 +966,7 @@ export class ReferenceDataService {
     const name = normalizeReferenceName(input.name);
     const ctx = actorContext(actor, request);
     return this.prisma.client.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(20260903, ${model === 'workType' ? 16 : 17})`;
       const coded = codedDelegate(tx, model);
       const current = await coded.findUnique({ where: { id } });
       if (!current) {
@@ -960,7 +975,24 @@ export class ReferenceDataService {
       if (current.version !== input.expectedVersion) {
         throw new StaleWriteError();
       }
-      const nextCode = code ?? current.code;
+      const existing = await coded.findMany({ select: { id: true, code: true, name: true } });
+      const nameDuplicate = existing.find(
+        (item) => item.id !== id && foldKey(item.name) === foldKey(name),
+      );
+      if (nameDuplicate) {
+        throw new DuplicateDirectoryRecordError('Такое значение уже существует', {
+          id: nameDuplicate.id,
+          label: nameDuplicate.name,
+        });
+      }
+      const nextCode = model === 'defectType' ? current.code : (code ?? current.code);
+      if (model !== 'defectType' && nextCode !== current.code) {
+        assertCaseInsensitiveUnique(
+          nextCode,
+          existing.filter((item) => item.id !== id).map((item) => item.code),
+          'Код уже используется',
+        );
+      }
       const updated = await coded.updateMany({
         where: { id, version: input.expectedVersion },
         data: {

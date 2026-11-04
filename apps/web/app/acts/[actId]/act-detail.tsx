@@ -14,6 +14,8 @@ import {
   isStartableActStatus,
   canResolveImportedEngineer,
   formatPersonShort,
+  actCompletionSummary,
+  defectNextStep,
 } from '@sgr-registry/domain';
 import type { SafeUserProfile } from '@sgr-registry/contracts';
 import { ArrowLeft, ChevronRight } from 'lucide-react';
@@ -102,6 +104,10 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
   const act = detailQuery.data;
   const showBC = canViewProposalGroupBC(user.role);
   const showHistory = canViewHistory(user.role);
+  const completion = actCompletionSummary({
+    actStatus: act.status,
+    defectStatuses: act.defectItems.map((item) => item.status),
+  });
 
   return (
     <article className="act-detail grid min-w-0 max-w-full gap-4">
@@ -157,6 +163,10 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
                 ? ' Нажмите «Взять в работу», чтобы перевести акт в статус «В работе».'
                 : ''}
             </p>
+          ) : null}
+          {completion.progress ? <p className="mt-2 text-sm">{completion.progress}</p> : null}
+          {completion.hint ? (
+            <p className="mt-1 text-sm text-muted-foreground">{completion.hint}</p>
           ) : null}
         </div>
         <ActOperations act={act} user={user} />
@@ -263,7 +273,10 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
               <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
                 <div className="grid gap-1">
                   <CardTitle className="text-base">{item.location ?? '—'}</CardTitle>
-                  <p className="text-sm text-muted-foreground">{item.defectTypeName}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {item.defectTypeName ?? 'Вид не указан'}
+                  </p>
+                  {item.claimDetails ? <p className="text-sm">{item.claimDetails}</p> : null}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <StatusBadge status={item.status} label={item.statusLabel} />
@@ -477,6 +490,19 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
                     </Badge>
                   ))}
                 </div>
+                {defectNextStep({
+                  actStatus: act.status,
+                  defectStatus: item.status,
+                  hasLiableOrganization: item.liableOrganizations.length > 0,
+                }) ? (
+                  <p className="text-sm text-muted-foreground">
+                    {defectNextStep({
+                      actStatus: act.status,
+                      defectStatus: item.status,
+                      hasLiableOrganization: item.liableOrganizations.length > 0,
+                    })}
+                  </p>
+                ) : null}
                 <ActOperations act={act} item={item} user={user} />
               </CardContent>
             </Card>

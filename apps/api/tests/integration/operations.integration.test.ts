@@ -2357,4 +2357,254 @@ describe('operations integration', () => {
     });
     expect((await prisma.act.findUniqueOrThrow({ where: { id: act.id } })).formCode).toBe('S23');
   });
+
+  it('corrects a defect type after the act is started and completes only when every defect is done', async () => {
+    const admin = await createUser('ADMIN');
+    const engineer = await createUser('RESPONSIBLE_ENGINEER');
+    const outsider = await createUser('RESPONSIBLE_ENGINEER');
+    const contractor = await createUser('CONTRACTOR_ENGINEER');
+    const adminSession = await login(admin.email);
+    const engineerSession = await login(engineer.email);
+    const outsiderSession = await login(outsider.email);
+    const contractorSession = await login(contractor.email);
+    const { object, customer, defectType } = await catalogs();
+    const otherType = await prisma.defectType.create({
+      data: {
+        code: `OPS-FIX-${Date.now()}`,
+        name: `Правильный вид ${Date.now()}`,
+        sortOrder: 80,
+      },
+    });
+    await assignObjectEngineers(object.id, [engineer.id]);
+    const created = await mutate(engineerSession, {
+      method: 'POST',
+      url: '/api/acts',
+      payload: {
+        formCode: 'S1',
+        objectId: object.id,
+        customerOrganizationId: customer.id,
+        issuedOn: '2026-11-04',
+        defectItems: [
+          {
+            location: 'Кухня',
+            defectTypeId: defectType.id,
+            claimDetails: 'Ошибочное описание',
+            responsibleEngineerIds: [engineer.id],
+          },
+          {
+            location: 'Ванная',
+            defectTypeId: defectType.id,
+            claimDetails: 'Второй дефект',
+            responsibleEngineerIds: [engineer.id],
+          },
+        ],
+      },
+      headers: { 'idempotency-key': `edit-defect-${Date.now()}` },
+    });
+    expect(created.statusCode).toBe(201);
+    const actId = (created.json() as { id: string }).id;
+    createdActIds.push(actId);
+    const before = await prisma.act.findUniqueOrThrow({
+      where: { id: actId },
+      include: { defectItems: { orderBy: { location: 'asc' } } },
+    });
+    expect(before.status).toBe('NEW');
+    const started = await mutate(engineerSession, {
+      method: 'POST',
+      url: `/api/acts/${actId}/start`,
+      payload: {},
+    });
+    expect(started.statusCode).toBe(200);
+    const detail = await inject({
+      method: 'GET',
+      url: `/api/acts/${actId}`,
+      cookies: { [SESSION_COOKIE_NAME]: engineerSession.cookie },
+    });
+    const body = detail.json() as {
+      status: string;
+      version: number;
+      startedAt: string;
+      defectItems: Array<{
+        id: string;
+        location: string;
+        version: number;
+        status: string;
+        defectTypeId: string;
+        claimDetails: string;
+        plannedDeadline: string | null;
+      }>;
+    };
+    expect(body.status).toBe('IN_PROGRESS');
+    const target = body.defectItems.find((item) => item.location === 'Кухня');
+    const other = body.defectItems.find((item) => item.location === 'Ванная');
+    expect(target).toBeTruthy();
+    expect(other).toBeTruthy();
+    const noticesBefore = await prisma.notificationEvent.count({
+      where: { defectItemId: target!.id },
+    });
+    const saved = await mutate(engineerSession, {
+      method: 'PATCH',
+      url: `/api/defects/${target!.id}`,
+      payload: {
+        expectedVersion: target!.version,
+        location: 'Кухня',
+        defectTypeId: otherType.id,
+        claimDetails: 'Исправленное описание',
+      },
+    });
+    expect(saved.statusCode).toBe(200);
+    const after = await prisma.defectItem.findUniqueOrThrow({ where: { id: target!.id } });
+    const actAfter = await prisma.act.findUniqueOrThrow({ where: { id: actId } });
+    expect(after.defectTypeId).toBe(otherType.id);
+    expect(after.claimDetails).toBe('Исправленное описание');
+    expect(after.status).toBe('IN_PROGRESS');
+    expect(after.plannedDeadline).toBeNull();
+    expect(after.id).toBe(target!.id);
+    expect(actAfter.status).toBe('IN_PROGRESS');
+    expect(actAfter.startedAt?.toISOString()).toBe(body.startedAt);
+    expect(
+      (await prisma.defectItem.findUniqueOrThrow({ where: { id: other!.id } })).defectTypeId,
+    ).toBe(defectType.id);
+    expect((await prisma.defectType.findUniqueOrThrow({ where: { id: defectType.id } })).name).toBe(
+      defectType.name,
+    );
+    expect(await prisma.notificationEvent.count({ where: { defectItemId: target!.id } })).toBe(
+      noticesBefore,
+    );
+    const audit = await prisma.auditLog.findFirstOrThrow({
+      where: { entityId: target!.id, action: 'DEFECT_UPDATED' },
+    });
+    expect(audit.actorUserId).toBe(engineer.id);
+    expect(audit.oldValue).toMatchObject({
+      defectTypeId: defectType.id,
+      claimDetails: 'Ошибочное описание',
+    });
+    expect(audit.newValue).toMatchObject({
+      defectTypeId: otherType.id,
+      claimDetails: 'Исправленное описание',
+    });
+    const stale = await mutate(engineerSession, {
+      method: 'PATCH',
+      url: `/api/defects/${target!.id}`,
+      payload: {
+        expectedVersion: target!.version,
+        claimDetails: 'Повтор',
+        location: 'Кухня',
+      },
+    });
+    expect(stale.statusCode).toBe(409);
+    expect(stale.json()).toMatchObject({ error: 'STALE_WRITE' });
+    expect(
+      (
+        await mutate(outsiderSession, {
+          method: 'PATCH',
+          url: `/api/defects/${target!.id}`,
+          payload: {
+            expectedVersion: after.version,
+            claimDetails: 'Чужой',
+            location: 'Кухня',
+          },
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      (
+        await mutate(contractorSession, {
+          method: 'PATCH',
+          url: `/api/defects/${target!.id}`,
+          payload: {
+            expectedVersion: after.version,
+            claimDetails: 'Подрядчик',
+            location: 'Кухня',
+          },
+        })
+      ).statusCode,
+    ).toBe(403);
+    const emptyAct = await mutate(adminSession, {
+      method: 'POST',
+      url: '/api/acts',
+      payload: {
+        formCode: 'S1',
+        objectId: object.id,
+        customerOrganizationId: customer.id,
+        issuedOn: '2026-11-04',
+      },
+      headers: { 'idempotency-key': `empty-act-${Date.now()}` },
+    });
+    expect(emptyAct.statusCode).toBe(201);
+    const emptyId = (emptyAct.json() as { id: string }).id;
+    createdActIds.push(emptyId);
+    const emptyStart = await mutate(adminSession, {
+      method: 'POST',
+      url: `/api/acts/${emptyId}/start`,
+      payload: {},
+    });
+    expect(emptyStart.statusCode).toBe(400);
+    expect((await prisma.act.findUniqueOrThrow({ where: { id: emptyId } })).status).toBe('NEW');
+    const firstDone = await mutate(engineerSession, {
+      method: 'POST',
+      url: `/api/defects/${target!.id}/complete`,
+      payload: { expectedVersion: after.version },
+    });
+    expect(firstDone.statusCode).toBe(200);
+    expect((firstDone.json() as { actStatus: string }).actStatus).toBe('IN_PROGRESS');
+    expect((await prisma.act.findUniqueOrThrow({ where: { id: actId } })).status).toBe(
+      'IN_PROGRESS',
+    );
+    const actVersion = (await prisma.act.findUniqueOrThrow({ where: { id: actId } })).version;
+    const added = await mutate(engineerSession, {
+      method: 'POST',
+      url: `/api/acts/${actId}/defects`,
+      payload: {
+        expectedActVersion: actVersion,
+        location: 'Коридор',
+        defectTypeId: defectType.id,
+        claimDetails: 'Добавлен во время завершения',
+        responsibleEngineerIds: [engineer.id],
+      },
+    });
+    expect(added.statusCode).toBe(201);
+    expect((await prisma.act.findUniqueOrThrow({ where: { id: actId } })).status).toBe(
+      'IN_PROGRESS',
+    );
+    const repeated = await mutate(engineerSession, {
+      method: 'POST',
+      url: `/api/defects/${target!.id}/complete`,
+      payload: { expectedVersion: after.version + 1 },
+    });
+    expect(repeated.statusCode).toBe(200);
+    expect(
+      await prisma.auditLog.count({ where: { entityId: target!.id, action: 'DEFECT_COMPLETED' } }),
+    ).toBe(1);
+    const secondVersion = (await prisma.defectItem.findUniqueOrThrow({ where: { id: other!.id } }))
+      .version;
+    const secondDone = await mutate(engineerSession, {
+      method: 'POST',
+      url: `/api/defects/${other!.id}/complete`,
+      payload: { expectedVersion: secondVersion },
+    });
+    expect(secondDone.statusCode).toBe(200);
+    expect((secondDone.json() as { actStatus: string }).actStatus).toBe('IN_PROGRESS');
+    const addedItem = await prisma.defectItem.findFirstOrThrow({
+      where: { actId, location: 'Коридор' },
+    });
+    const lastDone = await mutate(engineerSession, {
+      method: 'POST',
+      url: `/api/defects/${addedItem.id}/complete`,
+      payload: { expectedVersion: addedItem.version },
+    });
+    expect(lastDone.statusCode).toBe(200);
+    expect((lastDone.json() as { actStatus: string }).actStatus).toBe('COMPLETED');
+    expect((await prisma.act.findUniqueOrThrow({ where: { id: actId } })).status).toBe('COMPLETED');
+    const locked = await mutate(engineerSession, {
+      method: 'PATCH',
+      url: `/api/defects/${other!.id}`,
+      payload: {
+        expectedVersion: secondVersion + 1,
+        claimDetails: 'После завершения',
+        location: 'Ванная',
+      },
+    });
+    expect(locked.statusCode).toBe(409);
+  });
 });

@@ -400,13 +400,56 @@ describe('directory quick create', () => {
       payload: { name: defectName },
     });
     expect(defect.statusCode).toBe(201);
-    const defectBody = defect.json() as { id: string };
+    const defectBody = defect.json() as {
+      id: string;
+      code: string;
+      name: string;
+      version: number;
+    };
     createdDefectTypeIds.push(defectBody.id);
+    expect(defectBody.code.length).toBeGreaterThan(0);
+    expect(defectBody).not.toMatchObject({ code: '' });
     expect(
       await prisma.auditLog.count({
         where: { entityId: defectBody.id, action: 'DEFECT_TYPE_CREATED' },
       }),
     ).toBe(1);
+    const renamed = await mutate(sgrSession, {
+      method: 'PATCH',
+      url: `/api/reference-data/defect-types/${defectBody.id}`,
+      payload: {
+        expectedVersion: defectBody.version,
+        name: ` ${defectName} исправлен `,
+        code: 'SHOULD-NOT-APPLY',
+      },
+    });
+    expect(renamed.statusCode).toBe(200);
+    const renamedBody = renamed.json() as { code: string; name: string; version: number };
+    expect(renamedBody.code).toBe(defectBody.code);
+    expect(renamedBody.name).toBe(`${defectName} исправлен`);
+    const blankName = await mutate(sgrSession, {
+      method: 'PATCH',
+      url: `/api/reference-data/defect-types/${defectBody.id}`,
+      payload: { expectedVersion: renamedBody.version, name: '   ' },
+    });
+    expect(blankName.statusCode).toBe(400);
+    const duplicate = await mutate(sgrSession, {
+      method: 'POST',
+      url: '/api/reference-data/defect-types',
+      payload: { name: `Другой вид ${stamp}` },
+    });
+    expect(duplicate.statusCode).toBe(201);
+    const duplicateBody = duplicate.json() as { id: string; version: number };
+    createdDefectTypeIds.push(duplicateBody.id);
+    const collided = await mutate(sgrSession, {
+      method: 'PATCH',
+      url: `/api/reference-data/defect-types/${duplicateBody.id}`,
+      payload: {
+        expectedVersion: duplicateBody.version,
+        name: `${defectName} ИСПРАВЛЕН`,
+      },
+    });
+    expect(collided.statusCode).toBe(409);
 
     const concurrentName = `Гонка ${stamp}`;
     const concurrent = await Promise.all(

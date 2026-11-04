@@ -36,6 +36,8 @@ export * from './property-object-dates';
 export * from './engineer-name';
 export * from './objects-directory';
 export * from './act-commands';
+export * from './defect-content';
+export * from './act-completion-guidance';
 export * from './attachments';
 export * from './sla';
 export * from './notifications';

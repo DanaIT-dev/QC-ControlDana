@@ -334,6 +334,7 @@ export class RegistryService {
             acceptedBy: { select: { fullName: true } },
             notes: true,
             defectType: { select: { id: true, name: true } },
+            workType: { select: { id: true, name: true } },
             responsibleEngineers: {
               select: {
                 user: {
@@ -409,6 +410,8 @@ export class RegistryService {
         location: item.location,
         defectTypeId: item.defectType?.id ?? null,
         defectTypeName: item.defectType?.name ?? null,
+        workTypeId: item.workType?.id ?? null,
+        workTypeName: item.workType?.name ?? null,
         status: item.status,
         statusLabel: defectItemStatusLabel(item.status),
         version: item.version,

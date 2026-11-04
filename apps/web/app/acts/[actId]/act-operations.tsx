@@ -71,8 +71,12 @@ export function ActOperations({
 
   async function run(path: string, method: 'POST' | 'PATCH' | 'PUT', body: unknown) {
     try {
-      await commandFetch(path, { method, csrfToken: user.csrfToken, body });
-      toast.success(path.endsWith('/header') ? 'Данные акта сохранены' : 'Изменения сохранены');
+      const saved = await commandFetch<{ actStatus?: string }>(path, {
+        method,
+        csrfToken: user.csrfToken,
+        body,
+      });
+      toast.success(successMessage(path, saved.actStatus));
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.act(act.id) }),
         queryClient.invalidateQueries({ queryKey: historyKey(act.id) }),
@@ -167,6 +171,17 @@ export function ActOperations({
         user={user}
         onSave={(body) => run(`/api/defects/${item.id}/deadlines`, 'PATCH', body)}
       />
+      {hasCapability(user.role, 'EDIT_DEFECT') &&
+      item.status === 'IN_PROGRESS' &&
+      act.status !== 'COMPLETED' &&
+      act.status !== 'CANCELLED' ? (
+        <DefectEditor
+          act={act}
+          item={item}
+          csrfToken={user.csrfToken}
+          onSave={(body) => run(`/api/defects/${item.id}`, 'PATCH', body)}
+        />
+      ) : null}
       {hasCapability(user.role, 'SUBMIT_DEFECT_FOR_INSPECTION') &&
       item.status === 'IN_PROGRESS' &&
       item.liableOrganizations.length > 0 &&
@@ -222,7 +237,7 @@ export function ActOperations({
             void run(`/api/defects/${item.id}/complete`, 'POST', { expectedVersion: item.version })
           }
         >
-          Исполнить
+          Завершить дефект
         </Button>
       ) : null}
       {hasCapability(user.role, 'REOPEN_DEFECT') && item.status === 'COMPLETED' ? (
@@ -302,12 +317,160 @@ function HeaderEditor({
                 onChange={(event) => setIssuedOn(event.target.value)}
               />
             </div>
+            <p className="text-sm text-muted-foreground">
+              Статус акта, автор и время взятия в работу не изменяются.
+            </p>
             <DialogFooter>
               <Button type="submit">Сохранить</Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
+    </>
+  );
+}
+
+function DefectEditor({
+  item,
+  csrfToken,
+  onSave,
+}: {
+  act: ActDetailResponse;
+  item: ActDetailDefectItem;
+  csrfToken: string;
+  onSave: (body: unknown) => void;
+}) {
+  const lookups = useOperationLookups();
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [defectTypeId, setDefectTypeId] = useState(item.defectTypeId ?? '');
+  const [workTypeId, setWorkTypeId] = useState(item.workTypeId ?? '');
+  const [location, setLocation] = useState(item.location ?? '');
+  const [claimDetails, setClaimDetails] = useState(item.claimDetails ?? '');
+  const [notes, setNotes] = useState(item.notes ?? '');
+  const [quickCreate, setQuickCreate] = useState<DirectoryQuickCreateRequest | null>(null);
+
+  function patchLookups(updater: (current: OperationLookups) => OperationLookups) {
+    queryClient.setQueryData(queryKeys.lookups, (current: OperationLookups | undefined) =>
+      current ? updater(current) : current,
+    );
+  }
+
+  return (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        onClick={() => {
+          setDefectTypeId(item.defectTypeId ?? '');
+          setWorkTypeId(item.workTypeId ?? '');
+          setLocation(item.location ?? '');
+          setClaimDetails(item.claimDetails ?? '');
+          setNotes(item.notes ?? '');
+          setOpen(true);
+        }}
+      >
+        Редактировать дефект
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-h-[min(100dvh,40rem)] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Редактировать дефект</DialogTitle>
+          </DialogHeader>
+          <form
+            className="grid gap-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              onSave({
+                expectedVersion: item.version,
+                location,
+                claimDetails,
+                notes: notes.trim() ? notes : null,
+                defectTypeId: defectTypeId || null,
+                workTypeId: workTypeId && workTypeId !== 'none' ? workTypeId : null,
+              });
+              setOpen(false);
+            }}
+          >
+            <p className="text-sm text-muted-foreground">
+              Исправляется только эта позиция. Справочник видов дефектов и остальные дефекты не
+              меняются. Статус, срок и начало работы сохраняются.
+            </p>
+            <div className="grid gap-1.5">
+              <Label htmlFor="edit-defect-location">Помещение</Label>
+              <Input
+                id="edit-defect-location"
+                value={location}
+                onChange={(event) => setLocation(event.target.value)}
+                required
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="edit-defect-claim">Описание</Label>
+              <Textarea
+                id="edit-defect-claim"
+                value={claimDetails}
+                onChange={(event) => setClaimDetails(event.target.value)}
+                required
+              />
+            </div>
+            <DirectoryCombobox
+              label="Вид дефекта"
+              options={(lookups.data?.defectTypes ?? []).map((entry) => ({
+                id: entry.id,
+                label: entry.name,
+              }))}
+              value={defectTypeId}
+              onChange={setDefectTypeId}
+              emptyText="Виды дефектов не загружены"
+              addLabel={lookups.data?.canCreate?.defectType ? 'Добавить вид дефекта' : undefined}
+              onAdd={
+                lookups.data?.canCreate?.defectType
+                  ? (query) => setQuickCreate({ kind: 'defect-types', query })
+                  : undefined
+              }
+            />
+            <DirectoryCombobox
+              label="Вид работ"
+              options={(lookups.data?.workTypes ?? []).map((entry) => ({
+                id: entry.id,
+                label: entry.name,
+              }))}
+              value={workTypeId || 'none'}
+              onChange={setWorkTypeId}
+              noneOption={{ id: 'none', label: 'Не указан' }}
+            />
+            <div className="grid gap-1.5">
+              <Label htmlFor="edit-defect-notes">Примечания</Label>
+              <Textarea
+                id="edit-defect-notes"
+                value={notes}
+                onChange={(event) => setNotes(event.target.value)}
+              />
+            </div>
+            <DialogFooter>
+              <Button type="submit">Сохранить</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+      <DirectoryCreateDialogs
+        csrfToken={csrfToken}
+        request={quickCreate}
+        onClose={() => setQuickCreate(null)}
+        onCreated={(kind, created) => {
+          if (kind !== 'defect-types') {
+            return;
+          }
+          patchLookups((current) => ({
+            ...current,
+            defectTypes: current.defectTypes.some((entry) => entry.id === created.id)
+              ? current.defectTypes
+              : [...current.defectTypes, { id: created.id, name: created.label }],
+          }));
+          setDefectTypeId(created.id);
+        }}
+      />
     </>
   );
 }
@@ -1106,7 +1269,35 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
   plannedDeadline: 'Срок устранения',
   claimDeadline: 'Претензионный срок',
   thirdPartyDeadline: 'Срок третьей стороны',
+  location: 'Помещение',
+  defectTypeName: 'Вид дефекта',
+  workTypeName: 'Вид работ',
+  claimDetails: 'Описание',
+  notes: 'Примечания',
 };
+
+function successMessage(path: string, actStatus?: string) {
+  if (path.endsWith('/header')) {
+    return 'Данные акта сохранены';
+  }
+  if (path.endsWith('/accept-repair')) {
+    return actStatus === 'COMPLETED'
+      ? 'Устранение принято. Акт завершён.'
+      : 'Устранение принято. Акт будет завершён после завершения всех его дефектов.';
+  }
+  if (path.endsWith('/complete')) {
+    return actStatus === 'COMPLETED'
+      ? 'Дефект завершён. Акт завершён.'
+      : 'Дефект завершён. Акт будет завершён после завершения всех его дефектов.';
+  }
+  if (path.endsWith('/submit-for-inspection')) {
+    return 'Дефект передан на проверку';
+  }
+  if (/\/defects\/[^/]+$/.test(path)) {
+    return 'Дефект сохранён';
+  }
+  return 'Изменения сохранены';
+}
 
 function summarize(value: unknown): string {
   if (!value || typeof value !== 'object') {

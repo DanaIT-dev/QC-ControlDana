@@ -117,6 +117,8 @@ export interface ActDetailDefectItem {
   location: string | null;
   defectTypeId: string | null;
   defectTypeName: string | null;
+  workTypeId: string | null;
+  workTypeName: string | null;
   status: DefectItemStatus;
   statusLabel: string;
   version: number;
