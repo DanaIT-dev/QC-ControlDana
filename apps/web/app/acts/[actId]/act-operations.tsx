@@ -9,6 +9,8 @@ import {
   AUDIT_ACTION_LABELS,
   canStartAct,
   canViewProposalGroupBC,
+  displayActNumber,
+  displayObjectName,
   hasCapability,
   isStartableActStatus,
 } from '@sgr-registry/domain';
@@ -145,6 +147,21 @@ export function ActOperations({
             act={act}
             csrfToken={user.csrfToken}
             onSave={(body) => run(`/api/acts/${act.id}/defects`, 'POST', body)}
+          />
+        ) : null}
+        {hasCapability(user.role, 'CLOSE_ACT_WITHOUT_INSPECTION') &&
+        act.status === 'IN_PROGRESS' &&
+        act.startedAt &&
+        act.closureMethod == null &&
+        act.defectItems.length > 0 ? (
+          <CloseWithoutInspectionButton
+            act={act}
+            onSave={(reason) =>
+              run(`/api/acts/${act.id}/close-without-inspection`, 'POST', {
+                expectedVersion: act.version,
+                reason,
+              })
+            }
           />
         ) : null}
         <ConflictDialog
@@ -1276,6 +1293,94 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
   notes: 'Примечания',
 };
 
+function CloseWithoutInspectionButton({
+  act,
+  onSave,
+}: {
+  act: ActDetailResponse;
+  onSave: (reason: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState('');
+  const unfinished = act.defectItems.filter((item) => item.status !== 'COMPLETED').length;
+  const pending = act.defectItems.filter((item) => item.status === 'PENDING_INSPECTION').length;
+  const trimmed = reason.trim();
+
+  return (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        className="border-amber-400 text-amber-950 hover:bg-amber-50"
+        onClick={() => setOpen(true)}
+      >
+        Закрыть акт без проверки
+      </Button>
+      <Dialog
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next);
+          if (!next) {
+            setReason('');
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Закрыть акт без проверки?</DialogTitle>
+          </DialogHeader>
+          <form
+            className="grid gap-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!trimmed) {
+                return;
+              }
+              onSave(trimmed);
+              setOpen(false);
+              setReason('');
+            }}
+          >
+            <p className="text-sm">
+              Акт и его незавершённые дефекты будут закрыты без проверки устранения. В истории
+              сохранятся ваше имя, дата и причина. Это действие не подтверждает фактическое
+              устранение дефектов.
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Акт{' '}
+              {displayActNumber({
+                officialNumber: act.officialNumber,
+                sourceActNumberRaw: act.legacyImport?.sourceActNumberRaw,
+              })}
+              {' · '}
+              {displayObjectName(act.objectName)}
+            </p>
+            <p className="text-sm">Незавершённых дефектов: {unfinished}</p>
+            {pending > 0 ? <p className="text-sm">Ожидают проверки: {pending}</p> : null}
+            <div className="grid gap-1.5">
+              <Label htmlFor="close-without-inspection-reason">Причина закрытия без проверки</Label>
+              <Textarea
+                id="close-without-inspection-reason"
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+                required
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                Отмена
+              </Button>
+              <Button type="submit" variant="outline" disabled={!trimmed}>
+                Закрыть акт без проверки
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 function successMessage(path: string, actStatus?: string) {
   if (path.endsWith('/header')) {
     return 'Данные акта сохранены';
@@ -1292,6 +1397,9 @@ function successMessage(path: string, actStatus?: string) {
   }
   if (path.endsWith('/submit-for-inspection')) {
     return 'Дефект передан на проверку';
+  }
+  if (path.endsWith('/close-without-inspection')) {
+    return 'Акт закрыт без проверки';
   }
   if (/\/defects\/[^/]+$/.test(path)) {
     return 'Дефект сохранён';

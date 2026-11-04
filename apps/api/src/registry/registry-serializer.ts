@@ -19,6 +19,7 @@ import {
 const LIST_SELECT = {
   id: true,
   status: true,
+  closureMethod: true,
   location: true,
   sourceDeadlineRaw: true,
   plannedDeadline: true,
@@ -34,6 +35,7 @@ const LIST_SELECT = {
       formCode: true,
       signedDocumentRef: true,
       status: true,
+      closureMethod: true,
       issuedOn: true,
       startedAt: true,
       objectId: true,
@@ -141,6 +143,8 @@ export function toRegistryRow(
     actStatusLabel: actStatusLabel(item.act.status as ActStatus),
     defectStatus: item.status as DefectItemStatus,
     defectStatusLabel: defectItemStatusLabel(item.status as DefectItemStatus),
+    closureMethod: item.closureMethod,
+    actClosureMethod: item.act.closureMethod,
     objectId: item.act.objectId,
     objectName: item.act.propertyObject?.name ?? null,
     objectAddress: item.act.propertyObject?.address ?? null,
@@ -201,6 +205,10 @@ export const emptyActSelect = {
   sourceActNumberRaw: true,
   formCode: true,
   status: true,
+  closureMethod: true,
+  closedWithoutInspectionAt: true,
+  closedWithoutInspectionByName: true,
+  closureReason: true,
   issuedOn: true,
   startedAt: true,
   objectId: true,
@@ -238,6 +246,8 @@ export function toEmptyRegistryRow(act: EmptyActRecord, role: UserRole) {
     actStatusLabel: actStatusLabel(act.status as ActStatus),
     defectStatus: 'IN_PROGRESS' as DefectItemStatus,
     defectStatusLabel: 'Дефект не добавлен',
+    closureMethod: null,
+    actClosureMethod: act.closureMethod,
     objectId: act.objectId,
     objectName: act.propertyObject?.name ?? null,
     objectAddress: act.propertyObject?.address ?? null,
@@ -288,6 +298,10 @@ export function toActHeader(act: {
   } | null;
   cancelledAt: Date | null;
   cancellationReason: string | null;
+  closureMethod?: 'WITHOUT_INSPECTION' | null;
+  closedWithoutInspectionAt?: Date | null;
+  closedWithoutInspectionByName?: string | null;
+  closureReason?: string | null;
   signedDocumentRef: string | null;
   startedAt?: Date | null;
   startedBy?: {
@@ -352,6 +366,10 @@ export function toActHeader(act: {
       : null,
     cancelledAt: timestampField(act.cancelledAt),
     cancellationReason: act.cancellationReason,
+    closureMethod: act.closureMethod ?? null,
+    closedWithoutInspectionAt: timestampField(act.closedWithoutInspectionAt ?? null),
+    closedWithoutInspectionByName: act.closedWithoutInspectionByName ?? null,
+    closureReason: act.closureReason ?? null,
     legacyImport: act.importedAt
       ? {
           sourceActNumberRaw: act.sourceActNumberRaw ?? null,

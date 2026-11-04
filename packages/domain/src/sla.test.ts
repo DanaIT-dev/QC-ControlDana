@@ -29,6 +29,7 @@ import {
 import {
   nextClockCycle,
   overdueDaysOf,
+  overdueNoticeSuppressed,
   reachedEscalationThresholds,
   shouldBumpGeneralCycle,
   slaStateOf,
@@ -77,6 +78,9 @@ describe('SLA clocks', () => {
     expect(overdueDaysOf({ deadline: calendarDateToUtcNoon('2026-08-23'), now: today })).toBe(3);
     expect(overdueDaysOf({ deadline: calendarDateToUtcNoon('2026-08-19'), now: today })).toBe(7);
     expect(overdueDaysOf({ deadline: calendarDateToUtcNoon('2026-08-12'), now: today })).toBe(14);
+    expect(overdueNoticeSuppressed('COMPLETED')).toBe(true);
+    expect(overdueNoticeSuppressed('IN_PROGRESS')).toBe(false);
+    expect(overdueNoticeSuppressed('PENDING_INSPECTION')).toBe(false);
     expect(reachedEscalationThresholds(14)).toEqual([0, 3, 7, 14]);
   });
 

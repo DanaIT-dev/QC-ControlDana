@@ -8,6 +8,7 @@ import {
 } from '@sgr-registry/domain';
 import { DeadlineBadge, deadlineToneClass, StatusBadge } from '@/components/status-badge';
 import { ProposalValue, proposalSlotOf } from '@/components/proposal-value';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { formatCalendarDate } from '../../lib/registry-url';
@@ -44,6 +45,12 @@ export function RegistryCards({
                 status={displayedRegistryStatus(row).status}
                 label={displayedRegistryStatus(row).label}
               />
+              {row.closureMethod === 'WITHOUT_INSPECTION' ||
+              row.actClosureMethod === 'WITHOUT_INSPECTION' ? (
+                <Badge className="border-transparent bg-amber-100 text-amber-950">
+                  Закрыт без проверки
+                </Badge>
+              ) : null}
               {row.actStatus === 'NEW' && row.fillLabel ? (
                 <p className="text-sm">Заполнение: {row.fillLabel}</p>
               ) : null}

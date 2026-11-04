@@ -102,6 +102,11 @@ enum InspectionAttemptStatus {
   PENDING
   ACCEPTED
   REJECTED
+  TERMINATED
+}
+
+enum DefectClosureMethod {
+  WITHOUT_INSPECTION
 }
 
 enum FinancialAmountType {
@@ -195,6 +200,7 @@ model User {
   defectsAccepted DefectItem[] @relation("DefectAcceptedBy")
   inspectionAttemptsSubmitted DefectInspectionAttempt[] @relation("AttemptSubmittedBy")
   inspectionAttemptsReviewed DefectInspectionAttempt[] @relation("AttemptReviewedBy")
+  actsClosedWithoutInspection Act[] @relation("ActClosedWithoutInspectionBy")
   financialImpactsCreated DefectFinancialImpact[] @relation("FinancialCreatedBy")
   financialImpactsConfirmed DefectFinancialImpact[] @relation("FinancialConfirmedBy")
   analyticsInsightsReviewed AnalyticsInsight[] @relation("InsightReviewedBy")
@@ -409,6 +415,11 @@ model Act {
   cancelledAt            DateTime?   @db.Timestamptz(3)
   cancellationReason     String?
   cancelledByUserId      String?     @db.Uuid
+  closureMethod                    DefectClosureMethod?
+  closedWithoutInspectionAt        DateTime?            @db.Timestamptz(3)
+  closedWithoutInspectionByUserId  String?              @db.Uuid
+  closedWithoutInspectionByName    String?
+  closureReason                    String?
   sourceSystem           String?
   sourceFileName         String?
   sourceFileSha256       String?
@@ -427,6 +438,7 @@ model Act {
   fillingEngineer User?          @relation("ActFilledBy", fields: [fillingEngineerId], references: [id], onDelete: Restrict)
   startedBy      User?           @relation("ActStartedBy", fields: [startedById], references: [id], onDelete: Restrict)
   cancelledBy    User?          @relation("ActCancelledBy", fields: [cancelledByUserId], references: [id], onDelete: Restrict)
+  closedWithoutInspectionBy User?  @relation("ActClosedWithoutInspectionBy", fields: [closedWithoutInspectionByUserId], references: [id], onDelete: Restrict)
   importBatch    ImportBatch?   @relation(fields: [importBatchId], references: [id], onDelete: Restrict)
   defectItems    DefectItem[]
   attachments    Attachment[]
@@ -441,6 +453,7 @@ model Act {
   @@index([fillingEngineerId])
   @@index([status])
   @@index([importBatchId])
+  @@index([closedWithoutInspectionByUserId])
   @@map("acts")
 }
 
@@ -520,6 +533,7 @@ model DefectItem {
   defectTypeId       String?          @db.Uuid
   workTypeId         String?          @db.Uuid
   status             DefectItemStatus @default(IN_PROGRESS)
+  closureMethod      DefectClosureMethod?
   claimDetails       String?
   plannedDeadline    DateTime?        @db.Timestamptz(3)
   claimDeadline      DateTime?        @db.Timestamptz(3)

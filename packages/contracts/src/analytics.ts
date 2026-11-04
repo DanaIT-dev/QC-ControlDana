@@ -21,7 +21,12 @@ export type FinancialPayerType = (typeof FINANCIAL_PAYER_TYPES)[number];
 export const FINANCIAL_RECORD_STATUSES = ['DRAFT', 'CONFIRMED', 'VOIDED'] as const;
 export type FinancialRecordStatus = (typeof FINANCIAL_RECORD_STATUSES)[number];
 
-export const INSPECTION_ATTEMPT_STATUSES = ['PENDING', 'ACCEPTED', 'REJECTED'] as const;
+export const INSPECTION_ATTEMPT_STATUSES = [
+  'PENDING',
+  'ACCEPTED',
+  'REJECTED',
+  'TERMINATED',
+] as const;
 export type InspectionAttemptStatus = (typeof INSPECTION_ATTEMPT_STATUSES)[number];
 
 export const ANALYTICS_INSIGHT_STATUSES = [
@@ -190,6 +195,8 @@ export interface AnalyticsOverview {
   medianClosureMs: number | null;
   p90ClosureMs: number | null;
   closureSampleSize: number;
+  closedWithoutInspection: number;
+  confirmedRepairCoverageText: string;
   firstTimeRight: AnalyticsRate;
   averageAttempts: number | null;
   newInsights: number;

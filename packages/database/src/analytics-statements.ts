@@ -66,7 +66,11 @@ export function overviewCountsSql(where: Prisma.Sql, closureWindow: Prisma.Sql):
       count(*) FILTER (WHERE NOT EXISTS (SELECT 1 FROM public.defect_item_engineers engineer WHERE engineer."defectItemId" = d.id))::int AS no_responsible,
       count(*) FILTER (WHERE NOT EXISTS (SELECT 1 FROM public.defect_item_liable_organizations liable WHERE liable."defectItemId" = d.id))::int AS no_liable,
       count(*) FILTER (WHERE d.status::text = 'IN_PROGRESS' AND d."updatedAt" < now() - make_interval(days => 14))::int AS no_movement,
-      count(*) FILTER (WHERE d.status::text = 'COMPLETED' ${closureWindow})::int AS closed_in_period
+      count(*) FILTER (
+        WHERE d.status::text = 'COMPLETED'
+          AND d."closureMethod" IS DISTINCT FROM 'WITHOUT_INSPECTION'
+          ${closureWindow}
+      )::int AS closed_in_period
     ${scopedFrom(where)}
   `;
 }
@@ -79,6 +83,7 @@ export function overviewClosureSql(where: Prisma.Sql): Prisma.Sql {
       count(*)::int AS sample
     ${scopedFrom(where)}
     AND d.status::text = 'COMPLETED'
+    AND d."closureMethod" IS DISTINCT FROM 'WITHOUT_INSPECTION'
     AND d."readyAt" IS NOT NULL
     AND d."readyAt" >= d."createdAt"
   `;
@@ -150,7 +155,8 @@ export function matchingInsightIdsSql(
 export function processClocksSql(where: Prisma.Sql): Prisma.Sql {
   return Prisma.sql`
     WITH attempts AS (
-      SELECT attempt."defectItemId", attempt."attemptNumber", attempt."submittedAt", attempt."reviewedAt",
+      SELECT attempt."defectItemId", attempt."attemptNumber", attempt.status::text AS status,
+             attempt."submittedAt", attempt."reviewedAt",
              lag(attempt."reviewedAt") OVER (PARTITION BY attempt."defectItemId" ORDER BY attempt."attemptNumber") AS prev_reviewed
       FROM public.defect_inspection_attempts attempt
     ),
@@ -169,6 +175,7 @@ export function processClocksSql(where: Prisma.Sql): Prisma.Sql {
           ELSE NULL
         END AS contractor_ms,
         CASE
+          WHEN attempts.status = 'TERMINATED' THEN NULL
           WHEN attempts."reviewedAt" IS NOT NULL
             AND attempts."submittedAt" >= d."createdAt"
             AND attempts."reviewedAt" >= attempts."submittedAt"
@@ -394,7 +401,8 @@ export function riskWeightedBacklogSql(where: Prisma.Sql): Prisma.Sql {
 export function lowFirstTimeRightSql(where: Prisma.Sql): Prisma.Sql {
   return Prisma.sql`
     WITH scoped AS (
-      SELECT d.id, d.status::text AS status, d."defectTypeId" AS type_id, dt.name AS type_name,
+      SELECT d.id, d.status::text AS status, d."closureMethod"::text AS closure_method,
+             d."defectTypeId" AS type_id, dt.name AS type_name,
              d."workTypeId" AS work_id, wt.name AS work_name,
              a."objectId" AS object_id, po.name AS object_name
       ${scopedFrom(
@@ -412,17 +420,17 @@ export function lowFirstTimeRightSql(where: Prisma.Sql): Prisma.Sql {
       GROUP BY attempt."defectItemId"
     ),
     base AS (
-      SELECT count(*) FILTER (WHERE scoped.status = 'COMPLETED' AND flags.id IS NOT NULL)::int AS with_attempts,
-             count(*) FILTER (WHERE scoped.status = 'COMPLETED' AND flags.first_accept)::int AS first_accept,
-             count(*) FILTER (WHERE scoped.status = 'COMPLETED')::int AS completed
+      SELECT count(*) FILTER (WHERE scoped.status = 'COMPLETED' AND scoped.closure_method IS DISTINCT FROM 'WITHOUT_INSPECTION' AND flags.id IS NOT NULL)::int AS with_attempts,
+             count(*) FILTER (WHERE scoped.status = 'COMPLETED' AND scoped.closure_method IS DISTINCT FROM 'WITHOUT_INSPECTION' AND flags.first_accept)::int AS first_accept,
+             count(*) FILTER (WHERE scoped.status = 'COMPLETED' AND scoped.closure_method IS DISTINCT FROM 'WITHOUT_INSPECTION')::int AS completed
       FROM scoped
       LEFT JOIN flags ON flags.id = scoped.id
     )
     SELECT * FROM (
       SELECT 'liableOrganization' AS dim_key, org.id::text AS dim_id, org."officialName" AS dim_label,
-             count(*) FILTER (WHERE scoped.status = 'COMPLETED' AND flags.id IS NOT NULL)::int AS support,
-             count(*) FILTER (WHERE scoped.status = 'COMPLETED' AND flags.first_accept)::int AS positive,
-             count(*) FILTER (WHERE scoped.status = 'COMPLETED')::int AS completed,
+             count(*) FILTER (WHERE scoped.status = 'COMPLETED' AND scoped.closure_method IS DISTINCT FROM 'WITHOUT_INSPECTION' AND flags.id IS NOT NULL)::int AS support,
+             count(*) FILTER (WHERE scoped.status = 'COMPLETED' AND scoped.closure_method IS DISTINCT FROM 'WITHOUT_INSPECTION' AND flags.first_accept)::int AS positive,
+             count(*) FILTER (WHERE scoped.status = 'COMPLETED' AND scoped.closure_method IS DISTINCT FROM 'WITHOUT_INSPECTION')::int AS completed,
              max(base.with_attempts)::int AS baseline_total,
              max(base.first_accept)::int AS baseline_positive,
              max(base.completed)::int AS baseline_completed
@@ -434,9 +442,9 @@ export function lowFirstTimeRightSql(where: Prisma.Sql): Prisma.Sql {
       GROUP BY org.id, org."officialName"
       UNION ALL
       SELECT 'defectType', type_id::text, type_name,
-             count(*) FILTER (WHERE status = 'COMPLETED' AND flags.id IS NOT NULL)::int,
-             count(*) FILTER (WHERE status = 'COMPLETED' AND flags.first_accept)::int,
-             count(*) FILTER (WHERE status = 'COMPLETED')::int,
+             count(*) FILTER (WHERE status = 'COMPLETED' AND closure_method IS DISTINCT FROM 'WITHOUT_INSPECTION' AND flags.id IS NOT NULL)::int,
+             count(*) FILTER (WHERE status = 'COMPLETED' AND closure_method IS DISTINCT FROM 'WITHOUT_INSPECTION' AND flags.first_accept)::int,
+             count(*) FILTER (WHERE status = 'COMPLETED' AND closure_method IS DISTINCT FROM 'WITHOUT_INSPECTION')::int,
              max(base.with_attempts)::int, max(base.first_accept)::int, max(base.completed)::int
       FROM scoped
       LEFT JOIN flags ON flags.id = scoped.id
@@ -444,9 +452,9 @@ export function lowFirstTimeRightSql(where: Prisma.Sql): Prisma.Sql {
       GROUP BY type_id, type_name
       UNION ALL
       SELECT 'workType', work_id::text, work_name,
-             count(*) FILTER (WHERE status = 'COMPLETED' AND flags.id IS NOT NULL)::int,
-             count(*) FILTER (WHERE status = 'COMPLETED' AND flags.first_accept)::int,
-             count(*) FILTER (WHERE status = 'COMPLETED')::int,
+             count(*) FILTER (WHERE status = 'COMPLETED' AND closure_method IS DISTINCT FROM 'WITHOUT_INSPECTION' AND flags.id IS NOT NULL)::int,
+             count(*) FILTER (WHERE status = 'COMPLETED' AND closure_method IS DISTINCT FROM 'WITHOUT_INSPECTION' AND flags.first_accept)::int,
+             count(*) FILTER (WHERE status = 'COMPLETED' AND closure_method IS DISTINCT FROM 'WITHOUT_INSPECTION')::int,
              max(base.with_attempts)::int, max(base.first_accept)::int, max(base.completed)::int
       FROM scoped
       LEFT JOIN flags ON flags.id = scoped.id
@@ -455,9 +463,9 @@ export function lowFirstTimeRightSql(where: Prisma.Sql): Prisma.Sql {
       GROUP BY work_id, work_name
       UNION ALL
       SELECT 'propertyObject', object_id::text, object_name,
-             count(*) FILTER (WHERE status = 'COMPLETED' AND flags.id IS NOT NULL)::int,
-             count(*) FILTER (WHERE status = 'COMPLETED' AND flags.first_accept)::int,
-             count(*) FILTER (WHERE status = 'COMPLETED')::int,
+             count(*) FILTER (WHERE status = 'COMPLETED' AND closure_method IS DISTINCT FROM 'WITHOUT_INSPECTION' AND flags.id IS NOT NULL)::int,
+             count(*) FILTER (WHERE status = 'COMPLETED' AND closure_method IS DISTINCT FROM 'WITHOUT_INSPECTION' AND flags.first_accept)::int,
+             count(*) FILTER (WHERE status = 'COMPLETED' AND closure_method IS DISTINCT FROM 'WITHOUT_INSPECTION')::int,
              max(base.with_attempts)::int, max(base.first_accept)::int, max(base.completed)::int
       FROM scoped
       LEFT JOIN flags ON flags.id = scoped.id
@@ -534,7 +542,7 @@ export function materializeAnalyticsScopeSql(where: Prisma.Sql, staff = false): 
       SELECT d.id, d."actId", d.status, d."createdAt", d."updatedAt", d."readyAt",
              d."effectiveDeadline", d."defectTypeId", d."workTypeId", d.location,
              d."submittedForInspectionAt", d."acceptedAt", d."rejectedAt",
-             d."importBatchId", d."sourceSystem"
+             d."importBatchId", d."sourceSystem", d."closureMethod"
       FROM public.sgr_staff_defect_items() d
       CROSS JOIN LATERAL (
         SELECT d."actId" AS id,
@@ -550,7 +558,7 @@ export function materializeAnalyticsScopeSql(where: Prisma.Sql, staff = false): 
     SELECT d.id, d."actId", d.status, d."createdAt", d."updatedAt", d."readyAt",
            d."effectiveDeadline", d."defectTypeId", d."workTypeId", d.location,
            d."submittedForInspectionAt", d."acceptedAt", d."rejectedAt",
-           d."importBatchId", d."sourceSystem"
+           d."importBatchId", d."sourceSystem", d."closureMethod"
     FROM public.defect_items d
     JOIN public.acts a ON a.id = d."actId"
     WHERE ${where}
@@ -632,7 +640,7 @@ export function overviewBundleSql(input: {
     WITH filtered AS MATERIALIZED (
       SELECT fd.id, fd."actId", fd.status::text AS status, fd."createdAt", fd."updatedAt", fd."readyAt",
              fd."effectiveDeadline", fd."defectTypeId", fd."workTypeId", fd.location,
-             fd."submittedForInspectionAt", fd."acceptedAt", fd."rejectedAt",
+             fd."submittedForInspectionAt", fd."acceptedAt", fd."rejectedAt", fd."closureMethod",
              dt.name AS type_name
       FROM analytics_scope_defects fd
       LEFT JOIN public.defect_types dt ON dt.id = fd."defectTypeId"
@@ -782,31 +790,47 @@ export function overviewBundleSql(input: {
       'no_movement', (SELECT count(*) FILTER (WHERE status = 'IN_PROGRESS' AND "updatedAt" < now() - make_interval(days => 14))::int FROM filtered),
       'closed_in_period', (
         SELECT count(*)::int FROM filtered fd
-        WHERE fd.status = 'COMPLETED' ${closureFrom} ${closureTo}
+        WHERE fd.status = 'COMPLETED'
+          AND fd."closureMethod" IS DISTINCT FROM 'WITHOUT_INSPECTION'
+          ${closureFrom} ${closureTo}
+      ),
+      'closed_without_inspection', (
+        SELECT count(*)::int FROM filtered fd
+        WHERE fd."closureMethod"::text = 'WITHOUT_INSPECTION'
       ),
       'median', (
         SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (fd."readyAt" - fd."createdAt")) * 1000)
         FROM filtered fd
-        WHERE fd.status = 'COMPLETED' AND fd."readyAt" IS NOT NULL AND fd."readyAt" >= fd."createdAt"
+        WHERE fd.status = 'COMPLETED'
+          AND fd."closureMethod" IS DISTINCT FROM 'WITHOUT_INSPECTION'
+          AND fd."readyAt" IS NOT NULL AND fd."readyAt" >= fd."createdAt"
       ),
       'p90', (
         SELECT percentile_cont(0.9) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (fd."readyAt" - fd."createdAt")) * 1000)
         FROM filtered fd
-        WHERE fd.status = 'COMPLETED' AND fd."readyAt" IS NOT NULL AND fd."readyAt" >= fd."createdAt"
+        WHERE fd.status = 'COMPLETED'
+          AND fd."closureMethod" IS DISTINCT FROM 'WITHOUT_INSPECTION'
+          AND fd."readyAt" IS NOT NULL AND fd."readyAt" >= fd."createdAt"
       ),
       'closure_sample', (
         SELECT count(*)::int FROM filtered fd
-        WHERE fd.status = 'COMPLETED' AND fd."readyAt" IS NOT NULL AND fd."readyAt" >= fd."createdAt"
+        WHERE fd.status = 'COMPLETED'
+          AND fd."closureMethod" IS DISTINCT FROM 'WITHOUT_INSPECTION'
+          AND fd."readyAt" IS NOT NULL AND fd."readyAt" >= fd."createdAt"
       ),
       'accepted_first', (
         SELECT count(*)::int FROM filtered fd
         JOIN attempt_flags ON attempt_flags.id = fd.id
-        WHERE fd.status = 'COMPLETED' AND attempt_flags.accepted_first
+        WHERE fd.status = 'COMPLETED'
+          AND fd."closureMethod" IS DISTINCT FROM 'WITHOUT_INSPECTION'
+          AND attempt_flags.accepted_first
       ),
       'with_attempts', (
         SELECT count(*)::int FROM filtered fd
         JOIN attempt_flags ON attempt_flags.id = fd.id
-        WHERE fd.status = 'COMPLETED' AND attempt_flags.attempt_count > 0
+        WHERE fd.status = 'COMPLETED'
+          AND fd."closureMethod" IS DISTINCT FROM 'WITHOUT_INSPECTION'
+          AND attempt_flags.attempt_count > 0
       ),
       'completed', (SELECT count(*) FILTER (WHERE status = 'COMPLETED')::int FROM filtered),
       'attempt_sum', (SELECT coalesce(sum(attempt_count), 0)::int FROM attempt_flags),
@@ -849,7 +873,9 @@ export function overviewBundleSql(input: {
             UNION ALL
             SELECT to_char(fd."readyAt" AT TIME ZONE 'Europe/Minsk', 'YYYY-MM'), 0, 1
             FROM filtered fd
-            WHERE fd.status = 'COMPLETED' AND fd."readyAt" IS NOT NULL
+            WHERE fd.status = 'COMPLETED'
+              AND fd."closureMethod" IS DISTINCT FROM 'WITHOUT_INSPECTION'
+              AND fd."readyAt" IS NOT NULL
           ) points
           GROUP BY period
         ) periods

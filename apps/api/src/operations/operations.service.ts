@@ -8,6 +8,7 @@ import {
   auditLogQuerySchema,
   completeDefectRequestSchema,
   cancelActRequestSchema,
+  closeActWithoutInspectionRequestSchema,
   createActRequestSchema,
   historyQuerySchema,
   patchActHeaderRequestSchema,
@@ -99,6 +100,7 @@ import {
 import { resolveRegistryAccessScope } from '../registry/registry-access-scope.js';
 import {
   notifyActCancelled,
+  notifyActClosedWithoutInspection,
   notifyContractorsAssigned,
   notifyDeadlineActivated,
   notifyDeadlineChanges,
@@ -486,7 +488,10 @@ export class OperationsService {
     await this.requireVisibleAct(user, actId);
     const outboxIds: string[] = [];
     const result = await this.prisma.client.$transaction(async (tx) => {
-      const act = await this.requireVisibleActOn(tx, user, actId);
+      const act = await this.lockVisibleAct(tx, user, actId);
+      if (act.closureMethod === 'WITHOUT_INSPECTION' || act.status === 'COMPLETED') {
+        throw new InvalidTransitionError('Нельзя добавить дефект в завершённый акт');
+      }
       if (act.status === 'CANCELLED') {
         throw new InvalidTransitionError('Нельзя добавить дефект в аннулированный акт');
       }
@@ -896,6 +901,9 @@ export class OperationsService {
     if (act.status === 'NEW' || act.startedAt == null) {
       throw new InvalidTransitionError('Нельзя исполнить дефект до начала работы по акту');
     }
+    if (item.closureMethod === 'WITHOUT_INSPECTION' || act.closureMethod === 'WITHOUT_INSPECTION') {
+      throw new InvalidTransitionError('Акт закрыт без проверки');
+    }
     if (item.status === 'COMPLETED') {
       return { id: item.id, version: item.version, status: item.status, actStatus: act.status };
     }
@@ -914,6 +922,10 @@ export class OperationsService {
     let result;
     try {
       result = await this.prisma.client.$transaction(async (tx) => {
+        const lockedAct = await this.lockVisibleAct(tx, user, item.actId);
+        if (lockedAct.closureMethod === 'WITHOUT_INSPECTION') {
+          throw new InvalidTransitionError('Акт закрыт без проверки');
+        }
         if (item.version !== input.expectedVersion) {
           throw new StaleWriteError();
         }
@@ -927,6 +939,9 @@ export class OperationsService {
         });
         if (updated.count !== 1) {
           const latest = await tx.defectItem.findUnique({ where: { id: defectItemId } });
+          if (latest?.closureMethod === 'WITHOUT_INSPECTION') {
+            throw new InvalidTransitionError('Акт закрыт без проверки');
+          }
           if (latest?.status === 'COMPLETED') {
             const currentAct = await tx.act.findUniqueOrThrow({
               where: { id: item.actId },
@@ -1020,6 +1035,9 @@ export class OperationsService {
         'Передача на проверку доступна только для подрядного дефекта',
       );
     }
+    if (item.closureMethod === 'WITHOUT_INSPECTION' || act.closureMethod === 'WITHOUT_INSPECTION') {
+      throw new InvalidTransitionError('Акт закрыт без проверки');
+    }
     if (item.status === 'PENDING_INSPECTION') {
       return { id: item.id, version: item.version, status: item.status };
     }
@@ -1030,8 +1048,15 @@ export class OperationsService {
     const submittedAt = new Date();
     assertInstantNotBefore(submittedAt, item.createdAt);
     const result = await this.prisma.client.$transaction(async (tx) => {
+      const lockedAct = await this.lockVisibleAct(tx, user, item.actId);
+      if (lockedAct.closureMethod === 'WITHOUT_INSPECTION') {
+        throw new InvalidTransitionError('Акт закрыт без проверки');
+      }
       if (item.version !== input.expectedVersion) {
         const latest = await tx.defectItem.findUnique({ where: { id: defectItemId } });
+        if (latest?.closureMethod === 'WITHOUT_INSPECTION') {
+          throw new InvalidTransitionError('Акт закрыт без проверки');
+        }
         if (latest?.status === 'PENDING_INSPECTION') {
           return {
             id: latest.id,
@@ -1054,6 +1079,9 @@ export class OperationsService {
       });
       if (updated.count !== 1) {
         const latest = await tx.defectItem.findUnique({ where: { id: defectItemId } });
+        if (latest?.closureMethod === 'WITHOUT_INSPECTION') {
+          throw new InvalidTransitionError('Акт закрыт без проверки');
+        }
         if (latest?.status === 'PENDING_INSPECTION') {
           return {
             id: latest.id,
@@ -1114,6 +1142,9 @@ export class OperationsService {
     if (act.status === 'NEW' || act.startedAt == null) {
       throw new InvalidTransitionError('Нельзя принять устранение до начала работы по акту');
     }
+    if (item.closureMethod === 'WITHOUT_INSPECTION' || act.closureMethod === 'WITHOUT_INSPECTION') {
+      throw new InvalidTransitionError('Акт закрыт без проверки');
+    }
     if (item.status === 'COMPLETED') {
       return { id: item.id, version: item.version, status: item.status };
     }
@@ -1140,8 +1171,15 @@ export class OperationsService {
       acceptedAt,
     );
     const result = await this.prisma.client.$transaction(async (tx) => {
+      const lockedAct = await this.lockVisibleAct(tx, user, item.actId);
+      if (lockedAct.closureMethod === 'WITHOUT_INSPECTION') {
+        throw new InvalidTransitionError('Акт закрыт без проверки');
+      }
       if (item.version !== input.expectedVersion) {
         const latest = await tx.defectItem.findUnique({ where: { id: defectItemId } });
+        if (latest?.closureMethod === 'WITHOUT_INSPECTION') {
+          throw new InvalidTransitionError('Акт закрыт без проверки');
+        }
         if (latest?.status === 'COMPLETED') {
           return {
             id: latest.id,
@@ -1165,6 +1203,9 @@ export class OperationsService {
       });
       if (updated.count !== 1) {
         const latest = await tx.defectItem.findUnique({ where: { id: defectItemId } });
+        if (latest?.closureMethod === 'WITHOUT_INSPECTION') {
+          throw new InvalidTransitionError('Акт закрыт без проверки');
+        }
         if (latest?.status === 'COMPLETED') {
           return {
             id: latest.id,
@@ -1257,6 +1298,10 @@ export class OperationsService {
     }
     assertInstantNotBefore(rejectedAt, item.createdAt);
     const result = await this.prisma.client.$transaction(async (tx) => {
+      const lockedAct = await this.lockVisibleAct(tx, user, item.actId);
+      if (lockedAct.closureMethod === 'WITHOUT_INSPECTION') {
+        throw new InvalidTransitionError('Акт закрыт без проверки');
+      }
       if (item.version !== input.expectedVersion) {
         throw new StaleWriteError();
       }
@@ -1310,6 +1355,181 @@ export class OperationsService {
     });
     await this.outboxWriter.enqueue(result.outboxIds);
     return { id: result.id, version: result.version, status: result.status };
+  }
+
+  async closeWithoutInspection(
+    user: AuthenticatedUser,
+    actId: string,
+    body: unknown,
+    request: FastifyRequest,
+  ) {
+    const input = parseCommandBody(closeActWithoutInspectionRequestSchema, body);
+    const reason = normalizeRequiredReason(input.reason);
+    const ctx = actorContext(user, request);
+    await this.requireVisibleAct(user, actId);
+    const result = await this.prisma.client.$transaction(async (tx) => {
+      const locked = await this.lockVisibleAct(tx, user, actId);
+      if (locked.closureMethod === 'WITHOUT_INSPECTION') {
+        return {
+          id: locked.id,
+          status: locked.status,
+          version: locked.version,
+          closureMethod: locked.closureMethod,
+          closedWithoutInspectionAt: locked.closedWithoutInspectionAt?.toISOString() ?? null,
+          closedWithoutInspectionByName: locked.closedWithoutInspectionByName,
+          closureReason: locked.closureReason,
+          idempotent: true,
+          outboxIds: [] as string[],
+        };
+      }
+      if (locked.status === 'CANCELLED') {
+        throw new InvalidTransitionError('Аннулированный акт нельзя закрыть без проверки');
+      }
+      if (locked.status === 'COMPLETED') {
+        throw new InvalidTransitionError('Завершённый акт нельзя закрыть без проверки');
+      }
+      if (locked.status !== 'IN_PROGRESS' || locked.startedAt == null) {
+        throw new InvalidTransitionError(
+          'Закрыть без проверки можно только акт, который уже взят в работу',
+        );
+      }
+      if (locked.version !== input.expectedVersion) {
+        throw new StaleWriteError();
+      }
+      const defects = await tx.defectItem.findMany({
+        where: { actId },
+        select: {
+          id: true,
+          status: true,
+          closureMethod: true,
+        },
+      });
+      if (defects.length === 0) {
+        throw new InvalidTransitionError('В акте нет дефектов. Закрыть акт без проверки нельзя.');
+      }
+      const unfinished = defects.filter((item) => item.status !== 'COMPLETED');
+      const actor = await tx.user.findUnique({
+        where: { id: user.id },
+        select: { fullName: true },
+      });
+      const actorName = actor?.fullName.trim() ?? '';
+      if (!actorName) {
+        throw new ValidationError('actor', 'Не удалось определить сотрудника');
+      }
+      const closedAt = new Date();
+      if (unfinished.length > 0) {
+        await tx.defectInspectionAttempt.updateMany({
+          where: { defectItemId: { in: unfinished.map((item) => item.id) }, status: 'PENDING' },
+          data: {
+            status: 'TERMINATED',
+            reviewedByUserId: user.id,
+            reviewedAt: closedAt,
+            reviewComment: reason,
+            rejectionReason: null,
+          },
+        });
+        const closed = await tx.defectItem.updateMany({
+          where: {
+            id: { in: unfinished.map((item) => item.id) },
+            status: { in: ['IN_PROGRESS', 'PENDING_INSPECTION'] },
+            closureMethod: null,
+          },
+          data: {
+            status: 'COMPLETED',
+            closureMethod: 'WITHOUT_INSPECTION',
+            version: { increment: 1 },
+          },
+        });
+        if (closed.count !== unfinished.length) {
+          throw new StaleWriteError();
+        }
+        for (const item of unfinished) {
+          await tx.$executeRaw`SELECT public.sgr_satisfy_sla_clocks(${item.id}::uuid)`;
+        }
+      }
+      const updated = await tx.act.updateMany({
+        where: {
+          id: actId,
+          version: locked.version,
+          status: { in: ['IN_PROGRESS', 'COMPLETED'] },
+          closureMethod: null,
+        },
+        data: {
+          status: 'COMPLETED',
+          closureMethod: 'WITHOUT_INSPECTION',
+          closedWithoutInspectionAt: closedAt,
+          closedWithoutInspectionByUserId: user.id,
+          closedWithoutInspectionByName: actorName,
+          closureReason: reason,
+          version: { increment: 1 },
+        },
+      });
+      if (updated.count !== 1) {
+        throw new StaleWriteError();
+      }
+      const fresh = await tx.act.findUniqueOrThrow({ where: { id: actId } });
+      await writeAuditLog(tx, {
+        ...ctx,
+        action: 'ACT_CLOSED_WITHOUT_INSPECTION',
+        entityType: 'ACT',
+        entityId: actId,
+        reason,
+        oldValue: toJsonValue({ status: 'IN_PROGRESS' }),
+        newValue: toJsonValue({
+          status: 'COMPLETED',
+          closureMethod: 'WITHOUT_INSPECTION',
+          closedByUserId: user.id,
+          closedByName: actorName,
+          unfinished: unfinished.length,
+        }),
+      });
+      for (const item of unfinished) {
+        await writeAuditLog(tx, {
+          ...ctx,
+          action: 'DEFECT_CLOSED_WITHOUT_INSPECTION',
+          entityType: 'DEFECT_ITEM',
+          entityId: item.id,
+          parentEntityType: 'ACT',
+          parentEntityId: actId,
+          reason,
+          oldValue: toJsonValue({ status: item.status }),
+          newValue: toJsonValue({
+            status: 'COMPLETED',
+            closureMethod: 'WITHOUT_INSPECTION',
+          }),
+        });
+      }
+      const outboxIds = [
+        await notifyActClosedWithoutInspection(this.outboxWriter, tx, {
+          actId,
+          objectId: fresh.objectId,
+          actorUserId: user.id,
+          reason,
+        }),
+      ];
+      return {
+        id: fresh.id,
+        status: fresh.status,
+        version: fresh.version,
+        closureMethod: fresh.closureMethod,
+        closedWithoutInspectionAt: fresh.closedWithoutInspectionAt?.toISOString() ?? null,
+        closedWithoutInspectionByName: fresh.closedWithoutInspectionByName,
+        closureReason: fresh.closureReason,
+        idempotent: false,
+        outboxIds,
+      };
+    });
+    await this.outboxWriter.enqueue(result.outboxIds);
+    return {
+      id: result.id,
+      status: result.status,
+      version: result.version,
+      closureMethod: result.closureMethod,
+      closedWithoutInspectionAt: result.closedWithoutInspectionAt,
+      closedWithoutInspectionByName: result.closedWithoutInspectionByName,
+      closureReason: result.closureReason,
+      idempotent: result.idempotent,
+    };
   }
 
   async cancel(user: AuthenticatedUser, actId: string, body: unknown, request: FastifyRequest) {
@@ -1554,6 +1774,13 @@ export class OperationsService {
       { reason },
     );
     const result = await this.prisma.client.$transaction(async (tx) => {
+      const lockedAct = await this.lockVisibleAct(tx, user, item.actId);
+      if (
+        lockedAct.closureMethod === 'WITHOUT_INSPECTION' ||
+        item.closureMethod === 'WITHOUT_INSPECTION'
+      ) {
+        throw new InvalidTransitionError('Акт, закрытый без проверки, нельзя вернуть в работу');
+      }
       if (item.version !== input.expectedVersion) {
         throw new StaleWriteError();
       }
@@ -2388,6 +2615,7 @@ export class OperationsService {
       select: {
         id: true,
         status: true,
+        closureMethod: true,
         startedAt: true,
         objectId: true,
         customerOrganizationId: true,
@@ -2427,9 +2655,18 @@ export class OperationsService {
     return new Set(items.map((item) => item.id));
   }
 
+  private async lockVisibleAct(
+    tx: Prisma.TransactionClient,
+    user: AuthenticatedUser,
+    actId: string,
+  ) {
+    await tx.$queryRaw`SELECT id FROM public.acts WHERE id = ${actId}::uuid FOR UPDATE`;
+    return this.requireVisibleActOn(tx, user, actId);
+  }
+
   private async syncActStatus(tx: Prisma.TransactionClient, actId: string) {
     const act = await tx.act.findUniqueOrThrow({ where: { id: actId } });
-    if (act.status === 'CANCELLED') {
+    if (act.status === 'CANCELLED' || act.closureMethod === 'WITHOUT_INSPECTION') {
       return;
     }
     const items = await tx.defectItem.findMany({ where: { actId } });

@@ -9,6 +9,7 @@ import {
 import { flexRender, getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table';
 import { ArrowDown, ArrowUp } from 'lucide-react';
 import { useMemo } from 'react';
+import { Badge } from '@/components/ui/badge';
 import {
   DeadlineBadge,
   deadlineToneClass,
@@ -90,6 +91,12 @@ export function RegistryTable({
               className="grid w-48 max-w-48 min-w-0 gap-1 whitespace-normal"
             >
               <StatusBadge status={displayed.status} label={displayed.label} />
+              {row.original.closureMethod === 'WITHOUT_INSPECTION' ||
+              row.original.actClosureMethod === 'WITHOUT_INSPECTION' ? (
+                <Badge className="border-transparent bg-amber-100 text-amber-950">
+                  Закрыт без проверки
+                </Badge>
+              ) : null}
               {row.original.actStatus === 'NEW' && row.original.fillLabel ? (
                 <span className="text-xs leading-snug whitespace-normal text-muted-foreground">
                   Заполнение: {row.original.fillLabel}

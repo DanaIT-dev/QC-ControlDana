@@ -9,6 +9,7 @@ export type { WorkerDbRunner } from './dispatcher.js';
 export {
   notifyAttachmentScan,
   notifyActCancelled,
+  notifyActClosedWithoutInspection,
   notifyContractorsAssigned,
   notifyDeadlineActivated,
   notifyDeadlineChanges,

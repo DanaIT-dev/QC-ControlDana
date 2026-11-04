@@ -372,6 +372,7 @@ function OverviewPane({
         ))}
       </div>
       <p className="text-sm text-muted-foreground">{data.firstTimeRight.coverageText}</p>
+      <p className="text-sm text-muted-foreground">{data.confirmedRepairCoverageText}</p>
       {data.confirmedFinancialExposure ? (
         <ExposureCard exposure={data.confirmedFinancialExposure} onOpen={onOpen} />
       ) : null}

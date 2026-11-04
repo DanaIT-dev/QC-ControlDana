@@ -48,6 +48,22 @@ export class ActsController {
     return this.operationsService.createAct(user, body, request);
   }
 
+  @Post(':actId/close-without-inspection')
+  @HttpCode(200)
+  @UseGuards(BrowserOriginGuard, CsrfGuard, CapabilityGuard)
+  @RequireCapability('CLOSE_ACT_WITHOUT_INSPECTION')
+  closeWithoutInspection(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('actId') actId: string,
+    @Body() body: unknown,
+    @Req() request: FastifyRequest,
+  ) {
+    if (!UUID_PATTERN.test(actId)) {
+      throw new NotFoundException('Запись не найдена');
+    }
+    return this.operationsService.closeWithoutInspection(user, actId, body, request);
+  }
+
   @Post(':actId/cancel')
   @HttpCode(200)
   @UseGuards(BrowserOriginGuard, CsrfGuard, CapabilityGuard)

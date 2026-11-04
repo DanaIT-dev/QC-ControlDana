@@ -123,6 +123,7 @@ test('engineer corrects a defect after starting the act and finishes it defect b
     page.getByText('Дефект завершён. Акт будет завершён после завершения всех его дефектов.'),
   ).toBeVisible();
   await expect(page.getByText('В работе', { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Завершить дефект' })).toHaveCount(1);
   await page.getByRole('button', { name: 'Завершить дефект' }).click();
   await expect(page.getByText('Дефект завершён. Акт завершён.')).toBeVisible();
   await expect(page.getByText('Исполнено', { exact: true }).first()).toBeVisible();

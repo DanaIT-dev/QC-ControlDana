@@ -18,6 +18,7 @@ import {
   personNameWriteFields,
 } from '@sgr-registry/domain';
 import Redis from 'ioredis';
+import { NotificationDispatcher } from '@sgr-registry/jobs';
 import { AppModule } from '../../src/app.module';
 import { configureHttpApp } from '../../src/configure-http';
 import { hashArgon2id } from '../../src/auth/crypto';
@@ -190,6 +191,54 @@ async function assignObjectEngineers(objectId: string, userIds: string[]) {
   });
 }
 
+type CommandSession = { cookie: string; body: { csrfToken: string } };
+
+async function startedAct(
+  session: CommandSession,
+  engineerIds: string[],
+  defects: Array<{ location: string; liable: boolean }>,
+) {
+  const catalog = await catalogs();
+  await assignObjectEngineers(catalog.object.id, engineerIds);
+  const created = await mutate(session, {
+    method: 'POST',
+    url: '/api/acts',
+    payload: {
+      formCode: 'S1',
+      objectId: catalog.object.id,
+      customerOrganizationId: catalog.customer.id,
+      issuedOn: '2026-11-04',
+      defectItems: defects.map((defect) => ({
+        location: defect.location,
+        defectTypeId: catalog.defectType.id,
+        claimDetails: `Описание ${defect.location}`,
+        responsibleEngineerIds: engineerIds.slice(0, 1),
+        liableOrganizationIds: defect.liable ? [catalog.liable.id] : [],
+      })),
+    },
+    headers: { 'idempotency-key': `inspect-${Date.now()}-${Math.random().toString(16).slice(2)}` },
+  });
+  expect(created.statusCode).toBe(201);
+  const actId = (created.json() as { id: string }).id;
+  createdActIds.push(actId);
+  const started = await mutate(session, {
+    method: 'POST',
+    url: `/api/acts/${actId}/start`,
+    payload: {},
+  });
+  expect(started.statusCode).toBe(200);
+  const detail = await read(session, `/api/acts/${actId}`);
+  expect(detail.statusCode).toBe(200);
+  const body = detail.json() as {
+    id: string;
+    version: number;
+    officialNumber: string | null;
+    objectName: string | null;
+    defectItems: Array<{ id: string; version: number; location: string | null; status: string }>;
+  };
+  return { catalog, actId, body };
+}
+
 describe('operations integration', () => {
   beforeAll(async () => {
     process.env.NODE_ENV = 'test';
@@ -225,7 +274,26 @@ describe('operations integration', () => {
       });
       await prisma.notificationEvent.deleteMany({ where: { actId: { in: actIds } } });
       await prisma.slaClock.deleteMany({ where: { defectItem: { actId: { in: actIds } } } });
-      await prisma.attachment.deleteMany({ where: { actId: { in: actIds } } });
+      await prisma.analyticsInsightDefect.deleteMany({
+        where: { defectItem: { actId: { in: actIds } } },
+      });
+      await prisma.$executeRawUnsafe(
+        'ALTER TABLE public.defect_financial_impacts DISABLE TRIGGER defect_financial_impacts_guard',
+      );
+      try {
+        await prisma.defectFinancialImpact.deleteMany({
+          where: { defectItem: { actId: { in: actIds } } },
+        });
+      } finally {
+        await prisma.$executeRawUnsafe(
+          'ALTER TABLE public.defect_financial_impacts ENABLE TRIGGER defect_financial_impacts_guard',
+        );
+      }
+      await prisma.attachment.deleteMany({
+        where: {
+          OR: [{ actId: { in: actIds } }, { defectItem: { actId: { in: actIds } } }],
+        },
+      });
       await prisma.proposal.deleteMany({
         where: { defectItem: { actId: { in: actIds } } },
       });
@@ -234,6 +302,20 @@ describe('operations integration', () => {
       });
       await prisma.defectItemLiableOrganization.deleteMany({
         where: { defectItem: { actId: { in: actIds } } },
+      });
+      await prisma.act.updateMany({
+        where: { id: { in: actIds } },
+        data: {
+          closureMethod: null,
+          closedWithoutInspectionAt: null,
+          closedWithoutInspectionByUserId: null,
+          closedWithoutInspectionByName: null,
+          closureReason: null,
+        },
+      });
+      await prisma.defectItem.updateMany({
+        where: { actId: { in: actIds } },
+        data: { closureMethod: null },
       });
       await prisma.defectItem.deleteMany({ where: { actId: { in: actIds } } });
       await prisma.act.deleteMany({ where: { id: { in: actIds } } });
@@ -2606,5 +2688,635 @@ describe('operations integration', () => {
       },
     });
     expect(locked.statusCode).toBe(409);
+  });
+
+  it('lets assigned engineers and staff submit a defect and keeps acceptance separate', async () => {
+    const admin = await createUser('ADMIN');
+    const manager = await createUser('MANAGER');
+    const sgr = await createUser('SGR_MANAGER');
+    const first = await createUser('RESPONSIBLE_ENGINEER');
+    const second = await createUser('RESPONSIBLE_ENGINEER');
+    const outsider = await createUser('RESPONSIBLE_ENGINEER');
+    const pending = await createUser('PENDING_ROLE');
+    const contractor = await createUser('CONTRACTOR_ENGINEER');
+    const adminSession = await login(admin.email);
+    const managerSession = await login(manager.email);
+    const sgrSession = await login(sgr.email);
+    const firstSession = await login(first.email);
+    const secondSession = await login(second.email);
+    const outsiderSession = await login(outsider.email);
+    const pendingSession = await login(pending.email);
+    const contractorSession = await login(contractor.email);
+    const opened = await startedAct(
+      adminSession,
+      [first.id, second.id],
+      [
+        { location: 'Первая передача', liable: true },
+        { location: 'Вторая передача', liable: true },
+      ],
+    );
+    const firstItem = opened.body.defectItems.find((item) => item.location === 'Первая передача')!;
+    const secondItem = opened.body.defectItems.find((item) => item.location === 'Вторая передача')!;
+    const anonymous = await inject({
+      method: 'POST',
+      url: `/api/defects/${firstItem.id}/submit-for-inspection`,
+      payload: { expectedVersion: firstItem.version, comment: 'Без сессии' },
+    });
+    expect(anonymous.statusCode).toBe(401);
+    expect(
+      (
+        await mutate(pendingSession, {
+          method: 'POST',
+          url: `/api/defects/${firstItem.id}/submit-for-inspection`,
+          payload: { expectedVersion: firstItem.version, comment: 'Роль не назначена' },
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await mutate(outsiderSession, {
+          method: 'POST',
+          url: `/api/defects/${firstItem.id}/submit-for-inspection`,
+          payload: { expectedVersion: firstItem.version, comment: 'Чужой объект' },
+        })
+      ).statusCode,
+    ).toBe(404);
+    const submitted = await mutate(firstSession, {
+      method: 'POST',
+      url: `/api/defects/${firstItem.id}/submit-for-inspection`,
+      payload: { expectedVersion: firstItem.version, comment: 'Работа выполнена' },
+    });
+    expect(submitted.statusCode).toBe(200);
+    const attempt = await prisma.defectInspectionAttempt.findFirstOrThrow({
+      where: { defectItemId: firstItem.id },
+    });
+    expect(attempt.status).toBe('PENDING');
+    expect(attempt.submittedByUserId).toBe(first.id);
+    const rejected = await mutate(adminSession, {
+      method: 'POST',
+      url: `/api/defects/${firstItem.id}/reject-repair`,
+      payload: { expectedVersion: firstItem.version + 1, reason: 'Нужна доработка' },
+    });
+    expect(rejected.statusCode).toBe(200);
+    const again = await mutate(secondSession, {
+      method: 'POST',
+      url: `/api/defects/${firstItem.id}/submit-for-inspection`,
+      payload: { expectedVersion: firstItem.version + 2, comment: 'Повторная передача' },
+    });
+    expect(again.statusCode).toBe(200);
+    expect(
+      await prisma.defectInspectionAttempt.count({ where: { defectItemId: firstItem.id } }),
+    ).toBe(2);
+    const byManager = await startedAct(
+      adminSession,
+      [first.id],
+      [{ location: 'Передача руководителя', liable: true }],
+    );
+    const managerItem = byManager.body.defectItems[0]!;
+    expect(
+      (
+        await mutate(managerSession, {
+          method: 'POST',
+          url: `/api/defects/${managerItem.id}/submit-for-inspection`,
+          payload: { expectedVersion: managerItem.version, comment: 'Передал руководитель' },
+        })
+      ).statusCode,
+    ).toBe(200);
+    const bySgr = await startedAct(
+      adminSession,
+      [first.id],
+      [{ location: 'Передача СГР', liable: true }],
+    );
+    expect(
+      (
+        await mutate(sgrSession, {
+          method: 'POST',
+          url: `/api/defects/${bySgr.body.defectItems[0]!.id}/submit-for-inspection`,
+          payload: {
+            expectedVersion: bySgr.body.defectItems[0]!.version,
+            comment: 'Передал менеджер СГР',
+          },
+        })
+      ).statusCode,
+    ).toBe(200);
+    const byAdmin = await startedAct(
+      adminSession,
+      [first.id],
+      [{ location: 'Передача администратора', liable: true }],
+    );
+    expect(
+      (
+        await mutate(adminSession, {
+          method: 'POST',
+          url: `/api/defects/${byAdmin.body.defectItems[0]!.id}/submit-for-inspection`,
+          payload: {
+            expectedVersion: byAdmin.body.defectItems[0]!.version,
+            comment: 'Передал администратор',
+          },
+        })
+      ).statusCode,
+    ).toBe(200);
+    await prisma.propertyObjectEngineer.updateMany({
+      where: { propertyObjectId: opened.catalog.object.id, userId: second.id },
+      data: { unassignedAt: new Date() },
+    });
+    expect(
+      (
+        await mutate(secondSession, {
+          method: 'POST',
+          url: `/api/defects/${secondItem.id}/submit-for-inspection`,
+          payload: { expectedVersion: secondItem.version, comment: 'Назначение отозвано' },
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      (
+        await mutate(contractorSession, {
+          method: 'POST',
+          url: `/api/defects/${secondItem.id}/accept-repair`,
+          payload: { expectedVersion: secondItem.version },
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await mutate(contractorSession, {
+          method: 'POST',
+          url: `/api/acts/${opened.actId}/close-without-inspection`,
+          payload: { expectedVersion: opened.body.version, reason: 'Подрядчик не закрывает' },
+        })
+      ).statusCode,
+    ).toBe(403);
+  });
+
+  it('closes an act without inspection and keeps the first author', async () => {
+    const admin = await createUser('ADMIN');
+    const engineer = await createUser('RESPONSIBLE_ENGINEER');
+    const adminSession = await login(admin.email);
+    const engineerSession = await login(engineer.email);
+    const opened = await startedAct(
+      adminSession,
+      [engineer.id],
+      [
+        { location: 'Уже принято', liable: true },
+        { location: 'Ждёт проверки', liable: true },
+        { location: 'Прямое завершение', liable: false },
+        { location: 'Ещё в работе', liable: false },
+      ],
+    );
+    const items = new Map(opened.body.defectItems.map((item) => [item.location, item]));
+    const accepted = items.get('Уже принято')!;
+    const pending = items.get('Ждёт проверки')!;
+    const direct = items.get('Прямое завершение')!;
+    const open = items.get('Ещё в работе')!;
+    expect(
+      (
+        await mutate(engineerSession, {
+          method: 'POST',
+          url: `/api/defects/${accepted.id}/submit-for-inspection`,
+          payload: { expectedVersion: accepted.version, comment: 'Готово к приёмке' },
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(
+      (
+        await mutate(adminSession, {
+          method: 'POST',
+          url: `/api/defects/${accepted.id}/accept-repair`,
+          payload: { expectedVersion: accepted.version + 1 },
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(
+      (
+        await mutate(engineerSession, {
+          method: 'POST',
+          url: `/api/defects/${pending.id}/submit-for-inspection`,
+          payload: { expectedVersion: pending.version, comment: 'Ожидает решения' },
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(
+      (
+        await mutate(engineerSession, {
+          method: 'POST',
+          url: `/api/defects/${direct.id}/complete`,
+          payload: { expectedVersion: direct.version },
+        })
+      ).statusCode,
+    ).toBe(200);
+    const acceptedBefore = await prisma.defectItem.findUniqueOrThrow({
+      where: { id: accepted.id },
+    });
+    const directBefore = await prisma.defectItem.findUniqueOrThrow({ where: { id: direct.id } });
+    const sourceKey = `IMPORT-${opened.actId}`;
+    await prisma.defectItem.update({
+      where: { id: open.id },
+      data: { sourceImportKey: sourceKey },
+    });
+    const attachment = await prisma.attachment.create({
+      data: {
+        defectItemId: pending.id,
+        originalFilename: 'evidence.pdf',
+        safeDisplayName: 'evidence.pdf',
+        bucket: loadConfig().S3_TEST_BUCKET,
+        sizeBytes: 20,
+        declaredMimeType: 'application/pdf',
+        sha256: `sha-${opened.actId}`,
+        category: 'REPAIR_EVIDENCE',
+        status: 'READY',
+        uploadedById: engineer.id,
+      },
+    });
+    const financial = await prisma.defectFinancialImpact.create({
+      data: {
+        defectItemId: pending.id,
+        amountType: 'ACTUAL_COST',
+        payerType: 'COMPANY',
+        amountOriginal: '15.00',
+        currency: 'BYN',
+        exchangeRateToByn: '1.000000',
+        amountByn: '15.00',
+        occurredAt: new Date('2026-11-01T09:00:00.000Z'),
+        status: 'CONFIRMED',
+        source: 'MANUAL',
+        createdByUserId: admin.id,
+        confirmedByUserId: admin.id,
+        confirmedAt: new Date('2026-11-01T10:00:00.000Z'),
+      },
+    });
+    const openRow = await prisma.defectItem.findUniqueOrThrow({ where: { id: open.id } });
+    expect(
+      (
+        await mutate(engineerSession, {
+          method: 'PATCH',
+          url: `/api/defects/${open.id}/deadlines`,
+          payload: { expectedVersion: openRow.version, plannedDeadline: '2026-01-01' },
+        })
+      ).statusCode,
+    ).toBe(200);
+    const freshAct = await prisma.act.findUniqueOrThrow({ where: { id: opened.actId } });
+    const blank = await mutate(engineerSession, {
+      method: 'POST',
+      url: `/api/acts/${opened.actId}/close-without-inspection`,
+      payload: { expectedVersion: freshAct.version, reason: '   ' },
+    });
+    expect(blank.statusCode).toBe(400);
+    const spoofed = await mutate(engineerSession, {
+      method: 'POST',
+      url: `/api/acts/${opened.actId}/close-without-inspection`,
+      payload: {
+        expectedVersion: freshAct.version,
+        reason: 'Закрываю без проверки',
+        closedByUserId: admin.id,
+      },
+    });
+    expect(spoofed.statusCode).toBe(400);
+    const stale = await mutate(engineerSession, {
+      method: 'POST',
+      url: `/api/acts/${opened.actId}/close-without-inspection`,
+      payload: { expectedVersion: freshAct.version + 9, reason: 'Устаревшая версия' },
+    });
+    expect(stale.statusCode).toBe(409);
+    const beforeOverview = await read(adminSession, '/api/analytics/overview');
+    expect(beforeOverview.statusCode).toBe(200);
+    const beforeClosed = (beforeOverview.json() as { closedWithoutInspection: number })
+      .closedWithoutInspection;
+    const closePayload = {
+      expectedVersion: freshAct.version,
+      reason: 'Работы закрыты административно',
+    };
+    const [firstClose, secondClose] = await Promise.all([
+      mutate(engineerSession, {
+        method: 'POST',
+        url: `/api/acts/${opened.actId}/close-without-inspection`,
+        payload: closePayload,
+      }),
+      mutate(engineerSession, {
+        method: 'POST',
+        url: `/api/acts/${opened.actId}/close-without-inspection`,
+        payload: closePayload,
+      }),
+    ]);
+    expect([firstClose.statusCode, secondClose.statusCode].sort()).toEqual([200, 200]);
+    const stored = await prisma.act.findUniqueOrThrow({ where: { id: opened.actId } });
+    expect(stored.status).toBe('COMPLETED');
+    expect(stored.closureMethod).toBe('WITHOUT_INSPECTION');
+    expect(stored.closedWithoutInspectionByUserId).toBe(engineer.id);
+    expect(stored.closedWithoutInspectionByName).toBe(engineer.fullName);
+    expect(stored.closureReason).toBe('Работы закрыты административно');
+    expect(stored.closedWithoutInspectionAt).not.toBeNull();
+    expect(
+      await prisma.auditLog.count({
+        where: { entityId: opened.actId, action: 'ACT_CLOSED_WITHOUT_INSPECTION' },
+      }),
+    ).toBe(1);
+    const repeated = await mutate(adminSession, {
+      method: 'POST',
+      url: `/api/acts/${opened.actId}/close-without-inspection`,
+      payload: { expectedVersion: stored.version + 3, reason: 'Повтор не меняет автора' },
+    });
+    expect(repeated.statusCode).toBe(200);
+    expect(
+      (repeated.json() as { closedWithoutInspectionByName: string }).closedWithoutInspectionByName,
+    ).toBe(engineer.fullName);
+    expect(
+      await prisma.auditLog.count({
+        where: { entityId: opened.actId, action: 'ACT_CLOSED_WITHOUT_INSPECTION' },
+      }),
+    ).toBe(1);
+    await prisma.user.update({
+      where: { id: engineer.id },
+      data: { lastName: 'Переименован', fullName: 'Переименован Инженер' },
+    });
+    const card = await read(adminSession, `/api/acts/${opened.actId}`);
+    const cardBody = card.json() as {
+      closureMethod: string;
+      closedWithoutInspectionByName: string;
+      closureReason: string;
+      defectItems: Array<{
+        id: string;
+        status: string;
+        closureMethod: string | null;
+        readyAt: string | null;
+        acceptedAt: string | null;
+      }>;
+    };
+    expect(cardBody.closureMethod).toBe('WITHOUT_INSPECTION');
+    expect(cardBody.closedWithoutInspectionByName).toBe(engineer.fullName);
+    expect(cardBody.closureReason).toBe('Работы закрыты административно');
+    const closedPending = cardBody.defectItems.find((item) => item.id === pending.id)!;
+    const closedOpen = cardBody.defectItems.find((item) => item.id === open.id)!;
+    const keptAccepted = cardBody.defectItems.find((item) => item.id === accepted.id)!;
+    const keptDirect = cardBody.defectItems.find((item) => item.id === direct.id)!;
+    expect(closedPending.closureMethod).toBe('WITHOUT_INSPECTION');
+    expect(closedPending.readyAt).toBeNull();
+    expect(closedPending.acceptedAt).toBeNull();
+    expect(closedOpen.closureMethod).toBe('WITHOUT_INSPECTION');
+    expect(keptAccepted.closureMethod).toBeNull();
+    expect(keptAccepted.acceptedAt).not.toBeNull();
+    expect(keptDirect.closureMethod).toBeNull();
+    expect(keptDirect.readyAt).not.toBeNull();
+    const acceptedAfter = await prisma.defectItem.findUniqueOrThrow({ where: { id: accepted.id } });
+    const directAfter = await prisma.defectItem.findUniqueOrThrow({ where: { id: direct.id } });
+    expect(acceptedAfter.acceptedByUserId).toBe(acceptedBefore.acceptedByUserId);
+    expect(acceptedAfter.acceptedAt?.toISOString()).toBe(acceptedBefore.acceptedAt?.toISOString());
+    expect(directAfter.readyAt?.toISOString()).toBe(directBefore.readyAt?.toISOString());
+    const attempts = await prisma.defectInspectionAttempt.findMany({
+      where: { defectItemId: { in: [accepted.id, pending.id] } },
+    });
+    expect(attempts.find((item) => item.defectItemId === accepted.id)?.status).toBe('ACCEPTED');
+    const terminated = attempts.find((item) => item.defectItemId === pending.id)!;
+    expect(terminated.status).toBe('TERMINATED');
+    expect(terminated.submittedByUserId).toBe(engineer.id);
+    expect(terminated.rejectionReason).toBeNull();
+    expect(
+      (await prisma.defectItem.findUniqueOrThrow({ where: { id: open.id } })).sourceImportKey,
+    ).toBe(sourceKey);
+    expect(
+      (await prisma.attachment.findUniqueOrThrow({ where: { id: attachment.id } })).sha256,
+    ).toBe(`sha-${opened.actId}`);
+    expect(
+      Number(
+        (await prisma.defectFinancialImpact.findUniqueOrThrow({ where: { id: financial.id } }))
+          .amountByn,
+      ),
+    ).toBe(15);
+    const registry = await read(
+      adminSession,
+      `/api/registry/defects?search=${encodeURIComponent('Ждёт проверки')}`,
+    );
+    const rows = (
+      registry.json() as {
+        items: Array<{
+          defectItemId: string;
+          closureMethod: string | null;
+          actClosureMethod: string | null;
+        }>;
+      }
+    ).items;
+    expect(rows.find((row) => row.defectItemId === pending.id)?.closureMethod).toBe(
+      'WITHOUT_INSPECTION',
+    );
+    expect(rows.find((row) => row.defectItemId === pending.id)?.actClosureMethod).toBe(
+      'WITHOUT_INSPECTION',
+    );
+    const notice = await prisma.outboxEvent.findFirstOrThrow({
+      where: { type: 'ACT_CLOSED_WITHOUT_INSPECTION' },
+      orderBy: { createdAt: 'desc' },
+    });
+    const payload = notice.payload as { actId?: string; body?: string };
+    expect(payload.actId).toBe(opened.actId);
+    expect(payload.body).toContain('без проверки');
+    expect(payload.body).not.toContain('устранение принято');
+    const clocks = await prisma.slaClock.findMany({ where: { defectItemId: open.id } });
+    expect(clocks.length).toBeGreaterThan(0);
+    expect(clocks.every((item) => item.state === 'COMPLETED')).toBe(true);
+    expect(
+      (await prisma.defectItem.findUniqueOrThrow({ where: { id: open.id } })).plannedDeadline,
+    ).not.toBeNull();
+    const deferred = await prisma.outboxEvent.create({
+      data: {
+        type: 'SLA_OVERDUE',
+        payload: {
+          type: 'SLA_OVERDUE',
+          occurrenceBase: `SLA_OVERDUE:GENERAL:${open.id}`,
+          actId: opened.actId,
+          defectItemId: open.id,
+          body: 'Просрочка',
+          extraRecipientIds: [admin.id],
+        },
+      },
+    });
+    const deliveriesBefore = await prisma.emailDelivery.count();
+    await new NotificationDispatcher(prisma, { add: async () => undefined } as never).dispatch(
+      deferred.id,
+    );
+    expect(
+      (await prisma.outboxEvent.findUniqueOrThrow({ where: { id: deferred.id } })).status,
+    ).toBe('PROCESSED');
+    expect(await prisma.emailDelivery.count()).toBe(deliveriesBefore);
+    const afterOverview = await read(adminSession, '/api/analytics/overview');
+    const overview = afterOverview.json() as {
+      closedWithoutInspection: number;
+      confirmedRepairCoverageText: string;
+      openDefects: number;
+    };
+    expect(overview.closedWithoutInspection).toBeGreaterThan(beforeClosed);
+    expect(overview.confirmedRepairCoverageText).toContain('не входят в успешную приёмку');
+    expect(
+      (
+        await mutate(engineerSession, {
+          method: 'POST',
+          url: `/api/acts/${opened.actId}/defects`,
+          payload: {
+            expectedActVersion: stored.version,
+            location: 'После закрытия',
+            defectTypeId: opened.catalog.defectType.id,
+            claimDetails: 'Нельзя добавить',
+            responsibleEngineerIds: [engineer.id],
+          },
+        })
+      ).statusCode,
+    ).toBe(409);
+    expect(
+      (
+        await mutate(adminSession, {
+          method: 'POST',
+          url: `/api/defects/${pending.id}/accept-repair`,
+          payload: { expectedVersion: pending.version + 1 },
+        })
+      ).statusCode,
+    ).toBe(409);
+    const withoutLiable = await startedAct(
+      adminSession,
+      [engineer.id],
+      [{ location: 'Без виновной организации', liable: false }],
+    );
+    const noLiableClose = await mutate(engineerSession, {
+      method: 'POST',
+      url: `/api/acts/${withoutLiable.actId}/close-without-inspection`,
+      payload: {
+        expectedVersion: withoutLiable.body.version,
+        reason: 'Закрытие без виновной организации',
+      },
+    });
+    expect(noLiableClose.statusCode).toBe(200);
+    expect(
+      (await prisma.act.findUniqueOrThrow({ where: { id: withoutLiable.actId } })).closureMethod,
+    ).toBe('WITHOUT_INSPECTION');
+  });
+
+  it('refuses to close an empty, unstarted, completed, or cancelled act', async () => {
+    const admin = await createUser('ADMIN');
+    const engineer = await createUser('RESPONSIBLE_ENGINEER');
+    const adminSession = await login(admin.email);
+    const unstarted = await mutate(adminSession, {
+      method: 'POST',
+      url: '/api/acts',
+      payload: {
+        formCode: 'S1',
+        objectId: (await catalogs()).object.id,
+        customerOrganizationId: (await catalogs()).customer.id,
+        issuedOn: '2026-11-04',
+        defectItems: [],
+      },
+      headers: { 'idempotency-key': `empty-${Date.now()}` },
+    });
+    if (unstarted.statusCode === 201) {
+      const actId = (unstarted.json() as { id: string }).id;
+      createdActIds.push(actId);
+      const version = (await prisma.act.findUniqueOrThrow({ where: { id: actId } })).version;
+      expect(
+        (
+          await mutate(adminSession, {
+            method: 'POST',
+            url: `/api/acts/${actId}/close-without-inspection`,
+            payload: { expectedVersion: version, reason: 'Пустой акт' },
+          })
+        ).statusCode,
+      ).toBe(409);
+    } else {
+      expect(unstarted.statusCode).toBe(400);
+    }
+    const catalog = await catalogs();
+    await assignObjectEngineers(catalog.object.id, [engineer.id]);
+    const openedAt = new Date('2026-11-04T09:00:00.000Z');
+    const draft = await prisma.act.create({
+      data: {
+        status: 'IN_PROGRESS',
+        createdAt: openedAt,
+        startedAt: openedAt,
+        startedById: admin.id,
+        objectId: catalog.object.id,
+        customerOrganizationId: catalog.customer.id,
+        formCode: 'S1',
+        officialNumber: `S1-EMPTY-${Date.now()}`,
+        year: 2026,
+        sequence: Math.floor(Math.random() * 1_000_000),
+        issuedOn: new Date('2026-11-04T00:00:00.000Z'),
+        createdById: admin.id,
+      },
+    });
+    createdActIds.push(draft.id);
+    expect(
+      (
+        await mutate(adminSession, {
+          method: 'POST',
+          url: `/api/acts/${draft.id}/close-without-inspection`,
+          payload: { expectedVersion: draft.version, reason: 'В акте нет дефектов' },
+        })
+      ).statusCode,
+    ).toBe(409);
+    const fresh = await startedAct(
+      adminSession,
+      [engineer.id],
+      [{ location: 'Не начат отдельно', liable: false }],
+    );
+    await prisma.act.update({
+      where: { id: fresh.actId },
+      data: { status: 'NEW', startedAt: null },
+    });
+    expect(
+      (
+        await mutate(adminSession, {
+          method: 'POST',
+          url: `/api/acts/${fresh.actId}/close-without-inspection`,
+          payload: { expectedVersion: fresh.body.version + 1, reason: 'Акт не взят в работу' },
+        })
+      ).statusCode,
+    ).toBe(409);
+    const done = await startedAct(
+      adminSession,
+      [engineer.id],
+      [{ location: 'Обычное завершение', liable: false }],
+    );
+    expect(
+      (
+        await mutate(adminSession, {
+          method: 'POST',
+          url: `/api/defects/${done.body.defectItems[0]!.id}/complete`,
+          payload: { expectedVersion: done.body.defectItems[0]!.version },
+        })
+      ).statusCode,
+    ).toBe(200);
+    const doneAct = await prisma.act.findUniqueOrThrow({ where: { id: done.actId } });
+    expect(doneAct.status).toBe('COMPLETED');
+    expect(
+      (
+        await mutate(adminSession, {
+          method: 'POST',
+          url: `/api/acts/${done.actId}/close-without-inspection`,
+          payload: { expectedVersion: doneAct.version, reason: 'Уже завершён' },
+        })
+      ).statusCode,
+    ).toBe(409);
+    const cancelled = await startedAct(
+      adminSession,
+      [engineer.id],
+      [{ location: 'Будет аннулирован', liable: false }],
+    );
+    expect(
+      (
+        await mutate(adminSession, {
+          method: 'POST',
+          url: `/api/acts/${cancelled.actId}/cancel`,
+          payload: { expectedVersion: cancelled.body.version, reason: 'Аннулирование' },
+        })
+      ).statusCode,
+    ).toBe(200);
+    const cancelledAct = await prisma.act.findUniqueOrThrow({ where: { id: cancelled.actId } });
+    expect(
+      (
+        await mutate(adminSession, {
+          method: 'POST',
+          url: `/api/acts/${cancelled.actId}/close-without-inspection`,
+          payload: { expectedVersion: cancelledAct.version, reason: 'После аннулирования' },
+        })
+      ).statusCode,
+    ).toBe(409);
+    expect(
+      (await prisma.act.findUniqueOrThrow({ where: { id: draft.id } })).closureMethod,
+    ).toBeNull();
   });
 });

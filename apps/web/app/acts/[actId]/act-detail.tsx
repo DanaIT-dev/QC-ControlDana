@@ -106,8 +106,21 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
   const showHistory = canViewHistory(user.role);
   const completion = actCompletionSummary({
     actStatus: act.status,
+    closureMethod: act.closureMethod,
     defectStatuses: act.defectItems.map((item) => item.status),
   });
+  const nextStepFor = (item: (typeof act.defectItems)[number]) =>
+    defectNextStep({
+      actStatus: act.status,
+      defectStatus: item.status,
+      hasLiableOrganization: item.liableOrganizations.length > 0,
+      canSubmit: hasCapability(user.role, 'SUBMIT_DEFECT_FOR_INSPECTION'),
+      canAcceptOrReject:
+        hasCapability(user.role, 'ACCEPT_DEFECT_REPAIR') ||
+        hasCapability(user.role, 'REJECT_DEFECT_REPAIR'),
+      canComplete: hasCapability(user.role, 'COMPLETE_DEFECT'),
+      canStart: canStartAct(user.role),
+    });
 
   return (
     <article className="act-detail grid min-w-0 max-w-full gap-4">
@@ -147,6 +160,11 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
             <Badge variant="secondary">{act.formLabel}</Badge>
             {act.fillLabel ? <Badge variant="outline">Заполнение: {act.fillLabel}</Badge> : null}
             <StatusBadge status={act.status} label={act.statusLabel} />
+            {act.closureMethod === 'WITHOUT_INSPECTION' ? (
+              <Badge className="border-transparent bg-amber-100 text-amber-950">
+                Закрыт без проверки
+              </Badge>
+            ) : null}
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
             {displayObjectName(act.objectName)} · {blankLabel(act.customerName, act.draft)}
@@ -171,6 +189,21 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
         </div>
         <ActOperations act={act} user={user} />
       </div>
+      {act.closureMethod === 'WITHOUT_INSPECTION' ? (
+        <Card className="border-amber-300 bg-amber-50 shadow-none">
+          <CardHeader>
+            <CardTitle className="text-lg">Закрыт без проверки</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-2 text-sm">
+            <p>Закрыл: {act.closedWithoutInspectionByName ?? '—'}</p>
+            <p>
+              Дата:{' '}
+              {act.closedWithoutInspectionAt ? formatTimestamp(act.closedWithoutInspectionAt) : '—'}
+            </p>
+            <p>Причина: {act.closureReason ?? '—'}</p>
+          </CardContent>
+        </Card>
+      ) : null}
       <Card className="shadow-none">
         <CardHeader>
           <CardTitle className="text-lg">Данные акта</CardTitle>
@@ -280,6 +313,11 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <StatusBadge status={item.status} label={item.statusLabel} />
+                  {item.closureMethod === 'WITHOUT_INSPECTION' ? (
+                    <Badge className="border-transparent bg-amber-100 text-amber-950">
+                      Без проверки
+                    </Badge>
+                  ) : null}
                   <DeadlineBadge state={item.deadlineState} label={item.deadlineStateLabel} />
                 </div>
               </CardHeader>
@@ -490,18 +528,8 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
                     </Badge>
                   ))}
                 </div>
-                {defectNextStep({
-                  actStatus: act.status,
-                  defectStatus: item.status,
-                  hasLiableOrganization: item.liableOrganizations.length > 0,
-                }) ? (
-                  <p className="text-sm text-muted-foreground">
-                    {defectNextStep({
-                      actStatus: act.status,
-                      defectStatus: item.status,
-                      hasLiableOrganization: item.liableOrganizations.length > 0,
-                    })}
-                  </p>
+                {nextStepFor(item) ? (
+                  <p className="text-sm text-muted-foreground">{nextStepFor(item)}</p>
                 ) : null}
                 <ActOperations act={act} item={item} user={user} />
               </CardContent>

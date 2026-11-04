@@ -47,11 +47,18 @@ describe('act completion guidance', () => {
   });
 
   it('explains the next step without a separate act button', () => {
+    const allowed = {
+      canSubmit: true,
+      canAcceptOrReject: true,
+      canComplete: true,
+      canStart: true,
+    };
     expect(
       defectNextStep({
         actStatus: 'IN_PROGRESS',
         defectStatus: 'IN_PROGRESS',
         hasLiableOrganization: false,
+        ...allowed,
       }),
     ).toContain('завершить дефект');
     expect(
@@ -59,6 +66,16 @@ describe('act completion guidance', () => {
         actStatus: 'IN_PROGRESS',
         defectStatus: 'IN_PROGRESS',
         hasLiableOrganization: true,
+        ...allowed,
+        canSubmit: false,
+      }),
+    ).toBeNull();
+    expect(
+      defectNextStep({
+        actStatus: 'IN_PROGRESS',
+        defectStatus: 'IN_PROGRESS',
+        hasLiableOrganization: true,
+        ...allowed,
       }),
     ).toContain('передать дефект на проверку');
     expect(
@@ -66,13 +83,31 @@ describe('act completion guidance', () => {
         actStatus: 'IN_PROGRESS',
         defectStatus: 'PENDING_INSPECTION',
         hasLiableOrganization: true,
+        ...allowed,
+        canAcceptOrReject: false,
+      }),
+    ).toBeNull();
+    expect(
+      defectNextStep({
+        actStatus: 'IN_PROGRESS',
+        defectStatus: 'PENDING_INSPECTION',
+        hasLiableOrganization: true,
+        ...allowed,
       }),
     ).toContain('принять устранение');
+    expect(
+      actCompletionSummary({
+        actStatus: 'COMPLETED',
+        closureMethod: 'WITHOUT_INSPECTION',
+        defectStatuses: ['COMPLETED'],
+      }).hint,
+    ).toBe('Акт закрыт без проверки устранения.');
     expect(
       defectNextStep({
         actStatus: 'COMPLETED',
         defectStatus: 'COMPLETED',
         hasLiableOrganization: false,
+        ...allowed,
       }),
     ).toBeNull();
   });

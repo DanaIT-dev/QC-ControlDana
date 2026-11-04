@@ -352,6 +352,8 @@ const sampleRow: RegistryDefectRow = {
   actStatusLabel: 'В работе',
   defectStatus: 'IN_PROGRESS',
   defectStatusLabel: 'В работе',
+  closureMethod: null,
+  actClosureMethod: null,
   objectName: 'Объект',
   objectId: 'obj-1',
   objectAddress: 'Адрес',

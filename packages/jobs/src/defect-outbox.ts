@@ -308,6 +308,43 @@ export async function notifyDeadlineActivated(
   ];
 }
 
+export async function notifyActClosedWithoutInspection(
+  writer: OutboxWriter,
+  tx: OutboxTx,
+  input: { actId: string; objectId: string | null; actorUserId: string; reason: string },
+): Promise<string> {
+  const managers = await activeRoleIds(tx, 'SGR_MANAGER');
+  const admins = await activeRoleIds(tx, 'ADMIN');
+  const engineers = input.objectId
+    ? await tx.propertyObjectEngineer.findMany({
+        where: { propertyObjectId: input.objectId, unassignedAt: null },
+        select: { userId: true },
+      })
+    : [];
+  const liable = await tx.defectItemLiableOrganization.findMany({
+    where: { defectItem: { actId: input.actId } },
+    select: { organizationId: true },
+  });
+  const contractors = await memberIdsForOrganizations(
+    tx,
+    liable.map((row) => row.organizationId),
+  );
+  return writeDomainOutbox(writer, tx, {
+    type: 'ACT_CLOSED_WITHOUT_INSPECTION',
+    occurrenceParts: ['ACT_CLOSED_WITHOUT_INSPECTION', input.actId],
+    actId: input.actId,
+    defectItemId: null,
+    actorUserId: input.actorUserId,
+    extraRecipientIds: [
+      ...managers,
+      ...admins,
+      ...engineers.map((row) => row.userId),
+      ...contractors,
+    ],
+    body: `Акт закрыт без проверки. Причина: ${input.reason}`,
+  });
+}
+
 export async function notifyActCancelled(
   writer: OutboxWriter,
   tx: OutboxTx,

@@ -6,6 +6,8 @@
 
 Граница доступа `RESPONSIBLE_ENGINEER` — закреплённые объекты (`PropertyObjectEngineer`, активные строки с `unassignedAt IS NULL`). Назначение инженера на `DefectItem` — операционная принадлежность работы, а не security scope.
 
+`SUBMIT_DEFECT_FOR_INSPECTION` и `CLOSE_ACT_WITHOUT_INSPECTION` — разные полномочия. Первое передаёт дефект с виновной организацией на проверку. Второе закрывает весь акт без подтверждения устранения и фиксирует сотрудника, дату и причину. Обычная приёмка (`ACCEPT_DEFECT_REPAIR`) при этом не расширяется. `SUPER_ADMIN` имеет оба полномочия через полный набор capabilities. `PENDING_ROLE` и неавторизованный пользователь не имеют ни одного. Чтение или создание акта не заменяет активное назначение на объект.
+
 | Capability                        | ADMIN | SGR_MANAGER | CONTRACTOR_ENGINEER | RESPONSIBLE_ENGINEER                      |
 | --------------------------------- | ----- | ----------- | ------------------- | ----------------------------------------- |
 | MANAGE_ADMIN_GRANTS               | нет   | нет         | нет                 | нет                                       |
@@ -15,7 +17,8 @@
 | VIEW_SYSTEM_STATUS                | да    | нет         | нет                 | нет                                       |
 | VIEW_ALL_ACTS                     | да    | да          | нет                 | нет                                       |
 | VIEW_ORGANIZATION_ACTS            | нет   | нет         | да                  | нет                                       |
-| SUBMIT_DEFECT_FOR_INSPECTION      | нет   | нет         | да                  | нет                                       |
+| SUBMIT_DEFECT_FOR_INSPECTION      | да    | да          | да, историческая    | да, закреплённые активные объекты         |
+| CLOSE_ACT_WITHOUT_INSPECTION      | да    | да          | нет                 | да, закреплённые активные объекты         |
 | ACCEPT_DEFECT_REPAIR              | да    | да          | нет                 | да                                        |
 | REJECT_DEFECT_REPAIR              | да    | да          | нет                 | да                                        |
 | VIEW_ASSIGNED_DEFECTS             | —     | —           | —                   | да, все акты закреплённых объектов        |

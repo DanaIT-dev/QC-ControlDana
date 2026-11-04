@@ -231,6 +231,13 @@ export const cancelActRequestSchema = z
   })
   .strict();
 
+export const closeActWithoutInspectionRequestSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    reason: z.string(),
+  })
+  .strict();
+
 export const reopenDefectRequestSchema = z
   .object({
     expectedVersion: expectedVersionSchema,

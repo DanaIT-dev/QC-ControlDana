@@ -23,6 +23,8 @@ export interface RegistryDefectRow {
   actStatusLabel: string;
   defectStatus: DefectItemStatus;
   defectStatusLabel: string;
+  closureMethod: 'WITHOUT_INSPECTION' | null;
+  actClosureMethod: 'WITHOUT_INSPECTION' | null;
   objectId: string | null;
   objectName: string | null;
   objectAddress: string | null;
@@ -121,6 +123,7 @@ export interface ActDetailDefectItem {
   workTypeName: string | null;
   status: DefectItemStatus;
   statusLabel: string;
+  closureMethod: 'WITHOUT_INSPECTION' | null;
   version: number;
   claimDetails: string | null;
   sourceDeadlineRaw: string | null;
@@ -199,6 +202,10 @@ export interface ActDetailResponse {
   createdAt: string;
   cancelledAt: string | null;
   cancellationReason: string | null;
+  closureMethod: 'WITHOUT_INSPECTION' | null;
+  closedWithoutInspectionAt: string | null;
+  closedWithoutInspectionByName: string | null;
+  closureReason: string | null;
   legacyImport: ActLegacyImportSource | null;
   defectItems: ActDetailDefectItem[];
 }

@@ -100,10 +100,12 @@ export class AnalyticsService {
       const draftCount = await this.one<{ n: number }>(
         Prisma.sql`SELECT count(*)::int AS n FROM public.acts WHERE status::text = 'NEW'`,
       );
+      const closedWithoutInspection = num(payload.closed_without_inspection);
+      const confirmedCompleted = Math.max(0, num(payload.completed) - closedWithoutInspection);
       const attempts = firstTimeRight({
         completedAcceptedOnFirstAttempt: num(payload.accepted_first),
         completedWithAttempts: num(payload.with_attempts),
-        completedDefects: num(payload.completed),
+        completedDefects: confirmedCompleted,
       });
       const order = ['0–3', '4–7', '8–14', '15–30', '31–60', '60+'];
       const exposure = exposureFromPayload(payload, ctx.query);
@@ -122,6 +124,8 @@ export class AnalyticsService {
         medianClosureMs: numOrNull(payload.median),
         p90ClosureMs: numOrNull(payload.p90),
         closureSampleSize: num(payload.closure_sample),
+        closedWithoutInspection,
+        confirmedRepairCoverageText: `Подтверждённое устранение: ${num(payload.closure_sample)} из ${confirmedCompleted}. Закрыто без проверки: ${closedWithoutInspection}. Эти позиции не входят в успешную приёмку и скорость подтверждённого устранения.`,
         firstTimeRight: {
           numerator: attempts.numerator,
           denominator: attempts.denominator,
@@ -320,7 +324,8 @@ export class AnalyticsService {
       median_days: number | null;
     }>(Prisma.sql`
       WITH scoped AS (
-        SELECT d.id, d.status::text AS status, d."defectTypeId" AS type_id, d."effectiveDeadline" AS deadline,
+        SELECT d.id, d.status::text AS status, d."closureMethod"::text AS closure_method,
+               d."defectTypeId" AS type_id, d."effectiveDeadline" AS deadline,
                d."readyAt" AS ready_at, d."createdAt" AS created_at, a."objectId" AS object_id
         ${scopedFrom(ctx.where)}
       ),
@@ -329,19 +334,28 @@ export class AnalyticsService {
              count(DISTINCT scoped.id)::int AS defects,
              max(totals.total)::int AS total,
              count(DISTINCT scoped.id) FILTER (
-               WHERE scoped.status = 'COMPLETED' AND EXISTS (
+               WHERE scoped.status = 'COMPLETED'
+                 AND scoped.closure_method IS DISTINCT FROM 'WITHOUT_INSPECTION'
+                 AND EXISTS (
                  SELECT 1 FROM public.defect_inspection_attempts attempt
                  WHERE attempt."defectItemId" = scoped.id AND attempt.status::text = 'ACCEPTED' AND attempt."attemptNumber" = 1
                )
              )::int AS ftr_num,
              count(DISTINCT scoped.id) FILTER (
-               WHERE scoped.status = 'COMPLETED' AND EXISTS (
+               WHERE scoped.status = 'COMPLETED'
+                 AND scoped.closure_method IS DISTINCT FROM 'WITHOUT_INSPECTION'
+                 AND EXISTS (
                  SELECT 1 FROM public.defect_inspection_attempts attempt WHERE attempt."defectItemId" = scoped.id
                )
              )::int AS with_attempts,
-             count(DISTINCT scoped.id) FILTER (WHERE scoped.status = 'COMPLETED')::int AS completed,
              count(DISTINCT scoped.id) FILTER (
-               WHERE scoped.status = 'COMPLETED' AND EXISTS (
+               WHERE scoped.status = 'COMPLETED'
+                 AND scoped.closure_method IS DISTINCT FROM 'WITHOUT_INSPECTION'
+             )::int AS completed,
+             count(DISTINCT scoped.id) FILTER (
+               WHERE scoped.status = 'COMPLETED'
+                 AND scoped.closure_method IS DISTINCT FROM 'WITHOUT_INSPECTION'
+                 AND EXISTS (
                  SELECT 1 FROM public.defect_inspection_attempts attempt
                  WHERE attempt."defectItemId" = scoped.id AND attempt.status::text = 'REJECTED'
                )
@@ -367,6 +381,7 @@ export class AnalyticsService {
                ORDER BY EXTRACT(EPOCH FROM (scoped.ready_at - scoped.created_at)) / 86400.0
              ) FILTER (
                WHERE scoped.status = 'COMPLETED'
+                 AND scoped.closure_method IS DISTINCT FROM 'WITHOUT_INSPECTION'
                  AND scoped.ready_at IS NOT NULL
                  AND scoped.ready_at >= scoped.created_at
              ) AS median_days
@@ -1237,6 +1252,7 @@ interface OverviewBundle {
   median: number | null;
   p90: number | null;
   closure_sample: number;
+  closed_without_inspection: number;
   accepted_first: number;
   with_attempts: number;
   completed: number;
@@ -1272,6 +1288,7 @@ function overviewPayload(value: unknown): OverviewBundle {
     median: payload.median ?? null,
     p90: payload.p90 ?? null,
     closure_sample: payload.closure_sample ?? 0,
+    closed_without_inspection: payload.closed_without_inspection ?? 0,
     accepted_first: payload.accepted_first ?? 0,
     with_attempts: payload.with_attempts ?? 0,
     completed: payload.completed ?? 0,

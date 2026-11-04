@@ -33,6 +33,7 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
   DEFECT_REPAIR_REJECTED: 'Устранение возвращено на доработку',
   CONTRACTOR_ASSIGNED: 'Дефект назначен подрядной организации',
   ACT_CANCELLED: 'Акт аннулирован',
+  ACT_CLOSED_WITHOUT_INSPECTION: 'Акт закрыт без проверки',
   ATTACHMENT_READY: 'Файл прошёл проверку',
   ATTACHMENT_REJECTED: 'Файл отклонён',
   ATTACHMENT_SCAN_FAILED: 'Не удалось проверить файл',

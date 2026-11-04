@@ -16,6 +16,10 @@ export function calendarDiffDays(fromIso: string, toIso: string): number {
   return Math.round((to - from) / 86_400_000);
 }
 
+export function overdueNoticeSuppressed(status: string): boolean {
+  return status === 'COMPLETED';
+}
+
 export function slaStateOf(input: {
   status: 'IN_PROGRESS' | 'PENDING_INSPECTION' | 'COMPLETED';
   deadline: Date | null;

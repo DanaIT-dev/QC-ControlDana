@@ -27,6 +27,7 @@ import {
   notificationTitle,
   outboxJobId,
   overdueDaysOf,
+  overdueNoticeSuppressed,
   reachedEscalationThresholds,
   recipientsForDeadlineAlert,
   redactTransportSecrets,
@@ -278,6 +279,16 @@ export class NotificationDispatcher {
       if (payload.type === 'ACT_CHAT_MENTION') {
         await this.markProcessed(claimed.id);
         return { deliveryIds: [] };
+      }
+      if (payload.type.startsWith('SLA_') && payload.defectItemId) {
+        const currentDefect = await this.prisma.defectItem.findUnique({
+          where: { id: payload.defectItemId },
+          select: { status: true },
+        });
+        if (!currentDefect || overdueNoticeSuppressed(currentDefect.status)) {
+          await this.markProcessed(claimed.id);
+          return { deliveryIds: [] };
+        }
       }
       const clockBound =
         payload.type.startsWith('SLA_') ||

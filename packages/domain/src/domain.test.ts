@@ -445,6 +445,8 @@ describe('capabilities', () => {
       'EDIT_THIRD_PARTY_DEADLINE',
       'COMPLETE_DEFECT',
       'REOPEN_DEFECT',
+      'SUBMIT_DEFECT_FOR_INSPECTION',
+      'CLOSE_ACT_WITHOUT_INSPECTION',
       'ACCEPT_DEFECT_REPAIR',
       'REJECT_DEFECT_REPAIR',
       'MANAGE_PROPOSALS',
@@ -492,6 +494,8 @@ describe('capabilities', () => {
       'EDIT_THIRD_PARTY_DEADLINE',
       'COMPLETE_DEFECT',
       'REOPEN_DEFECT',
+      'SUBMIT_DEFECT_FOR_INSPECTION',
+      'CLOSE_ACT_WITHOUT_INSPECTION',
       'ACCEPT_DEFECT_REPAIR',
       'REJECT_DEFECT_REPAIR',
       'VIEW_PROPOSAL_A',
@@ -519,6 +523,11 @@ describe('capabilities', () => {
     expect(hasCapability('SUPER_ADMIN', 'MANAGE_DEFECT_FINANCIALS')).toBe(true);
     expect(hasCapability('SUPER_ADMIN', 'REVIEW_ANALYTICS_INSIGHTS')).toBe(true);
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).toContain('SUBMIT_DEFECT_FOR_INSPECTION');
+    expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('CLOSE_ACT_WITHOUT_INSPECTION');
+    expect(capabilitiesForRole('PENDING_ROLE')).not.toContain('SUBMIT_DEFECT_FOR_INSPECTION');
+    expect(capabilitiesForRole('PENDING_ROLE')).not.toContain('CLOSE_ACT_WITHOUT_INSPECTION');
+    expect(capabilitiesForRole('ADMIN')).toContain('ACCEPT_DEFECT_REPAIR');
+    expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('ACCEPT_DEFECT_REPAIR');
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('VIEW_ALL_ACTS');
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('COMPLETE_DEFECT');
     expect(capabilitiesForRole('CONTRACTOR_ENGINEER')).not.toContain('ACCEPT_DEFECT_REPAIR');
