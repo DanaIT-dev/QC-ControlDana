@@ -194,6 +194,7 @@ export function toRegistryRow(
     fillLabel: actFillLabel(fillState),
     assignmentLabel: assignmentLabel(item.responsibleEngineers.length),
     readyAt: timestampField(item.readyAt),
+    issuedOn: calendarField(item.act.issuedOn, timeZone),
     documentRef: null,
     ...proposals,
   };
@@ -272,6 +273,7 @@ export function toEmptyRegistryRow(act: EmptyActRecord, role: UserRole) {
     fillLabel: actFillLabel(fillState),
     assignmentLabel: assignmentLabel(0),
     readyAt: null,
+    issuedOn: calendarField(act.issuedOn),
     documentRef: null,
     ...proposals,
   };

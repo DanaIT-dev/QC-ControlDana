@@ -561,12 +561,6 @@ export class OperationsService {
     const claimDetails =
       input.claimDetails === undefined ? undefined : normalizeDraftClaimDetails(input.claimDetails);
     const notes = input.notes === undefined ? undefined : normalizeDraftNotes(input.notes);
-    if (input.location !== undefined && !location) {
-      throw new ValidationError('location', 'Укажите помещение');
-    }
-    if (input.claimDetails !== undefined && !claimDetails) {
-      throw new ValidationError('claimDetails', 'Укажите описание');
-    }
     return this.prisma.client.$transaction(async (tx) => {
       const current = await this.requireVisibleDefectOn(tx, user, defectItemId);
       const act = await this.requireVisibleActOn(tx, user, current.actId);

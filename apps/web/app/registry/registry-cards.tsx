@@ -37,6 +37,8 @@ export function RegistryCards({
             <CardContent className="grid min-w-0 gap-2 p-4">
               <p className="text-[13px] text-muted-foreground">
                 {row.formLabel} · {row.actNumber}
+                {' · '}
+                {row.issuedOn ? formatCalendarDate(row.issuedOn) : 'Дата акта не указана'}
               </p>
               <h3 className="text-base font-semibold">{displayObjectName(row.objectName)}</h3>
               <p className="text-sm">{row.location ?? '—'}</p>

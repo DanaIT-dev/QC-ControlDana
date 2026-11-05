@@ -37,6 +37,12 @@ describe('registry query builder', () => {
   it('whitelists sort fields instead of passing a raw column name', () => {
     expect(registryOrderBy('actNumber', 'desc')[0]).toEqual({ act: { officialNumber: 'desc' } });
     expect(registryOrderBy('effectiveDeadline', 'asc')[2]).toEqual({ id: 'asc' });
+    expect(registryOrderBy('issuedOn', 'desc')).toEqual([
+      { act: { issuedOn: { sort: 'desc', nulls: 'last' } } },
+      { act: { createdAt: 'desc' } },
+      { act: { id: 'asc' } },
+      { id: 'asc' },
+    ]);
   });
 
   it('includes an empty NEW act unless a defect-only filter excludes it', () => {

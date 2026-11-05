@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import {
-  DEFAULT_REGISTRY_SORT,
+  initialRegistrySortDirection,
   parseRegistryListQuery,
   REGISTRY_PAGE_SIZES,
   type RegistryListQuery,
@@ -158,7 +158,7 @@ export function RegistryView({ user }: { user: SafeUserProfile }) {
         ? 'desc'
         : query.sortBy === field
           ? 'asc'
-          : DEFAULT_REGISTRY_SORT.sortDirection;
+          : initialRegistrySortDirection(field as RegistryListQuery['sortBy']);
     replaceQuery({
       ...query,
       page: 1,
@@ -248,29 +248,34 @@ export function RegistryView({ user }: { user: SafeUserProfile }) {
         <EmptyState title="Нет строк" description="По текущим условиям нет доступных дефектов." />
       ) : null}
       {!listQuery.isError && !listQuery.isLoading && rows.length > 0 ? (
-        isMobile ? (
-          <RegistryCards
-            rows={rows}
-            canViewBC={canViewProposalGroupBC(user.role)}
-            onOpen={openRow}
-          />
-        ) : (
-          <RegistryTable
-            rows={rows}
-            canViewBC={canViewProposalGroupBC(user.role)}
-            expandBC={expandBC}
-            onToggleBC={() => {
-              const next = !expandBC;
-              writeExpandBC(next);
-              setExpandBC(next);
-            }}
-            onOpen={openRow}
-            sortBy={query.sortBy}
-            sortDirection={query.sortDirection}
-            onSort={onSort}
-            loading={false}
-          />
-        )
+        <>
+          {query.sortBy === 'issuedOn' && query.sortDirection === 'desc' ? (
+            <p className="text-sm text-muted-foreground">Дата акта: сначала новые</p>
+          ) : null}
+          {isMobile ? (
+            <RegistryCards
+              rows={rows}
+              canViewBC={canViewProposalGroupBC(user.role)}
+              onOpen={openRow}
+            />
+          ) : (
+            <RegistryTable
+              rows={rows}
+              canViewBC={canViewProposalGroupBC(user.role)}
+              expandBC={expandBC}
+              onToggleBC={() => {
+                const next = !expandBC;
+                writeExpandBC(next);
+                setExpandBC(next);
+              }}
+              onOpen={openRow}
+              sortBy={query.sortBy}
+              sortDirection={query.sortDirection}
+              onSort={onSort}
+              loading={false}
+            />
+          )}
+        </>
       ) : null}
       <div className="flex flex-col gap-3 rounded-[10px] border bg-card px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-muted-foreground">

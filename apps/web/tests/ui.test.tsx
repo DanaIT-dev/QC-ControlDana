@@ -370,6 +370,7 @@ const sampleRow: RegistryDefectRow = {
   deadlineState: 'NORMAL',
   deadlineStateLabel: 'В срок',
   readyAt: null,
+  issuedOn: '2026-11-04',
   proposalA: {
     slot: 'A',
     amount: '1250.00',

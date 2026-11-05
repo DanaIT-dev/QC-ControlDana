@@ -361,11 +361,15 @@ export function ActDetailView({ actId, user }: { actId: string; user: SafeUserPr
             >
               <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
                 <div className="grid gap-1">
-                  <CardTitle className="text-base">{item.location ?? '—'}</CardTitle>
+                  <CardTitle className="text-base">
+                    {item.location?.trim() ? item.location : 'Не указано'}
+                  </CardTitle>
                   <p className="text-sm text-muted-foreground">
                     {item.defectTypeName ?? 'Вид не указан'}
                   </p>
-                  {item.claimDetails ? <p className="text-sm">{item.claimDetails}</p> : null}
+                  <p className="text-sm">
+                    {item.claimDetails?.trim() ? item.claimDetails : 'Не указано'}
+                  </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <StatusBadge status={item.status} label={item.statusLabel} />

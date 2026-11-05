@@ -640,7 +640,8 @@ describe('registry query parsing', () => {
     const parsed = parseRegistryListQuery({});
     expect(parsed.page).toBe(1);
     expect(parsed.pageSize).toBe(50);
-    expect(parsed.sortBy).toBe('effectiveDeadline');
+    expect(parsed.sortBy).toBe('issuedOn');
+    expect(parsed.sortDirection).toBe('desc');
     expect(parsed.search).toBeNull();
     expect(parsed.unmatchedEngineers).toBe(false);
     expect(parsed.importedOnly).toBe(false);

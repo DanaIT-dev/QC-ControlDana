@@ -64,7 +64,7 @@ Docker Compose поднимает:
 
 ## Доступ к реестру и PostgreSQL RLS
 
-Список, count, summary, filter-options и карточка акта используют прикладной `RegistryAccessScope` (Guards, capabilities, Prisma `where`) и второй уровень — PostgreSQL RLS (`FORCE ROW LEVEL SECURITY`, verified HMAC-контекст, отдельные runtime-роли). Коммерческие поля B/C скрываются и serializer’ом, и row policy / slot predicate: RESPONSIBLE_ENGINEER не читает B/C даже прямым SQL под `sgr_app`. Пагинация выполняется в PostgreSQL (`skip`/`take`). Для сортировки по `effectiveDeadline` используется generated stored column `COALESCE(claimDeadline, plannedDeadline)`.
+Список, count, summary, filter-options и карточка акта используют прикладной `RegistryAccessScope` (Guards, capabilities, Prisma `where`) и второй уровень — PostgreSQL RLS (`FORCE ROW LEVEL SECURITY`, verified HMAC-контекст, отдельные runtime-роли). Коммерческие поля B/C скрываются и serializer’ом, и row policy / slot predicate: RESPONSIBLE_ENGINEER не читает B/C даже прямым SQL под `sgr_app`. Страница реестра отрезается после сортировки всей видимой выборки, включая акты без дефектов. Для сортировки по `effectiveDeadline` используется generated stored column `COALESCE(claimDeadline, plannedDeadline)`.
 
 Роли БД, provisioning и rotation секрета: [RLS_OPERATIONS.md](../security/RLS_OPERATIONS.md), матрица: [RLS_POLICY_MATRIX.md](../security/RLS_POLICY_MATRIX.md). `SUPER_ADMIN` не входит в `sgr_is_staff()` / `sgr_is_admin()`: SELECT бизнес-таблиц через `sgr_is_super_admin()`, прямые INSERT/UPDATE/DELETE запрещены. Узкие SECURITY DEFINER: `sgr_grant_admin` / `sgr_revoke_admin` / `sgr_create_pending_user`. Учётка SUPER_ADMIN создаётся командой `pnpm super-admin:provision` (одна транзакция, TTY-пароль).
 

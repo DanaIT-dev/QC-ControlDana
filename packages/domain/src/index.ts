@@ -17,6 +17,7 @@ export * from './deadline';
 export * from './deadline-commands';
 export * from './registry-access';
 export * from './registry-query';
+export * from './registry-sort';
 export * from './registry-labels';
 export * from './registry-shaping';
 export * from './text';

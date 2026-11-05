@@ -273,6 +273,14 @@ export function registryOrderBy(
   sortDirection: 'asc' | 'desc',
 ): Prisma.DefectItemOrderByWithRelationInput[] {
   const dir = sortDirection;
+  if (sortBy === 'issuedOn') {
+    return [
+      { act: { issuedOn: { sort: dir, nulls: 'last' } } },
+      { act: { createdAt: 'desc' } },
+      { act: { id: 'asc' } },
+      { id: 'asc' },
+    ];
+  }
   const deadlineOrder = { sort: dir, nulls: 'last' as const };
   const primary: Prisma.DefectItemOrderByWithRelationInput = (() => {
     switch (sortBy) {

@@ -22,15 +22,20 @@ export const REGISTRY_SORT_FIELDS = [
   'effectiveDeadline',
   'readyAt',
   'createdAt',
+  'issuedOn',
 ] as const;
 
 export type RegistrySortField = (typeof REGISTRY_SORT_FIELDS)[number];
 export type SortDirection = 'asc' | 'desc';
 
 export const DEFAULT_REGISTRY_SORT = {
-  sortBy: 'effectiveDeadline' as const,
-  sortDirection: 'asc' as const,
+  sortBy: 'issuedOn' as const,
+  sortDirection: 'desc' as const,
 };
+
+export function initialRegistrySortDirection(field: RegistrySortField): SortDirection {
+  return field === 'issuedOn' || field === 'createdAt' || field === 'readyAt' ? 'desc' : 'asc';
+}
 
 export class RegistryQueryError extends Error {
   readonly statusCode = 400;
@@ -192,7 +197,7 @@ export function parseRegistryListQuery(input: RegistryQueryInput): RegistryListQ
     ? input.sortDirection[0]
     : input.sortDirection;
   const sortDirection =
-    (sortDirectionRaw as SortDirection | undefined) ?? DEFAULT_REGISTRY_SORT.sortDirection;
+    (sortDirectionRaw as SortDirection | undefined) ?? initialRegistrySortDirection(sortBy);
   if (sortDirection !== 'asc' && sortDirection !== 'desc') {
     throw new RegistryQueryError('Invalid sort direction');
   }
@@ -290,7 +295,7 @@ export function serializeRegistryQuery(query: RegistryListQuery): Record<string,
   if (query.sortBy !== DEFAULT_REGISTRY_SORT.sortBy) {
     params.sortBy = query.sortBy;
   }
-  if (query.sortDirection !== DEFAULT_REGISTRY_SORT.sortDirection) {
+  if (query.sortDirection !== initialRegistrySortDirection(query.sortBy)) {
     params.sortDirection = query.sortDirection;
   }
   return params;

@@ -79,6 +79,7 @@ export function RegistryTable({
         ),
         meta: { className: 'col-primary sticky left-0 z-10 bg-card' },
       },
+      dateColumn('issuedOn', 'Дата акта', 'issuedOn', 'col-required'),
       {
         id: 'status',
         accessorKey: 'defectStatusLabel',
@@ -338,6 +339,11 @@ function headerButton(
     <button
       type="button"
       className="inline-flex min-h-11 items-center gap-1 font-medium"
+      aria-label={
+        field === 'issuedOn' && sortBy === field && sortDirection === 'desc'
+          ? 'Дата акта: сначала новые'
+          : title
+      }
       onClick={() => onSort(field)}
     >
       {title}

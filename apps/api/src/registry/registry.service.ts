@@ -9,6 +9,7 @@ import { loadConfig } from '@sgr-registry/config';
 import type {
   ActDetailDefectItem,
   ActDetailResponse,
+  RegistryDefectRow,
   RegistryFilterOptionsResponse,
   RegistryListResponse,
   RegistrySummaryResponse,
@@ -39,6 +40,8 @@ import {
   isOversightRole,
   normalizeQueryInput,
   parseRegistryListQuery,
+  compareRegistrySortRows,
+  type RegistrySortRow,
   RegistryQueryError,
   shapeProposals,
   shapeSummary,
@@ -56,7 +59,6 @@ import {
   emptyActListWhere,
   personSearchDefectItemIds,
   registryListWhere,
-  registryOrderBy,
 } from './registry-query-builder.js';
 import {
   calendarField,
@@ -82,25 +84,92 @@ export class RegistryService {
       await this.prepare(user, rawQuery);
     const where = registryListWhere(scope, query, todayIso, warningDays, personSearchDefectIds);
     const emptyWhere = emptyActListWhere(scope, query);
-    const [defectCount, actCountWithDefects, emptyCount] = await Promise.all([
-      this.prisma.client.defectItem.count({ where }),
-      this.prisma.client.act.count({ where: { defectItems: { some: where } } }),
-      emptyWhere ? this.prisma.client.act.count({ where: emptyWhere }) : Promise.resolve(0),
+    const [defectKeys, emptyKeys] = await Promise.all([
+      this.prisma.client.defectItem.findMany({
+        where,
+        select: {
+          id: true,
+          createdAt: true,
+          plannedDeadline: true,
+          claimDeadline: true,
+          effectiveDeadline: true,
+          readyAt: true,
+          defectType: { select: { name: true } },
+          act: {
+            select: {
+              id: true,
+              issuedOn: true,
+              createdAt: true,
+              officialNumber: true,
+              status: true,
+              propertyObject: { select: { name: true } },
+            },
+          },
+        },
+      }),
+      emptyWhere
+        ? this.prisma.client.act.findMany({
+            where: emptyWhere,
+            select: {
+              id: true,
+              issuedOn: true,
+              createdAt: true,
+              officialNumber: true,
+              status: true,
+              propertyObject: { select: { name: true } },
+            },
+          })
+        : Promise.resolve([]),
     ]);
-    const totalCount = defectCount + emptyCount;
-    const actCount = actCountWithDefects + emptyCount;
+    const ordered = [
+      ...defectKeys.map((item): RegistrySortRow => ({
+        id: item.id,
+        actId: item.act.id,
+        defectId: item.id,
+        issuedOn: item.act.issuedOn,
+        actCreatedAt: item.act.createdAt,
+        officialNumber: item.act.officialNumber,
+        status: item.act.status,
+        objectName: item.act.propertyObject?.name ?? null,
+        defectTypeName: item.defectType?.name ?? null,
+        plannedDeadline: item.plannedDeadline,
+        claimDeadline: item.claimDeadline,
+        effectiveDeadline: item.effectiveDeadline,
+        readyAt: item.readyAt,
+        rowCreatedAt: item.createdAt,
+      })),
+      ...emptyKeys.map((act): RegistrySortRow => ({
+        id: act.id,
+        actId: act.id,
+        defectId: null,
+        issuedOn: act.issuedOn,
+        actCreatedAt: act.createdAt,
+        officialNumber: act.officialNumber,
+        status: act.status,
+        objectName: act.propertyObject?.name ?? null,
+        defectTypeName: null,
+        plannedDeadline: null,
+        claimDeadline: null,
+        effectiveDeadline: null,
+        readyAt: null,
+        rowCreatedAt: act.createdAt,
+      })),
+    ].sort((left, right) =>
+      compareRegistrySortRows(left, right, query.sortBy, query.sortDirection),
+    );
+    const totalCount = ordered.length;
+    const actCount = new Set(ordered.map((row) => row.actId)).size;
     const totalPages = totalCount === 0 ? 0 : Math.ceil(totalCount / query.pageSize);
     const page = totalCount === 0 ? 1 : Math.min(query.page, Math.max(totalPages, 1));
     const offset = (page - 1) * query.pageSize;
-    const defectSkip = Math.min(offset, defectCount);
-    const defectTake = Math.max(0, Math.min(query.pageSize, defectCount - defectSkip));
-    const emptySkip = Math.max(0, offset - defectCount);
-    const emptyTake = query.pageSize - defectTake;
+    const pageKeys = ordered.slice(offset, offset + query.pageSize);
+    const defectIds = pageKeys.filter((row) => row.defectId).map((row) => row.id);
+    const emptyIds = pageKeys.filter((row) => !row.defectId).map((row) => row.id);
     const [items, emptyActs] = await Promise.all([
-      defectTake === 0
+      defectIds.length === 0
         ? Promise.resolve([])
         : this.prisma.client.defectItem.findMany({
-            where,
+            where: { id: { in: defectIds } },
             select: {
               ...registryListSelect,
               proposals: {
@@ -108,25 +177,25 @@ export class RegistryService {
                 where: { slot: { in: visibleProposalSlots(user.role) }, status: 'ACTIVE' },
               },
             },
-            orderBy: registryOrderBy(query.sortBy, query.sortDirection),
-            skip: defectSkip,
-            take: defectTake,
           }),
-      emptyWhere && emptyTake > 0
-        ? this.prisma.client.act.findMany({
-            where: emptyWhere,
+      emptyIds.length === 0
+        ? Promise.resolve([])
+        : this.prisma.client.act.findMany({
+            where: { id: { in: emptyIds } },
             select: emptyActSelect,
-            orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
-            skip: emptySkip,
-            take: emptyTake,
-          })
-        : Promise.resolve([]),
+          }),
     ]);
+    const defectsById = new Map(items.map((item) => [item.id, item]));
+    const actsById = new Map(emptyActs.map((act) => [act.id, act]));
     return {
-      items: [
-        ...items.map((item) => toRegistryRow(item, user.role, warningDays, now, timeZone)),
-        ...emptyActs.map((act) => toEmptyRegistryRow(act, user.role)),
-      ],
+      items: pageKeys.flatMap((key): RegistryDefectRow[] => {
+        if (key.defectId) {
+          const item = defectsById.get(key.id);
+          return item ? [toRegistryRow(item, user.role, warningDays, now, timeZone)] : [];
+        }
+        const act = actsById.get(key.id);
+        return act ? [toEmptyRegistryRow(act, user.role)] : [];
+      }),
       page,
       pageSize: query.pageSize,
       totalCount,

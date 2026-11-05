@@ -58,6 +58,7 @@ export interface RegistryDefectRow {
   fillLabel?: string;
   assignmentLabel?: string | null;
   readyAt: string | null;
+  issuedOn: string | null;
   documentRef: string | null;
   proposalA: RegistryProposalDto | null;
   proposalsBC?: RegistryProposalDto[];

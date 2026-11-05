@@ -455,7 +455,6 @@ function DefectEditor({
                 id="edit-defect-location"
                 value={location}
                 onChange={(event) => setLocation(event.target.value)}
-                required
               />
             </div>
             <div className="grid gap-1.5">
@@ -464,7 +463,6 @@ function DefectEditor({
                 id="edit-defect-claim"
                 value={claimDetails}
                 onChange={(event) => setClaimDetails(event.target.value)}
-                required
               />
             </div>
             <DirectoryCombobox
